@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { T, fmtDuration, fmtTokens, loadSettings } from '../lib/core.js'
 import SceneCard from './SceneCard.jsx'
 
-export default function ProcessPanel({ title, scenes, phase, startTime, onRetry, onReprocess, onDownload, onReset }) {
+export default function ProcessPanel({ title, scenes, phase, startTime, isPaused, isRateLimited, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onDownload, onReset }) {
   const [expandedId, setExpandedId] = useState(null)
 
   const total = scenes.length
@@ -22,9 +22,23 @@ export default function ProcessPanel({ title, scenes, phase, startTime, onRetry,
 
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0
   const isDone = doneCount === total && total > 0
+  const hasIncomplete = phase === 'done' && scenes.some(s => s.status !== 'done')
 
   return (
     <div style={{ padding: '24px 16px', maxWidth: 640, margin: '0 auto' }}>
+      {isRateLimited && (
+        <div style={{
+          background: T.warn + '22', border: `1px solid ${T.warn}`,
+          borderRadius: 10, padding: '14px 18px', marginBottom: 20,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        }}>
+          <div>
+            <div style={{ color: T.warn, fontWeight: 700, fontSize: 14, marginBottom: 2 }}>Claude 사용량 한도 초과</div>
+            <div style={{ color: T.fgMuted, fontSize: 13 }}>잠시 후 한도가 풀리면 재개 버튼을 눌러주세요.</div>
+          </div>
+          <button onClick={onResume} style={{ ...ctrlBtn, color: T.warn, borderColor: T.warn, whiteSpace: 'nowrap' }}>재개</button>
+        </div>
+      )}
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
@@ -50,10 +64,21 @@ export default function ProcessPanel({ title, scenes, phase, startTime, onRetry,
           <span>{pct}%</span>
           {startTime && <span>{fmtDuration(Date.now() - startTime)}</span>}
           {totalTokens > 0 && <span>{fmtTokens(totalTokens)} tokens · {fmtCost}</span>}
-          <span style={{ marginLeft: 'auto' }}>
-            {phase === 'formatting' && '포맷 중...'}
-            {phase === 'translating' && '번역 중...'}
-            {phase === 'done' && '완료'}
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+            {phase !== 'done' && !isPaused && <span style={{ color: T.fgMuted }}>{phase === 'formatting' ? '포맷 중...' : '번역 중...'}</span>}
+            {phase !== 'done' && !isPaused && (
+              <button onClick={onPause} style={ctrlBtn}>일시정지</button>
+            )}
+            {phase !== 'done' && isPaused && (
+              <button onClick={onResume} style={{ ...ctrlBtn, color: T.good, borderColor: T.good }}>재개</button>
+            )}
+            {phase !== 'done' && (
+              <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={{ ...ctrlBtn, color: T.err, borderColor: T.err }}>중단</button>
+            )}
+            {phase === 'done' && !hasIncomplete && <span style={{ color: T.fgMuted }}>완료</span>}
+            {hasIncomplete && (
+              <button onClick={onContinue} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>이어하기</button>
+            )}
           </span>
         </div>
       </div>
@@ -116,6 +141,12 @@ export default function ProcessPanel({ title, scenes, phase, startTime, onRetry,
       )}
     </div>
   )
+}
+
+const ctrlBtn = {
+  padding: '3px 10px', borderRadius: 6,
+  background: 'none', border: `1px solid ${T.rule}`,
+  color: T.fgMuted, fontSize: 12, cursor: 'pointer',
 }
 
 const dlBtn = {

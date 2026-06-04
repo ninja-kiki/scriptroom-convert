@@ -67,17 +67,6 @@ export default function SceneCard({ scene, index, onRetry, onReprocess, expanded
         )}
       </div>
 
-      {/* 완료 씬: 번역 미리보기 (접힌 상태에서도 표시) */}
-      {!expanded && isDone && scene.translated && (
-        <div onClick={onToggle} style={{
-          padding: '0 14px 10px 50px', cursor: 'pointer',
-          color: T.fgMuted, fontSize: 12.5, lineHeight: 1.7,
-          overflow: 'hidden', display: '-webkit-box',
-          WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-        }}>
-          {scene.translated.replace(/^#[^\n]+\n+/, '').trim()}
-        </div>
-      )}
 
       {expanded && (
         <div style={{ borderTop: `1px solid ${T.rule}`, padding: 14 }}>

@@ -1,22 +1,57 @@
 import { createServer } from 'http'
-import { readFileSync } from 'fs'
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
+import { readdirSync } from 'fs'
 
 const PORT = 3001
+
+// claude 바이너리 경로 탐색
+function findClaude() {
+  // 1. PATH에 있으면 바로 사용
+  try { execSync('claude --version', { stdio: 'ignore' }); return 'claude' } catch {}
+
+  // 2. Claude Code 앱 설치 경로에서 최신 버전 탐색
+  const appDir = `${process.env.HOME}/Library/Application Support/Claude/claude-code`
+  try {
+    const versions = readdirSync(appDir).sort().reverse()
+    for (const v of versions) {
+      const bin = `${appDir}/${v}/claude.app/Contents/MacOS/claude`
+      try { execSync(`"${bin}" --version`, { stdio: 'ignore' }); return bin } catch {}
+    }
+  } catch {}
+
+  throw new Error('claude CLI를 찾을 수 없습니다. Claude Code가 설치되어 있는지 확인하세요.')
+}
+
+const CLAUDE_BIN = findClaude()
 
 function runClaude(systemPrompt, userPrompt) {
   return new Promise((resolve, reject) => {
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}`
-    const proc = spawn('claude', ['-p', fullPrompt], { env: process.env })
+    const proc = spawn(CLAUDE_BIN, ['-p', '--output-format', 'text'], {
+      env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
 
     let out = ''
     let err = ''
     proc.stdout.on('data', d => out += d)
     proc.stderr.on('data', d => err += d)
     proc.on('close', code => {
-      if (code !== 0) reject(new Error(err || `exit code ${code}`))
-      else resolve(out.trim())
+      if (code !== 0) {
+        console.error('claude stderr:', err)
+        console.error('claude stdout:', out)
+        const combined = (err + out).toLowerCase()
+        if (combined.includes('rate limit') || combined.includes('usage limit') || combined.includes('too many') || combined.includes('quota')) {
+          const e = new Error('RATE_LIMIT')
+          e.code = 'RATE_LIMIT'
+          reject(e)
+        } else {
+          reject(new Error(err || out || `exit code ${code}`))
+        }
+      } else resolve(out.trim())
     })
+    proc.stdin.write(fullPrompt)
+    proc.stdin.end()
   })
 }
 
@@ -86,7 +121,7 @@ const server = createServer(async (req, res) => {
     } catch (e) {
       console.error(e)
       res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: e.message }))
+      res.end(JSON.stringify({ error: e.message, code: e.code || null }))
     }
   })
 })

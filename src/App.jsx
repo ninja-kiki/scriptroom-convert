@@ -25,6 +25,10 @@ export default function App() {
   const smiLinesRef = useRef(session?.smiLines || null)
   const scenesRef = useRef(session?.scenes || [])
   const isProcessing = useRef(false)
+  const isPausedRef = useRef(false)
+  const isStoppedRef = useRef(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const [isRateLimited, setIsRateLimited] = useState(false)
 
   const updateScene = useCallback((id, patch) => {
     setScenes(prev => {
@@ -56,7 +60,15 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sceneText: scene.raw, guidelines, sceneIndex: scene.id, totalScenes: scenesRef.current.length, model: loadSettings().model }),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const body = await res.json()
+        if (body.code === 'RATE_LIMIT') {
+          setIsRateLimited(true)
+          isPausedRef.current = true
+          setIsPaused(true)
+        }
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
       const { formatted, tokens } = await res.json()
       const heading = formatted.split('\n')[0].trim()
       updateScene(scene.id, {
@@ -85,7 +97,15 @@ export default function App() {
           model: loadSettings().model,
         }),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const body = await res.json()
+        if (body.code === 'RATE_LIMIT') {
+          setIsRateLimited(true)
+          isPausedRef.current = true
+          setIsPaused(true)
+        }
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
       const { translated, tokens } = await res.json()
       updateScene(scene.id, {
         status: 'done', translated,
@@ -98,10 +118,22 @@ export default function App() {
     }
   }
 
+  function waitWhilePaused() {
+    return new Promise(resolve => {
+      const check = () => isPausedRef.current ? setTimeout(check, 300) : resolve()
+      check()
+    })
+  }
+
   async function runWithConcurrency(items, fn, concurrency) {
     const queue = [...items]
     const workers = Array(Math.min(concurrency, queue.length)).fill(null).map(async () => {
-      while (queue.length > 0) await fn(queue.shift())
+      while (queue.length > 0) {
+        if (isStoppedRef.current) return
+        await waitWhilePaused()
+        if (isStoppedRef.current) return
+        await fn(queue.shift())
+      }
     })
     await Promise.all(workers)
   }
@@ -141,6 +173,9 @@ export default function App() {
     saveSession({ title, scenes: initialScenes, startTime: st, smiLines: smiLinesRef.current })
     setStep('processing')
     isProcessing.current = true
+    isPausedRef.current = false
+    isStoppedRef.current = false
+    setIsPaused(false)
 
     const settings = loadSettings()
     const fmtGuidelines = loadGuidelines('format')
@@ -157,6 +192,9 @@ export default function App() {
     }, settings.concurrency)
 
     isProcessing.current = false
+    isPausedRef.current = false
+    isStoppedRef.current = false
+    setIsPaused(false)
     setPhase('done')
     setStep('done')
 
@@ -166,6 +204,41 @@ export default function App() {
       totalOut: acc.totalOut + (s.tokens?.format_out || 0) + (s.tokens?.translate_out || 0),
     }), { totalIn: 0, totalOut: 0 })
     saveHistory({ title, scenes: initialScenes.length, duration: Date.now() - st })
+  }
+
+  async function handleContinue() {
+    const remaining = scenesRef.current.filter(s => s.status === 'pending' || s.status === 'formatted' || s.status.startsWith('error'))
+    if (remaining.length === 0) return
+    isProcessing.current = true
+    isPausedRef.current = false
+    isStoppedRef.current = false
+    setIsPaused(false)
+    setIsRateLimited(false)
+    setPhase('translating')
+    setStep('processing')
+
+    const settings = loadSettings()
+    const fmtGuidelines = loadGuidelines('format')
+    const transGuidelines = loadGuidelines('translate')
+
+    await runWithConcurrency(remaining, async (s) => {
+      if (s.status === 'pending' || s.status === 'error_format') {
+        const ok = await processFormat(s, fmtGuidelines)
+        if (ok) {
+          const updated = scenesRef.current.find(x => x.id === s.id)
+          if (updated?.formatted) await processTranslate(updated, transGuidelines, null)
+        }
+      } else if (s.status === 'formatted' || s.status === 'error_translate') {
+        await processTranslate(s, transGuidelines, null)
+      }
+    }, settings.concurrency)
+
+    isProcessing.current = false
+    isPausedRef.current = false
+    isStoppedRef.current = false
+    setIsPaused(false)
+    setPhase('done')
+    setStep('done')
   }
 
   async function handleRetry(sceneId) {
@@ -207,6 +280,26 @@ export default function App() {
     const a = document.createElement('a')
     a.href = url; a.download = `${title}_${type}.txt`; a.click()
     URL.revokeObjectURL(url)
+  }
+
+  function handlePause() {
+    isPausedRef.current = true
+    setIsPaused(true)
+  }
+
+  function handleResume() {
+    isPausedRef.current = false
+    setIsPaused(false)
+    setIsRateLimited(false)
+  }
+
+  function handleStop() {
+    isStoppedRef.current = true
+    isPausedRef.current = false
+    isProcessing.current = false
+    setIsPaused(false)
+    setPhase('done')
+    setStep('done')
   }
 
   function handleReset() {
@@ -273,6 +366,8 @@ export default function App() {
       {(step === 'processing' || step === 'done') && (
         <ProcessPanel
           title={title} scenes={scenes} phase={phase} startTime={startTime}
+          isPaused={isPaused} isRateLimited={isRateLimited}
+          onPause={handlePause} onResume={handleResume} onStop={handleStop} onContinue={handleContinue}
           onRetry={handleRetry} onReprocess={handleReprocess}
           onDownload={handleDownload} onReset={handleReset}
         />
