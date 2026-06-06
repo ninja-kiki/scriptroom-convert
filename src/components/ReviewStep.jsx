@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { T } from '../lib/core.js'
+import { useState, useMemo, useEffect } from 'react'
+import { T, loadGlossary, saveGlossary } from '../lib/core.js'
 
 function detectCharacters(scenes) {
   const counts = {}
@@ -27,6 +27,15 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
   const [memoOpen, setMemoOpen] = useState(false)
   const [expandedWarning, setExpandedWarning] = useState(null)
   const characters = useMemo(() => detectCharacters(scenes), [scenes])
+
+  // 같은 작품의 저장된 글로서리(메모) 자동 로드
+  useEffect(() => {
+    let alive = true
+    loadGlossary(title).then(memo => {
+      if (alive && memo) { setCharacterMemo(memo); setMemoOpen(true) }
+    })
+    return () => { alive = false }
+  }, [title])
 
   const hasErrors = pdfWarnings.some(w => w.level === 'error')
   const hasWarns = pdfWarnings.some(w => w.level === 'warn')
@@ -185,7 +194,9 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
       <button
         onClick={() => {
           if (hasErrors && !window.confirm('씬 분리 오류가 감지되었습니다. 그래도 변환을 시작할까요?')) return
-          onStart(characterMemo.trim())
+          const memo = characterMemo.trim()
+          saveGlossary(title, memo)  // 영화별 글로서리 저장 → 다음에 자동 로드·공유
+          onStart(memo)
         }}
         style={{
           padding: '11px 28px', borderRadius: 10,

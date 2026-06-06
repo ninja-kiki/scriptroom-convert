@@ -18,6 +18,18 @@ function handleSavePrompts(body) {
   return { ok: true }
 }
 
+// 영화별 인물 글로서리(메모)도 repo 파일에 — 같은 작품 다시 변환/동료 공유 시 재사용
+const GLOSS_PATH = `${process.cwd()}/glossaries.json`
+function handleLoadGlossary() {
+  try { return JSON.parse(readFileSync(GLOSS_PATH, 'utf8')) } catch { return {} }
+}
+function handleSaveGlossary(body) {
+  const cur = handleLoadGlossary()
+  if (body.title) cur[body.title] = body.memo || ''
+  writeFileSync(GLOSS_PATH, JSON.stringify(cur, null, 2))
+  return { ok: true }
+}
+
 // claude 바이너리 경로 탐색
 function findClaude() {
   // 1. PATH에 있으면 바로 사용
@@ -212,6 +224,8 @@ const server = createServer(async (req, res) => {
       else if (req.url === '/api/detect-headings') result = await handleDetectHeadings(data)
       else if (req.url === '/api/load-prompts') result = handleLoadPrompts()
       else if (req.url === '/api/save-prompts') result = handleSavePrompts(data)
+      else if (req.url === '/api/load-glossary') result = handleLoadGlossary()
+      else if (req.url === '/api/save-glossary') result = handleSaveGlossary(data)
       else { res.writeHead(404).end(); return }
 
       res.writeHead(200, { 'Content-Type': 'application/json' })

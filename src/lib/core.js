@@ -81,6 +81,21 @@ export function loadGuidelines(type) {
     (type === 'format' ? DEFAULT_FORMAT_GUIDELINES : DEFAULT_TRANSLATE_GUIDELINES)
 }
 
+// 영화별 인물 글로서리(메모) 로드/저장 — repo 파일 공유
+export async function loadGlossary(title) {
+  if (!title) return ''
+  try {
+    const res = await fetch('/api/load-glossary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    if (!res.ok) return ''
+    const all = await res.json()
+    return all[title] || ''
+  } catch { return '' }
+}
+export function saveGlossary(title, memo) {
+  if (!title) return
+  fetch('/api/save-glossary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, memo }) }).catch(() => {})
+}
+
 // 앱 시작 시 repo 파일의 지침을 localStorage로 시드 (동료가 클론하면 그대로 적용)
 export async function loadPromptsFromFile() {
   try {

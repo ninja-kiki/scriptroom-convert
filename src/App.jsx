@@ -48,6 +48,7 @@ export default function App() {
   const isProcessing = useRef(false)
   const isPausedRef = useRef(false)
   const isStoppedRef = useRef(false)
+  const characterMemoRef = useRef('')  // 이번 작업의 인물 글로서리 (재처리에서도 동일 사용)
   const [isPaused, setIsPaused] = useState(false)
   const [isRateLimited, setIsRateLimited] = useState(false)
   const [readerOpen, setReaderOpen] = useState(false)
@@ -255,6 +256,7 @@ export default function App() {
 
   // Step 2: 검토 후 변환 시작
   async function handleStart(characterMemo) {
+    characterMemoRef.current = characterMemo || ''
     // 표시는 논리적 씬(reviewScenes), 처리는 긴 씬을 80줄 청크로 분할해서 돌림
     const initialScenes = forceSplitScenes(reviewScenes)
     scenesRef.current = initialScenes
@@ -419,10 +421,10 @@ export default function App() {
       const ok = await processFormat(scene, loadGuidelines('format'))
       if (ok) {
         const updated = scenesRef.current.find(s => s.id === sceneId)
-        if (updated?.status === 'formatted') await processTranslate(updated, loadGuidelines('translate'), settings.characterMemo)
+        if (updated?.status === 'formatted') await processTranslate(updated, loadGuidelines('translate'), characterMemoRef.current)
       }
     } else if (scene.status === 'error_translate') {
-      await processTranslate(scene, loadGuidelines('translate'), settings.characterMemo)
+      await processTranslate(scene, loadGuidelines('translate'), characterMemoRef.current)
     }
     isProcessing.current = false
   }
@@ -437,7 +439,7 @@ export default function App() {
     const ok = await processFormat(reset, loadGuidelines('format'))
     if (ok) {
       const updated = scenesRef.current.find(s => s.id === sceneId)
-      if (updated?.status === 'formatted') await processTranslate(updated, loadGuidelines('translate'), settings.characterMemo)
+      if (updated?.status === 'formatted') await processTranslate(updated, loadGuidelines('translate'), characterMemoRef.current)
     }
     isProcessing.current = false
   }
