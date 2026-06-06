@@ -75,17 +75,18 @@ ${sceneText}`
 }
 
 async function handleTranslate(body) {
-  const { formattedText, smiContext, characterMemo, guidelines, sceneIndex, totalScenes, targetLang } = body
+  const { formattedText, smiContext, characterMemo, guidelines, sceneIndex, totalScenes, targetLang, prevTail } = body
   if (!formattedText) throw new Error('formattedText required')
 
   const smiSection = smiContext ? `\n\n[참고 자막 (해당 씬 인근)]\n${smiContext}` : ''
   const memoSection = characterMemo ? `\n\n[인물 관계 메모]\n${characterMemo}` : ''
+  const prevSection = prevTail ? `\n\n[직전 장면 끝부분 — 대명사·상황 맥락 참고용. 번역하지 말 것]\n${prevTail}` : ''
   const lang = targetLang || '한국어'
 
   const systemPrompt = `당신은 영화 각본 번역가입니다. 포맷된 각본 텍스트를 ${lang}로 번역하세요.
 
 지침:
-${guidelines}${memoSection}${smiSection}
+${guidelines}${memoSection}${prevSection}${smiSection}
 
 중요: JSON이 아닌 순수 텍스트로만 응답하세요. 번역된 각본 텍스트만 출력하세요.`
 

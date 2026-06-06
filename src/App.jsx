@@ -67,29 +67,42 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  function getSmiContext(sceneIndex, totalScenes) {
+  // 자막 컨텍스트: 씬 길이에 비례해 가변 슬라이싱 (짧은 씬은 적게 → 토큰 절감)
+  function getSmiContext(scene, totalScenes) {
     if (!smiLinesRef.current) return null
-    return sliceSmi(smiLinesRef.current, sceneIndex, totalScenes, 60)
+    const lines = scene.raw.split('\n').filter(Boolean).length
+    const win = Math.min(120, Math.max(25, Math.round(lines * 1.4)))
+    return sliceSmi(smiLinesRef.current, scene.id, totalScenes, win)
+  }
+
+  // API 호출 + 자동 재시도(지수 백오프). RATE_LIMIT은 재시도 안 하고 즉시 throw.
+  async function postJSON(url, payload, retries = 2) {
+    let lastErr
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        })
+        if (res.ok) return await res.json()
+        const body = await res.json().catch(() => ({}))
+        if (body.code === 'RATE_LIMIT') { const e = new Error(body.error || 'RATE_LIMIT'); e.code = 'RATE_LIMIT'; throw e }
+        lastErr = new Error(body.error || `HTTP ${res.status}`)
+      } catch (e) {
+        if (e.code === 'RATE_LIMIT') throw e
+        lastErr = e
+      }
+      if (attempt < retries) await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)))
+    }
+    throw lastErr
   }
 
   async function processFormat(scene, guidelines) {
     updateScene(scene.id, { status: 'formatting' })
     try {
-      const res = await fetch('/api/format', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneText: scene.raw, guidelines, sceneIndex: scene.id, totalScenes: scenesRef.current.length, model: loadSettings().model }),
+      const { formatted, tokens } = await postJSON('/api/format', {
+        sceneText: scene.raw, guidelines, sceneIndex: scene.id,
+        totalScenes: scenesRef.current.length, model: loadSettings().model,
       })
-      if (!res.ok) {
-        const body = await res.json()
-        if (body.code === 'RATE_LIMIT') {
-          setIsRateLimited(true)
-          isPausedRef.current = true
-          setIsPaused(true)
-        }
-        throw new Error(body.error || `HTTP ${res.status}`)
-      }
-      const { formatted, tokens } = await res.json()
       const heading = formatted.split('\n')[0].trim()
       updateScene(scene.id, {
         status: 'formatted', formatted,
@@ -98,6 +111,7 @@ export default function App() {
       })
       return true
     } catch (e) {
+      if (e.code === 'RATE_LIMIT') { setIsRateLimited(true); isPausedRef.current = true; setIsPaused(true) }
       updateScene(scene.id, { status: 'error_format', error: e.message })
       return false
     }
@@ -106,27 +120,17 @@ export default function App() {
   async function processTranslate(scene, guidelines, characterMemo) {
     updateScene(scene.id, { status: 'translating' })
     try {
-      const smiContext = getSmiContext(scene.id, scenesRef.current.length)
-      const res = await fetch('/api/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          formattedText: scene.formatted, smiContext,
-          characterMemo: characterMemo || null, guidelines,
-          sceneIndex: scene.id, totalScenes: scenesRef.current.length,
-          model: loadSettings().model,
-        }),
+      const smiContext = getSmiContext(scene, scenesRef.current.length)
+      // 직전 씬 끝부분 — 대명사·상황 맥락 (처리 순서 무관하게 raw 사용)
+      const idx = scenesRef.current.findIndex(s => s.id === scene.id)
+      const prev = idx > 0 ? scenesRef.current[idx - 1] : null
+      const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
+      const { translated: rawTranslated, tokens } = await postJSON('/api/translate', {
+        formattedText: scene.formatted, smiContext, prevTail,
+        characterMemo: characterMemo || null, guidelines,
+        sceneIndex: scene.id, totalScenes: scenesRef.current.length,
+        model: loadSettings().model,
       })
-      if (!res.ok) {
-        const body = await res.json()
-        if (body.code === 'RATE_LIMIT') {
-          setIsRateLimited(true)
-          isPausedRef.current = true
-          setIsPaused(true)
-        }
-        throw new Error(body.error || `HTTP ${res.status}`)
-      }
-      const { translated: rawTranslated, tokens } = await res.json()
       // SMI 매칭: 번역 완료 후 대사 라인을 자막과 비교·교체
       const { text: translated, matches: smiMatches } = smiEntriesRef.current
         ? matchSmiToTranslation(rawTranslated, smiEntriesRef.current)
@@ -137,6 +141,7 @@ export default function App() {
       })
       return true
     } catch (e) {
+      if (e.code === 'RATE_LIMIT') { setIsRateLimited(true); isPausedRef.current = true; setIsPaused(true) }
       updateScene(scene.id, { status: 'error_translate', error: e.message })
       return false
     }
