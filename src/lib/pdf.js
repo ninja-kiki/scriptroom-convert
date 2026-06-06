@@ -108,20 +108,28 @@ export function splitIntoScenes(rawText) {
     return [{ id: 0, raw: rawText }]
   }
 
-  // 너무 큰 씬은 강제 분할 (출력 토큰 초과 방지)
+  // 논리적 씬(헤딩 기준)만 반환. 80줄 강제분할은 처리 단계(forceSplitScenes)에서.
+  return scenes.map((s, i) => ({ id: i, raw: s.raw }))
+}
+
+// 처리 단계용: 긴 논리적 씬을 80줄 청크로 분할 (씬 목록 표시엔 안 씀)
+export function forceSplitScenes(scenes, max = MAX_SCENE_LINES) {
   const result = []
-  let finalNum = 0
-  for (const scene of scenes) {
-    const sceneLines = scene.raw.split('\n')
-    if (sceneLines.length <= MAX_SCENE_LINES) {
-      result.push({ id: finalNum++, raw: scene.raw })
+  let n = 0
+  for (const sc of scenes) {
+    const lines = sc.raw.split('\n')
+    if (lines.length <= max) {
+      result.push({ ...sc, id: n++ })
     } else {
-      for (let i = 0; i < sceneLines.length; i += MAX_SCENE_LINES) {
-        result.push({ id: finalNum++, raw: sceneLines.slice(i, i + MAX_SCENE_LINES).join('\n'), forceSplit: true })
+      for (let i = 0; i < lines.length; i += max) {
+        result.push({
+          ...sc, id: n++, raw: lines.slice(i, i + max).join('\n'), forceSplit: true,
+          formatted: null, translated: null, tokens: null, error: null, heading: null,
+          status: sc.status === undefined ? undefined : 'pending',
+        })
       }
     }
   }
-
   return result
 }
 
@@ -181,20 +189,8 @@ export function splitByHeadingIndices(rawText, headingIndices) {
   if (current.length > 0) scenes.push({ id: num++, raw: current.join('\n') })
   if (scenes.length === 0) return [{ id: 0, raw: rawText }]
 
-  // 80줄 초과 씬 강제 분할
-  const result = []
-  let finalNum = 0
-  for (const scene of scenes) {
-    const sl = scene.raw.split('\n')
-    if (sl.length <= MAX_SCENE_LINES) {
-      result.push({ id: finalNum++, raw: scene.raw })
-    } else {
-      for (let i = 0; i < sl.length; i += MAX_SCENE_LINES) {
-        result.push({ id: finalNum++, raw: sl.slice(i, i + MAX_SCENE_LINES).join('\n'), forceSplit: true })
-      }
-    }
-  }
-  return result
+  // 논리적 씬만 반환 (80줄 강제분할은 처리 단계 forceSplitScenes에서)
+  return scenes.map((s, i) => ({ id: i, raw: s.raw }))
 }
 
 // Parse SMI file into plain text segments for context

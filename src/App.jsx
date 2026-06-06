@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi } from './lib/core.js'
-import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading } from './lib/pdf.js'
+import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
 import { analyzeScenes } from './lib/analyze.js'
 import { parseSMIEntries, matchSmiToTranslation, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
 import { detectFileType } from './lib/revise.js'
@@ -252,7 +252,8 @@ export default function App() {
 
   // Step 2: 검토 후 변환 시작
   async function handleStart(characterMemo) {
-    const initialScenes = reviewScenes
+    // 표시는 논리적 씬(reviewScenes), 처리는 긴 씬을 80줄 청크로 분할해서 돌림
+    const initialScenes = forceSplitScenes(reviewScenes)
     scenesRef.current = initialScenes
     setScenes(initialScenes)
     const st = Date.now()

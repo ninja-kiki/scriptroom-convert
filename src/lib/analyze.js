@@ -66,7 +66,7 @@ export function analyzeScenes(scenes, rawText) {
   }
 
   // ── 3. 강제 분할 씬 ──────────────────────────────────────
-  const forceSplitCount = scenes.filter(s => s.forceSplit).length
+  const forceSplitCount = scenes.filter(s => (s.forceSplit || s.raw.split('\n').length > 80)).length
   if (forceSplitCount > 0) {
     warnings.push({
       level: 'info',
