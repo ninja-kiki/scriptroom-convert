@@ -4,6 +4,18 @@ import SceneCard from './SceneCard.jsx'
 
 export default function ProcessPanel({ title, scenes, phase, startTime, isPaused, isRateLimited, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onDownload, onReset, onReader }) {
   const [expandedId, setExpandedId] = useState(null)
+  const [filter, setFilter] = useState('all')  // all | warn | error
+
+  const isWarnScene = (s) => {
+    if (s.status.startsWith('error')) return true
+    if (s.smiMatches?.length) {
+      const m = s.smiMatches.filter(x => x.replaced).length
+      if (m / s.smiMatches.length < 0.3) return true
+    }
+    return false
+  }
+  const matchFilter = (s) => filter === 'all' ? true : filter === 'error' ? s.status.startsWith('error') : isWarnScene(s)
+  const warnSceneCount = scenes.filter(isWarnScene).length
 
   const total = scenes.length
   const doneCount = scenes.filter(s => s.status === 'done').length
@@ -138,7 +150,24 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
 
       {/* Scene list */}
       <div>
-        {scenes.map((scene, i) => (
+        {(errCount > 0 || warnSceneCount > 0) && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {[
+              { key: 'all', label: `전체 ${scenes.length}`, color: T.fgMuted },
+              { key: 'warn', label: `⚠ 경고 ${warnSceneCount}`, color: T.warn },
+              { key: 'error', label: `실패 ${errCount}`, color: T.err },
+            ].map(f => (
+              <button key={f.key} onClick={() => setFilter(f.key)}
+                style={{
+                  padding: '4px 10px', borderRadius: 999, fontSize: 12, cursor: 'pointer',
+                  border: `1px solid ${filter === f.key ? f.color : T.rule}`,
+                  background: filter === f.key ? f.color + '22' : 'none',
+                  color: filter === f.key ? f.color : T.fgDim,
+                }}>{f.label}</button>
+            ))}
+          </div>
+        )}
+        {scenes.map((scene, i) => matchFilter(scene) && (
           <SceneCard
             key={scene.id}
             scene={scene}
@@ -149,6 +178,9 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
             onToggle={() => setExpandedId(expandedId === scene.id ? null : scene.id)}
           />
         ))}
+        {filter !== 'all' && !scenes.some(matchFilter) && (
+          <div style={{ color: T.fgDim, fontSize: 13, textAlign: 'center', padding: '16px 0' }}>해당하는 씬 없음</div>
+        )}
       </div>
 
       {/* New job button */}
