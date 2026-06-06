@@ -32,8 +32,13 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
   const hasWarns = pdfWarnings.some(w => w.level === 'warn')
   const allFormatted = scenes.length > 0 && scenes.every(s => s.status === 'formatted' && s.formatted)
 
+  // 표시용: 앞뒤 씬번호(6 … 6 / B10 … B10) 떼서 깔끔하게
+  const cleanHeading = h => h
+    .replace(/^[A-Z]{0,2}\d+\.?\s+/, '')
+    .replace(/\s+[A-Z]{0,2}\d+\.?$/, '')
+    .trim()
   const headings = scenes
-    .map(s => ({ id: s.id, heading: (s.formatted || s.raw).split('\n')[0].trim() }))
+    .map(s => ({ id: s.id, heading: cleanHeading((s.formatted || s.raw).split('\n')[0].trim()) }))
     .filter(s => s.heading)
 
   function insertCharacter(name) {

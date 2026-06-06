@@ -148,6 +148,21 @@ export async function extractText(file, onProgress) {
   return { text, candidates: [] }
 }
 
+// 한 줄이 씬 헤딩처럼 보이는가 (LLM 오탐 필터용)
+export function isLikelyHeading(line) {
+  const s = (line || '').trim()
+  if (!s || s.length < 4) return false
+  if (/^Page\s+\d+/i.test(s)) return false                                   // 페이지 마커
+  if (/^[A-Z]{0,2}\d+[.\/]?\d*$/.test(s)) return false                       // 단독 숫자/씬번호 (B10 등)
+  if (/^[A-Z][A-Za-z0-9 .'\-/]{0,28}\s*[:：]\s*$/.test(s)) return false       // 캐릭터 큐 "DARBY :"
+  if (/^(CUT TO|FADE|DISSOLVE|SMASH CUT|MATCH CUT|TITLE|THE END|OMITTED)/i.test(s)) return false // 전환/기타
+  if (/(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.)/i.test(s)) return true  // 표준 헤딩
+  if (/^([A-Z]{0,2}\d+\.?\s+)?(SCENE\s+\d+|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i.test(s)) return true
+  // 비표준 장소 헤딩: 짧고 대문자 비중 높음
+  const letters = s.replace(/[^A-Za-z]/g, ''), upper = s.replace(/[^A-Z]/g, '')
+  return s.length <= 55 && letters.length >= 3 && upper.length / letters.length > 0.7
+}
+
 // LLM이 반환한 헤딩 줄 인덱스 배열로 씬 분할
 export function splitByHeadingIndices(rawText, headingIndices) {
   const lines = rawText.split('\n')

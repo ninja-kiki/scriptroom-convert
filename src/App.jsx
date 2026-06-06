@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi } from './lib/core.js'
-import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI } from './lib/pdf.js'
+import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading } from './lib/pdf.js'
 import { analyzeScenes } from './lib/analyze.js'
 import { parseSMIEntries, matchSmiToTranslation, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
 import { detectFileType } from './lib/revise.js'
@@ -227,7 +227,10 @@ export default function App() {
         })
         if (res.ok) {
           const { indices } = await res.json()
-          if (indices.length > 1) rawScenes = splitByHeadingIndices(rawText, indices)
+          // LLM 오탐(페이지번호·캐릭터큐·지문) 제거 — 진짜 헤딩만
+          const lines = rawText.split('\n')
+          const good = indices.filter(i => isLikelyHeading(lines[i]))
+          if (good.length > 1) rawScenes = splitByHeadingIndices(rawText, good)
         }
       } catch (e) {
         console.warn('detect-headings 실패/시간초과, regex fallback:', e.message)
