@@ -1,8 +1,22 @@
 import { createServer } from 'http'
 import { spawn, execSync } from 'child_process'
-import { readdirSync } from 'fs'
+import { readdirSync, readFileSync, writeFileSync } from 'fs'
 
 const PORT = 3001
+const PROMPTS_PATH = `${process.cwd()}/prompts.json`
+
+// 지침을 repo 파일에 저장/로드 (동료가 클론하면 그대로 공유)
+function handleLoadPrompts() {
+  try { return JSON.parse(readFileSync(PROMPTS_PATH, 'utf8')) } catch { return {} }
+}
+function handleSavePrompts(body) {
+  const cur = handleLoadPrompts()
+  const next = { ...cur }
+  if (body.format != null) next.format = body.format
+  if (body.translate != null) next.translate = body.translate
+  writeFileSync(PROMPTS_PATH, JSON.stringify(next, null, 2))
+  return { ok: true }
+}
 
 // claude 바이너리 경로 탐색
 function findClaude() {
@@ -196,6 +210,8 @@ const server = createServer(async (req, res) => {
       else if (req.url === '/api/revise') result = await handleRevise(data)
       else if (req.url === '/api/patch') result = await handlePatch(data)
       else if (req.url === '/api/detect-headings') result = await handleDetectHeadings(data)
+      else if (req.url === '/api/load-prompts') result = handleLoadPrompts()
+      else if (req.url === '/api/save-prompts') result = handleSavePrompts(data)
       else { res.writeHead(404).end(); return }
 
       res.writeHead(200, { 'Content-Type': 'application/json' })

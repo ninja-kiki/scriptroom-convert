@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi } from './lib/core.js'
+import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi, loadPromptsFromFile } from './lib/core.js'
 import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
 import { analyzeScenes } from './lib/analyze.js'
 import { parseSMIEntries, matchSmiToTranslation, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
@@ -32,6 +32,9 @@ export default function App() {
   const [smiWarning, setSmiWarning] = useState(null)
   const [smiInfo, setSmiInfo] = useState(null)  // { lang:'ko'|'en', count } 불러온 자막 정보
   const [extractElapsed, setExtractElapsed] = useState(0)  // 분석중 경과초
+
+  // 시작 시 repo 지침 파일을 localStorage로 시드 (동료 클론 시 공유 적용)
+  useEffect(() => { loadPromptsFromFile() }, [])
 
   // 추출/분석 단계 경과 시간 타이머
   useEffect(() => {

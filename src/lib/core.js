@@ -70,11 +70,28 @@ export function saveSettings(s) {
 
 export function saveGuidelines(type, text) {
   localStorage.setItem(`convert_guidelines_${type}`, text)
+  // repo 파일(prompts.json)에도 저장 → 커밋하면 동료에게 공유됨 (실패해도 무시)
+  fetch('/api/save-prompts', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [type]: text }),
+  }).catch(() => {})
 }
 
 export function loadGuidelines(type) {
   return localStorage.getItem(`convert_guidelines_${type}`) ||
     (type === 'format' ? DEFAULT_FORMAT_GUIDELINES : DEFAULT_TRANSLATE_GUIDELINES)
+}
+
+// 앱 시작 시 repo 파일의 지침을 localStorage로 시드 (동료가 클론하면 그대로 적용)
+export async function loadPromptsFromFile() {
+  try {
+    const res = await fetch('/api/load-prompts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    })
+    if (!res.ok) return
+    const p = await res.json()
+    if (p.format) localStorage.setItem('convert_guidelines_format', p.format)
+    if (p.translate) localStorage.setItem('convert_guidelines_translate', p.translate)
+  } catch {}
 }
 
 // SMI 씬별 슬라이스: 전체 줄에서 씬 위치 비율에 맞는 구간만 추출
