@@ -1,10 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi } from './lib/core.js'
-import { extractText, splitIntoScenes, parseSMI } from './lib/pdf.js'
+import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI } from './lib/pdf.js'
+import { analyzeScenes } from './lib/analyze.js'
+import { parseSMIEntries, validateSMI, matchSmiToTranslation } from './lib/smi.js'
+import { detectFileType } from './lib/revise.js'
 import UploadStep from './components/UploadStep.jsx'
 import ReviewStep from './components/ReviewStep.jsx'
 import ProcessPanel from './components/ProcessPanel.jsx'
 import SettingsPanel from './components/SettingsPanel.jsx'
+import ReaderMode from './components/ReaderMode.jsx'
 
 const SESSION_KEY = 'convert_session'
 function saveSession(data) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(data)) } catch {} }
@@ -13,28 +17,34 @@ function clearSession() { localStorage.removeItem(SESSION_KEY) }
 
 export default function App() {
   const session = loadSession()
-  const [step, setStep] = useState(session ? 'processing' : 'upload') // upload | extracting | review | processing | done
+  const [step, setStep] = useState(session ? 'processing' : 'upload') // upload | extracting | review | processing | done | revising
   const [title, setTitle] = useState(session?.title || '')
   const [scenes, setScenes] = useState(session?.scenes || [])
   const [reviewScenes, setReviewScenes] = useState([]) // 검토용 씬 (raw만, API 전)
   const [reviewSmiFile, setReviewSmiFile] = useState(null)
+  const [pdfWarnings, setPdfWarnings] = useState([])
   const [phase, setPhase] = useState(session ? 'done' : '')
   const [startTime, setStartTime] = useState(session?.startTime || null)
   const [showSettings, setShowSettings] = useState(false)
-  const [extractProgress, setExtractProgress] = useState({ cur: 0, total: 0 })
+  const [extractProgress, setExtractProgress] = useState({ cur: 0, total: 0, label: '' })
   const smiLinesRef = useRef(session?.smiLines || null)
+  const smiEntriesRef = useRef(null)
+  const [smiWarning, setSmiWarning] = useState(null)
   const scenesRef = useRef(session?.scenes || [])
+  const jobIdRef = useRef(session?.jobId || null)
   const isProcessing = useRef(false)
   const isPausedRef = useRef(false)
   const isStoppedRef = useRef(false)
   const [isPaused, setIsPaused] = useState(false)
   const [isRateLimited, setIsRateLimited] = useState(false)
+  const [readerOpen, setReaderOpen] = useState(false)
+  const [readerStartIdx, setReaderStartIdx] = useState(0)
 
   const updateScene = useCallback((id, patch) => {
     setScenes(prev => {
       const next = prev.map(s => s.id === id ? { ...s, ...patch } : s)
       scenesRef.current = next
-      saveSession({ title, scenes: next, startTime, smiLines: smiLinesRef.current })
+      saveSession({ title, scenes: next, startTime, smiLines: smiLinesRef.current, jobId: jobIdRef.current })
       return next
     })
   }, [title, startTime])
@@ -106,9 +116,13 @@ export default function App() {
         }
         throw new Error(body.error || `HTTP ${res.status}`)
       }
-      const { translated, tokens } = await res.json()
+      const { translated: rawTranslated, tokens } = await res.json()
+      // SMI 매칭: 번역 완료 후 대사 라인을 자막과 비교·교체
+      const { text: translated, matches: smiMatches } = smiEntriesRef.current
+        ? matchSmiToTranslation(rawTranslated, smiEntriesRef.current)
+        : { text: rawTranslated, matches: [] }
       updateScene(scene.id, {
-        status: 'done', translated,
+        status: 'done', translated, smiMatches,
         tokens: { ...scene.tokens, translate_in: tokens?.input ?? 0, translate_out: tokens?.output ?? 0 },
       })
       return true
@@ -145,17 +159,65 @@ export default function App() {
 
     let smiLines = null
     if (smiFile) {
-      const txt = await smiFile.text()
-      smiLines = parseSMI(txt).split('\n').filter(Boolean)
-      smiLinesRef.current = smiLines
-      setReviewSmiFile(smiFile)
+      try {
+        const txt = await smiFile.text()
+        smiLines = parseSMI(txt).split('\n').filter(Boolean)
+        smiLinesRef.current = smiLines
+        const entries = parseSMIEntries(txt)
+        smiEntriesRef.current = entries
+        const validation = validateSMI(entries)
+        if (!validation.ok) setSmiWarning(validation.reason)
+        else setSmiWarning(null)
+        setReviewSmiFile(smiFile)
+      } catch (e) {
+        setSmiWarning('자막 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.')
+        console.warn('SMI 파싱 오류:', e.message)
+      }
     }
 
-    const rawText = await extractText(scriptFile, (cur, total) => {
-      setExtractProgress({ cur, total })
+    const { text: rawText, candidates } = await extractText(scriptFile, (cur, total) => {
+      setExtractProgress({ cur, total, label: '' })
     })
 
-    const rawScenes = splitIntoScenes(rawText)
+    // formatted.txt 감지 → 포맷 완료 상태로 바로 로드
+    const ext = scriptFile.name.split('.').pop().toLowerCase()
+    if (ext === 'txt' && detectFileType(rawText) === 'formatted') {
+      const rawScenes = rawText.split(/\n(?=# )/).filter(s => s.trim()).map((raw, i) => ({
+        id: i, raw,
+        status: 'formatted', formatted: raw,
+        translated: null, tokens: null, error: null,
+        heading: raw.split('\n')[0].trim(),
+      }))
+      setPdfWarnings([])
+      setReviewScenes(rawScenes)
+      setStep('review')
+      return
+    }
+
+    // PDF이고 후보가 있으면 LLM으로 씬 헤딩 정밀 감지
+    let rawScenes = null
+    const isPdf = scriptFile.name.toLowerCase().endsWith('.pdf')
+    if (isPdf && candidates.length > 0) {
+      setExtractProgress({ cur: 0, total: 0, label: '씬 구조 분석 중...' })
+      try {
+        const res = await fetch('/api/detect-headings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ candidates }),
+        })
+        if (res.ok) {
+          const { indices } = await res.json()
+          if (indices.length > 1) rawScenes = splitByHeadingIndices(rawText, indices)
+        }
+      } catch (e) {
+        console.warn('detect-headings 실패, regex fallback:', e.message)
+      }
+    }
+    // LLM 실패하거나 PDF 아닌 경우 regex fallback
+    if (!rawScenes || rawScenes.length <= 1) rawScenes = splitIntoScenes(rawText)
+
+    const warnings = analyzeScenes(rawScenes, rawText)
+    setPdfWarnings(warnings)
     const scenes = rawScenes.map(s => ({
       ...s, status: 'pending', formatted: null, translated: null, tokens: null, error: null, heading: null
     }))
@@ -176,20 +238,31 @@ export default function App() {
     isPausedRef.current = false
     isStoppedRef.current = false
     setIsPaused(false)
+    jobIdRef.current = st
 
     const settings = loadSettings()
     const fmtGuidelines = loadGuidelines('format')
     const transGuidelines = loadGuidelines('translate')
 
-    setPhase('formatting')
-    await runWithConcurrency(initialScenes, async (s) => {
-      const ok = await processFormat(s, fmtGuidelines)
-      if (ok) {
-        setPhase('translating')
-        const updated = scenesRef.current.find(x => x.id === s.id)
-        if (updated?.formatted) await processTranslate(updated, transGuidelines, characterMemo)
-      }
-    }, settings.concurrency)
+    const allFormatted = initialScenes.every(s => s.status === 'formatted' && s.formatted)
+
+    if (allFormatted) {
+      // formatted.txt에서 로드된 경우: 포맷 단계 건너뛰고 바로 번역
+      setPhase('translating')
+      await runWithConcurrency(initialScenes, async (s) => {
+        await processTranslate(s, transGuidelines, characterMemo)
+      }, settings.concurrency)
+    } else {
+      setPhase('formatting')
+      await runWithConcurrency(initialScenes, async (s) => {
+        const ok = await processFormat(s, fmtGuidelines)
+        if (ok) {
+          setPhase('translating')
+          const updated = scenesRef.current.find(x => x.id === s.id)
+          if (updated?.formatted) await processTranslate(updated, transGuidelines, characterMemo)
+        }
+      }, settings.concurrency)
+    }
 
     isProcessing.current = false
     isPausedRef.current = false
@@ -203,11 +276,76 @@ export default function App() {
       totalIn: acc.totalIn + (s.tokens?.format_in || 0) + (s.tokens?.translate_in || 0),
       totalOut: acc.totalOut + (s.tokens?.format_out || 0) + (s.tokens?.translate_out || 0),
     }), { totalIn: 0, totalOut: 0 })
-    saveHistory({ title, scenes: initialScenes.length, duration: Date.now() - st })
+    saveHistory({ id: jobIdRef.current, title, sceneCount: finalScenes.length, sceneData: finalScenes, startTime: st, duration: Date.now() - st })
+  }
+
+  // 수정 모드: 기존 txt → 씬 분리 → Claude 수정
+  async function handleStartRevise({ text, title: t, mode }) {
+    const rawScenes = text.split(/\n(?=# )/).filter(s => s.trim())
+    const initialScenes = rawScenes.map((raw, i) => ({
+      id: i, raw,
+      status: 'pending', formatted: null, translated: null, tokens: null, error: null,
+      heading: raw.split('\n')[0].trim(),
+    }))
+
+    const st = Date.now()
+    setTitle(t)
+    setScenes(initialScenes)
+    scenesRef.current = initialScenes
+    setStartTime(st)
+    jobIdRef.current = st
+    isProcessing.current = true
+    isPausedRef.current = false
+    isStoppedRef.current = false
+    setIsPaused(false)
+    setIsRateLimited(false)
+    setStep('processing')
+    setPhase('formatting')
+
+    const guidelines = loadGuidelines(mode === 'translated' ? 'translate' : 'format')
+
+    await runWithConcurrency(initialScenes, async (s) => {
+      if (isStoppedRef.current) return
+      await waitWhilePaused()
+      updateScene(s.id, { status: 'formatting' })
+      try {
+        const res = await fetch('/api/revise', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sceneText: s.raw, guidelines, mode, sceneIndex: s.id, totalScenes: initialScenes.length }),
+        })
+        if (!res.ok) {
+          const body = await res.json()
+          if (body.code === 'RATE_LIMIT') { setIsRateLimited(true); isPausedRef.current = true; setIsPaused(true) }
+          throw new Error(body.error || `HTTP ${res.status}`)
+        }
+        const { revised } = await res.json()
+        updateScene(s.id, { status: 'done', formatted: revised, translated: revised })
+      } catch (e) {
+        updateScene(s.id, { status: 'error_format', error: e.message })
+      }
+    }, loadSettings().concurrency)
+
+    isProcessing.current = false
+    isPausedRef.current = false
+    isStoppedRef.current = false
+    setIsPaused(false)
+    setPhase('done')
+    setStep('done')
   }
 
   async function handleContinue() {
-    const remaining = scenesRef.current.filter(s => s.status === 'pending' || s.status === 'formatted' || s.status.startsWith('error'))
+    // formatting/translating 중 멈춘 씬 리셋 (done은 절대 건드리지 않음)
+    scenesRef.current
+      .filter(s => s.status === 'formatting' || s.status === 'translating')
+      .forEach(s => updateScene(s.id, { status: s.formatted ? 'formatted' : 'pending' }))
+
+    // 스냅샷 고정 — done 명시적으로 제외
+    const remaining = scenesRef.current.filter(s =>
+      s.status !== 'done' && (
+        s.status === 'pending' || s.status === 'formatted' || s.status.startsWith('error')
+      )
+    )
     if (remaining.length === 0) return
     isProcessing.current = true
     isPausedRef.current = false
@@ -239,6 +377,8 @@ export default function App() {
     setIsPaused(false)
     setPhase('done')
     setStep('done')
+    const snap = scenesRef.current
+    saveHistory({ id: jobIdRef.current, title, sceneCount: snap.length, sceneData: snap, startTime, duration: Date.now() - (startTime || Date.now()) })
   }
 
   async function handleRetry(sceneId) {
@@ -300,13 +440,15 @@ export default function App() {
     setIsPaused(false)
     setPhase('done')
     setStep('done')
+    const snap = scenesRef.current
+    saveHistory({ id: jobIdRef.current, title, sceneCount: snap.length, sceneData: snap, startTime, duration: Date.now() - (startTime || Date.now()) })
   }
 
   function handleReset() {
     clearSession()
     setStep('upload'); setScenes([]); scenesRef.current = []
     setTitle(''); setPhase(''); smiLinesRef.current = null; setStartTime(null)
-    setReviewScenes([])
+    setReviewScenes([]); setPdfWarnings([])
   }
 
   function handleLogoClick() {
@@ -335,10 +477,12 @@ export default function App() {
       {step === 'upload' && (
         <UploadStep
           onLoad={handleLoad}
+          onRevise={handleStartRevise}
           onRestore={session => {
             setTitle(session.title); setScenes(session.scenes)
             scenesRef.current = session.scenes; setStartTime(session.startTime)
             smiLinesRef.current = session.smiLines || null
+            jobIdRef.current = session.jobId || null
             setPhase('done'); setStep('processing')
           }}
         />
@@ -346,8 +490,10 @@ export default function App() {
 
       {step === 'extracting' && (
         <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-          <div style={{ color: T.fgMuted, marginBottom: 8 }}>파일 불러오는 중...</div>
-          {extractProgress.total > 0 && (
+          <div style={{ color: T.fgMuted, marginBottom: 8 }}>
+            {extractProgress.label || '파일 불러오는 중...'}
+          </div>
+          {extractProgress.total > 0 && !extractProgress.label && (
             <div style={{ color: T.fg }}>{extractProgress.cur} / {extractProgress.total} 페이지</div>
           )}
         </div>
@@ -358,6 +504,8 @@ export default function App() {
           title={title}
           scenes={reviewScenes}
           smiFile={reviewSmiFile}
+          smiWarning={smiWarning}
+          pdfWarnings={pdfWarnings}
           onStart={handleStart}
           onBack={() => setStep('upload')}
         />
@@ -368,12 +516,14 @@ export default function App() {
           title={title} scenes={scenes} phase={phase} startTime={startTime}
           isPaused={isPaused} isRateLimited={isRateLimited}
           onPause={handlePause} onResume={handleResume} onStop={handleStop} onContinue={handleContinue}
+          onReader={() => { setReaderStartIdx(0); setReaderOpen(true) }}
           onRetry={handleRetry} onReprocess={handleReprocess}
           onDownload={handleDownload} onReset={handleReset}
         />
       )}
 
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+      {readerOpen && <ReaderMode scenes={scenes} initialIndex={readerStartIdx} onClose={() => setReaderOpen(false)} />}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
     </div>

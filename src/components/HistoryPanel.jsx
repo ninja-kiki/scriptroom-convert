@@ -1,16 +1,18 @@
-import { T, loadHistory, fmtDuration, fmtTokens } from '../lib/core.js'
-
-const SESSION_KEY = 'convert_session'
+import { useState } from 'react'
+import { T, loadHistory, deleteHistory, fmtDuration } from '../lib/core.js'
 
 export default function HistoryPanel({ onClose, onRestore }) {
-  const history = loadHistory()
+  const [history, setHistory] = useState(() => loadHistory())
 
-  function handleRestoreCurrent() {
-    // 현재 세션이 있으면 복원
-    try {
-      const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
-      if (session) onRestore(session)
-    } catch {}
+  function handleDelete(e, id) {
+    e.stopPropagation()
+    deleteHistory(id)
+    setHistory(loadHistory())
+  }
+
+  function handleRestore(h) {
+    if (!h.sceneData) return
+    onRestore({ title: h.title, scenes: h.sceneData, startTime: h.startTime, jobId: h.id, smiLines: null })
     onClose()
   }
 
@@ -38,36 +40,45 @@ export default function HistoryPanel({ onClose, onRestore }) {
           <p style={{ color: T.fgMuted, fontSize: 14 }}>기록 없음</p>
         ) : (
           <div style={{ overflowY: 'auto', flex: 1 }}>
-            {history.map(h => (
-              <div key={h.id} style={{
-                padding: '12px 0', borderBottom: `1px solid ${T.rule}`,
-                display: 'grid', gridTemplateColumns: '1fr auto', gap: 4, alignItems: 'start',
-              }}>
-                <div>
-                  <div style={{ color: T.fg, fontWeight: 600, fontSize: 14 }}>{h.title}</div>
-                  <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
-                    {h.scenes}씬 · {fmtDuration(h.duration)} · {fmtTokens(h.tokens)} tok
-                    {h.costUsd != null && ` · $${h.costUsd.toFixed(2)}`}
-                  </div>
-                </div>
-                <div style={{ color: T.fgDim, fontSize: 12, textAlign: 'right' }}>
-                  {new Date(h.id).toLocaleDateString('ko')}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+            {history.map(h => {
+              const doneCount = h.sceneData ? h.sceneData.filter(s => s.status === 'done').length : 0
+              const total = h.sceneData ? h.sceneData.length : (h.sceneCount || h.scenes || 0)
+              const isComplete = total > 0 && doneCount === total
+              const hasData = !!h.sceneData && total > 0
 
-        {/* 현재 세션 복원 */}
-        {localStorage.getItem(SESSION_KEY) && (
-          <button onClick={handleRestoreCurrent}
-            style={{
-              marginTop: 12, padding: '10px', borderRadius: 8,
-              background: T.accent, border: 'none',
-              color: T.accentFg, fontWeight: 700, fontSize: 14, cursor: 'pointer',
-            }}>
-            마지막 작업 이어보기
-          </button>
+              return (
+                <div key={h.id} style={{
+                  padding: '12px 0', borderBottom: `1px solid ${T.rule}`,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                  {hasData && !isComplete && (
+                    <button onClick={() => handleRestore(h)} style={{
+                      background: 'none', border: 'none', color: T.accent,
+                      fontSize: 18, cursor: 'pointer', padding: '0 4px', flexShrink: 0,
+                    }}>▶</button>
+                  )}
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: T.fg, fontWeight: 600, fontSize: 14 }}>{h.title}</div>
+                    <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
+                      {doneCount !== null ? `${doneCount}/${total}씬 완료` : `${total}씬`}
+                      {h.duration ? ` · ${fmtDuration(h.duration)}` : ''}
+                      {' · '}{new Date(h.id).toLocaleDateString('ko')}
+                    </div>
+                    {hasData && !isComplete && (
+                      <button onClick={() => handleRestore(h)} style={{
+                        marginTop: 4, background: 'none', border: 'none',
+                        color: T.accent, fontSize: 12, cursor: 'pointer', padding: 0,
+                      }}>이어보기</button>
+                    )}
+                  </div>
+
+                  <button onClick={e => handleDelete(e, h.id)}
+                    style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 18, cursor: 'pointer' }}>×</button>
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
     </div>

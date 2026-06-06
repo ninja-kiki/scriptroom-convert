@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { T, fmtDuration, fmtTokens, loadSettings } from '../lib/core.js'
 import SceneCard from './SceneCard.jsx'
 
-export default function ProcessPanel({ title, scenes, phase, startTime, isPaused, isRateLimited, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onDownload, onReset }) {
+export default function ProcessPanel({ title, scenes, phase, startTime, isPaused, isRateLimited, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onDownload, onReset, onReader }) {
   const [expandedId, setExpandedId] = useState(null)
 
   const total = scenes.length
@@ -76,6 +76,9 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
               <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={{ ...ctrlBtn, color: T.err, borderColor: T.err }}>중단</button>
             )}
             {phase === 'done' && !hasIncomplete && <span style={{ color: T.fgMuted }}>완료</span>}
+            {phase === 'done' && doneCount > 0 && (
+              <button onClick={onReader} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>리더 모드</button>
+            )}
             {hasIncomplete && (
               <button onClick={onContinue} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>이어하기</button>
             )}

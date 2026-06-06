@@ -1,5 +1,11 @@
 import { useState } from 'react'
 import { T } from '../lib/core.js'
+import AnnotatedTranslation from './AnnotatedTranslation.jsx'
+
+const preStyle = {
+  fontFamily: 'monospace', fontSize: 12, color: T.fg,
+  maxHeight: 320, overflowY: 'auto', lineHeight: 1.7, margin: 0,
+}
 
 const STATUS_LABEL = {
   pending: '대기',
@@ -100,11 +106,10 @@ function SceneDetail({ scene }) {
             }}>{t.label}</button>
         ))}
       </div>
-      <pre style={{
-        fontFamily: 'monospace', fontSize: 12, color: T.fg,
-        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-        maxHeight: 320, overflowY: 'auto', lineHeight: 1.7,
-      }}>{current?.text || ''}</pre>
+      {tab === 'translated'
+        ? <AnnotatedTranslation text={scene.translated || ''} smiMatches={scene.smiMatches} />
+        : <pre style={{ ...preStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{current?.text || ''}</pre>
+      }
       {scene.error && (
         <div style={{ color: T.err, fontSize: 12, marginTop: 8 }}>{scene.error}</div>
       )}

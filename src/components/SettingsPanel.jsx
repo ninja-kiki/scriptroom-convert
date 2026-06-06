@@ -56,14 +56,14 @@ export default function SettingsPanel({ onClose }) {
           {guidelinesOpen && (
             <div style={{ borderTop: `1px solid ${T.rule}`, borderBottom: `1px solid ${T.rule}` }}>
               <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.rule}` }}>
-                <div style={{ color: T.fgMuted, fontSize: 13, marginBottom: 8 }}>번역 지침</div>
-                <textarea value={translateText} onChange={e => setTranslateText(e.target.value)} style={taStyle} />
-                <ResetBtn onClick={() => { if (window.confirm('번역 지침을 기본값으로 되돌릴까요?')) setTranslateText(DEFAULT_TRANSLATE_GUIDELINES) }} />
-              </div>
-              <div style={{ padding: '16px 20px' }}>
                 <div style={{ color: T.fgMuted, fontSize: 13, marginBottom: 8 }}>포맷 지침</div>
                 <textarea value={formatText} onChange={e => setFormatText(e.target.value)} style={taStyle} />
                 <ResetBtn onClick={() => { if (window.confirm('포맷 지침을 기본값으로 되돌릴까요?')) setFormatText(DEFAULT_FORMAT_GUIDELINES) }} />
+              </div>
+              <div style={{ padding: '16px 20px' }}>
+                <div style={{ color: T.fgMuted, fontSize: 13, marginBottom: 8 }}>번역 지침</div>
+                <textarea value={translateText} onChange={e => setTranslateText(e.target.value)} style={taStyle} />
+                <ResetBtn onClick={() => { if (window.confirm('번역 지침을 기본값으로 되돌릴까요?')) setTranslateText(DEFAULT_TRANSLATE_GUIDELINES) }} />
               </div>
             </div>
           )}

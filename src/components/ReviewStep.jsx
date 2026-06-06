@@ -22,13 +22,18 @@ function detectCharacters(scenes) {
     .map(([name, count]) => ({ name, count }))
 }
 
-export default function ReviewStep({ title, scenes, smiFile, onStart }) {
+export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarnings = [], onStart }) {
   const [characterMemo, setCharacterMemo] = useState('')
   const [memoOpen, setMemoOpen] = useState(false)
+  const [expandedWarning, setExpandedWarning] = useState(null)
   const characters = useMemo(() => detectCharacters(scenes), [scenes])
 
+  const hasErrors = pdfWarnings.some(w => w.level === 'error')
+  const hasWarns = pdfWarnings.some(w => w.level === 'warn')
+  const allFormatted = scenes.length > 0 && scenes.every(s => s.status === 'formatted' && s.formatted)
+
   const headings = scenes
-    .map(s => ({ id: s.id, heading: s.raw.split('\n')[0].trim() }))
+    .map(s => ({ id: s.id, heading: (s.formatted || s.raw).split('\n')[0].trim() }))
     .filter(s => s.heading)
 
   function insertCharacter(name) {
@@ -42,8 +47,59 @@ export default function ReviewStep({ title, scenes, smiFile, onStart }) {
       <div style={{ marginBottom: 20, display: 'flex', alignItems: 'baseline', gap: 10 }}>
         <h2 style={{ color: T.fg, fontSize: 18, fontWeight: 700, margin: 0 }}>{title}</h2>
         <span style={{ color: T.fgMuted, fontSize: 14 }}>{scenes.length}씬</span>
-        {smiFile && <span style={{ color: T.good, fontSize: 13 }}>자막 ✓</span>}
+        {smiFile && !smiWarning && <span style={{ color: T.good, fontSize: 13 }}>자막 ✓</span>}
+        {smiFile && smiWarning && <span style={{ color: T.warn, fontSize: 13 }}>자막 ⚠</span>}
       </div>
+
+      {smiWarning && (
+        <div style={{
+          background: T.warn + '22', border: `1px solid ${T.warn}`,
+          borderRadius: 10, padding: '12px 16px', marginBottom: 16,
+          color: T.warn, fontSize: 13,
+        }}>
+          ⚠ {smiWarning}
+        </div>
+      )}
+
+      {/* PDF 분석 경고 */}
+      {pdfWarnings.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          {pdfWarnings.map(w => {
+            const color = w.level === 'error' ? T.err : w.level === 'warn' ? T.warn : T.fgMuted
+            const bg = w.level === 'error' ? T.err + '18' : w.level === 'warn' ? T.warn + '14' : T.chip
+            const icon = w.level === 'error' ? '✕' : w.level === 'warn' ? '⚠' : 'i'
+            const isOpen = expandedWarning === w.code
+            return (
+              <div key={w.code} style={{
+                background: bg, border: `1px solid ${color}44`,
+                borderRadius: 9, marginBottom: 6, overflow: 'hidden',
+              }}>
+                <div
+                  onClick={() => setExpandedWarning(isOpen ? null : w.code)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 9,
+                    padding: '10px 14px', cursor: 'pointer',
+                  }}
+                >
+                  <span style={{
+                    width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                    background: color + '33', border: `1.5px solid ${color}`,
+                    color, fontSize: 11, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>{icon}</span>
+                  <span style={{ flex: 1, color, fontSize: 13, fontWeight: 500 }}>{w.label}</span>
+                  <span style={{ color: color + '88', fontSize: 11 }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+                {isOpen && (
+                  <div style={{ padding: '0 14px 12px 42px', color: T.fgMuted, fontSize: 12, lineHeight: 1.6 }}>
+                    {w.detail}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* 씬 목록 */}
       <div style={{ marginBottom: 16 }}>
@@ -111,14 +167,30 @@ export default function ReviewStep({ title, scenes, smiFile, onStart }) {
         )}
       </div>
 
-      {/* 변환 시작 버튼 */}
-      <button onClick={() => onStart(characterMemo.trim())} style={{
-        padding: '11px 28px', borderRadius: 10,
-        background: T.accent, border: 'none',
-        color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer',
-        display: 'block', width: '100%',
-      }}>
-        변환 시작
+      {/* 변환/번역 시작 버튼 */}
+      {allFormatted && (
+        <div style={{
+          marginBottom: 12, padding: '10px 14px', borderRadius: 9,
+          background: T.good + '18', border: `1px solid ${T.good}44`,
+          color: T.good, fontSize: 13,
+        }}>
+          ✓ 포맷 완료 파일 — 번역만 진행합니다
+        </div>
+      )}
+      <button
+        onClick={() => {
+          if (hasErrors && !window.confirm('씬 분리 오류가 감지되었습니다. 그래도 변환을 시작할까요?')) return
+          onStart(characterMemo.trim())
+        }}
+        style={{
+          padding: '11px 28px', borderRadius: 10,
+          background: hasErrors ? T.err : T.accent,
+          border: 'none',
+          color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer',
+          display: 'block', width: '100%',
+        }}
+      >
+        {allFormatted ? '번역 시작' : hasErrors ? '⚠ 경고 확인 후 변환 시작' : hasWarns ? '변환 시작 (경고 있음)' : '변환 시작'}
       </button>
     </div>
   )

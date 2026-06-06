@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens } from '../lib/core.js'
+import { detectIssues, detectFileType, planLLMChunks, estimateTokens, applyAutoFixes, patchText } from '../lib/revise.js'
 
 const SESSION_KEY = 'convert_session'
 const SCRIPT_EXTS = ['pdf', 'txt', 'fdx', 'fountain', 'rtf']
@@ -16,9 +17,11 @@ function titleFromFile(file) {
     .trim()
 }
 
-export default function UploadStep({ onLoad, onRestore }) {
+export default function UploadStep({ onLoad, onRestore, onRevise }) {
   const scriptRef = useRef()
   const smiRef = useRef()
+  const reviseRef = useRef()
+  const [tab, setTab] = useState('convert') // convert | revise
   const [scriptFile, setScriptFile] = useState(null)
   const [smiFile, setSmiFile] = useState(null)
   const [dragOverScript, setDragOverScript] = useState(false)
@@ -26,6 +29,18 @@ export default function UploadStep({ onLoad, onRestore }) {
   const [smiWarning, setSmiWarning] = useState(false)
   const [history, setHistory] = useState(() => loadHistory())
   const [loading, setLoading] = useState(false)
+  // 수정 모드
+  const [reviseFile, setReviseFile] = useState(null)
+  const [dragOverRevise, setDragOverRevise] = useState(false)
+  const [reviseIssues, setReviseIssues] = useState(null)
+  const [reviseSelected, setReviseSelected] = useState([])
+  const [reviseText, setReviseText] = useState('')
+  const [reviseDone, setReviseDone] = useState(false)
+  const [reviseFileType, setReviseFileType] = useState(null)
+  const [userInstruction, setUserInstruction] = useState('')
+  const [llmChunks, setLlmChunks] = useState([])
+  const [llmProgress, setLlmProgress] = useState(null) // null | { done, total }
+  const [reviseRunning, setReviseRunning] = useState(false)
 
   const currentSession = (() => {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null') } catch { return null }
@@ -65,6 +80,72 @@ export default function UploadStep({ onLoad, onRestore }) {
     setHistory(loadHistory())
   }
 
+  async function handleReviseFileSelect(file) {
+    if (!file || !file.name.endsWith('.txt')) return
+    setReviseFile(file); setReviseDone(false); setReviseIssues(null)
+    setLlmChunks([]); setLlmProgress(null)
+    const text = await file.text()
+    setReviseText(text)
+    const fileType = detectFileType(text)
+    setReviseFileType(fileType)
+    const issues = detectIssues(text)
+    setReviseIssues(issues)
+    setReviseSelected(issues.map(i => i.id))
+  }
+
+  function handleInstructionChange(val) {
+    setUserInstruction(val)
+    if (!reviseText) return
+    const chunks = val.trim() ? planLLMChunks(reviseText, val) : []
+    setLlmChunks(chunks)
+  }
+
+  async function handleReviseApply() {
+    setReviseRunning(true)
+    setReviseDone(false)
+
+    // 1. 자동 수정
+    let result = applyAutoFixes(reviseText, reviseSelected)
+
+    // 2. LLM 패치 (사용자 지시사항 있을 때)
+    if (llmChunks.length > 0 && userInstruction.trim()) {
+      setLlmProgress({ done: 0, total: llmChunks.length })
+      const patchResults = []
+      for (let i = 0; i < llmChunks.length; i++) {
+        const chunk = llmChunks[i]
+        try {
+          const res = await fetch('/api/patch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chunk: chunk.lines.join('\n'),
+              instruction: userInstruction,
+              fileType: reviseFileType,
+            }),
+          })
+          if (res.ok) {
+            const { patched } = await res.json()
+            patchResults.push({ startLine: chunk.startLine, endLine: chunk.endLine, patched })
+          }
+        } catch {}
+        setLlmProgress({ done: i + 1, total: llmChunks.length })
+      }
+      result = patchText(result, patchResults)
+    }
+
+    // 3. 다운로드
+    const blob = new Blob([result], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = reviseFile.name.replace('.txt', '_수정.txt'); a.click()
+    URL.revokeObjectURL(url)
+    setReviseDone(true); setReviseRunning(false); setLlmProgress(null)
+  }
+
+  function toggleReviseSelect(id) {
+    setReviseSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
   async function handleLoad() {
     if (!scriptFile) return
     if (!smiFile && !smiWarning) {
@@ -79,6 +160,147 @@ export default function UploadStep({ onLoad, onRestore }) {
   return (
     <div style={{ padding: '28px 20px', maxWidth: 480, margin: '0 auto' }}>
 
+      {/* 탭 */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
+        {[{ id: 'convert', label: '변환' }, { id: 'revise', label: '수정' }].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: '7px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: tab === t.id ? T.accent : T.chip,
+            color: tab === t.id ? T.accentFg : T.fgMuted,
+            fontWeight: 700, fontSize: 14,
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'revise' && (
+        <div>
+          {/* 파일 드롭존 */}
+          <div
+            onClick={() => !reviseFile && reviseRef.current.click()}
+            onDragOver={e => { e.preventDefault(); setDragOverRevise(true) }}
+            onDragLeave={() => setDragOverRevise(false)}
+            onDrop={e => { e.preventDefault(); setDragOverRevise(false); handleReviseFileSelect(e.dataTransfer.files[0]) }}
+            style={{
+              border: `2px dashed ${dragOverRevise ? T.accent : reviseFile ? T.accent + '66' : T.rule}`,
+              borderRadius: 12, padding: reviseFile ? '16px 18px' : '36px 24px',
+              textAlign: 'center', cursor: reviseFile ? 'default' : 'pointer',
+              background: dragOverRevise ? '#1e1a13' : T.bgCard,
+              transition: 'all .15s', marginBottom: 16,
+            }}
+          >
+            {reviseFile ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, textAlign: 'left' }}>
+                  <div style={{ color: T.accent, fontWeight: 600, fontSize: 14 }}>{reviseFile.name}</div>
+                  {reviseFileType && (
+                    <div style={{ color: T.fgDim, fontSize: 12, marginTop: 2 }}>
+                      {reviseFileType === 'translated' ? '번역본으로 인식됨' : '포맷본으로 인식됨'}
+                    </div>
+                  )}
+                </div>
+                <button onClick={e => { e.stopPropagation(); setReviseFile(null); setReviseIssues(null); setReviseDone(false); setLlmChunks([]) }}
+                  style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 20, cursor: 'pointer' }}>×</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ color: T.fgMuted, fontSize: 28, marginBottom: 10 }}>⬇</div>
+                <div style={{ color: T.fg, fontWeight: 600, fontSize: 15, marginBottom: 4 }}>formatted.txt 또는 translated.txt 드롭</div>
+                <div style={{ color: T.fgDim, fontSize: 12 }}>파일 타입 자동 인식 · 규칙 수정 0토큰</div>
+              </>
+            )}
+            <input ref={reviseRef} type="file" accept=".txt" hidden onChange={e => handleReviseFileSelect(e.target.files[0])} />
+          </div>
+
+          {/* 이슈 목록 */}
+          {reviseIssues !== null && (
+            <div style={{ marginBottom: 16 }}>
+              {reviseIssues.length === 0 ? (
+                <div style={{ color: T.good, fontSize: 14, padding: '10px 0' }}>수정할 항목이 없습니다 ✓</div>
+              ) : (
+                <>
+                  <div style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 8 }}>감지된 항목</div>
+                  {reviseIssues.map(issue => (
+                    <div key={issue.id} onClick={() => toggleReviseSelect(issue.id)} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '11px 14px', marginBottom: 6,
+                      background: T.bgCard, border: `1px solid ${reviseSelected.includes(issue.id) ? T.accent + '66' : T.rule}`,
+                      borderRadius: 10, cursor: 'pointer',
+                    }}>
+                      <div style={{
+                        width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                        background: reviseSelected.includes(issue.id) ? T.accent : 'none',
+                        border: `2px solid ${reviseSelected.includes(issue.id) ? T.accent : T.fgDim}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {reviseSelected.includes(issue.id) && <span style={{ color: T.accentFg, fontSize: 11, fontWeight: 700 }}>✓</span>}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: T.fg, fontSize: 13 }}>{issue.label}</div>
+                      </div>
+                      <div style={{ color: T.fgDim, fontSize: 12 }}>{issue.count}건</div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* 사용자 지시사항 (LLM) */}
+          {reviseIssues !== null && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 8 }}>
+                추가 수정 지시사항 <span style={{ color: T.fgDim, fontWeight: 400, textTransform: 'none' }}>(선택 · LLM 사용)</span>
+              </div>
+              <textarea
+                value={userInstruction}
+                onChange={e => handleInstructionChange(e.target.value)}
+                placeholder={'예: 대사 다음 지문 사이에 빈 줄이 없으면 추가해줘\n예: CREDIT 표기가 잘못된 경우 [CREDIT:]로 수정해줘'}
+                style={{
+                  width: '100%', minHeight: 80, resize: 'vertical',
+                  background: T.bgInput, border: `1px solid ${T.rule}`,
+                  borderRadius: 8, color: T.fg, fontSize: 13,
+                  padding: 12, fontFamily: 'inherit', lineHeight: 1.5, outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {llmChunks.length > 0 && (
+                <div style={{ color: T.fgDim, fontSize: 12, marginTop: 6 }}>
+                  LLM 처리 예상: {llmChunks.length}개 구간 · 약 {Math.round(estimateTokens(llmChunks) / 1000 * 10) / 10}k 토큰
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 진행 상태 */}
+          {llmProgress && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ height: 4, background: T.rule, borderRadius: 2, marginBottom: 6 }}>
+                <div style={{ height: '100%', borderRadius: 2, background: T.accent, width: `${(llmProgress.done / llmProgress.total) * 100}%`, transition: 'width .3s' }} />
+              </div>
+              <div style={{ color: T.fgMuted, fontSize: 12 }}>LLM 처리 중 {llmProgress.done}/{llmProgress.total}</div>
+            </div>
+          )}
+
+          {/* 수정 적용 버튼 */}
+          {reviseIssues !== null && (reviseIssues.length > 0 || llmChunks.length > 0) && (
+            <button
+              onClick={handleReviseApply}
+              disabled={reviseRunning || (reviseSelected.length === 0 && llmChunks.length === 0)}
+              style={{
+                width: '100%', padding: '13px', borderRadius: 10, border: 'none',
+                background: reviseDone ? T.good : reviseRunning ? T.chip : T.accent,
+                color: reviseRunning ? T.fgDim : T.accentFg,
+                fontWeight: 700, fontSize: 15, cursor: reviseRunning ? 'default' : 'pointer',
+              }}
+            >
+              {reviseDone ? '다운로드 완료 ✓' : reviseRunning ? '처리 중...' : `수정 적용 후 다운로드`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {tab === 'convert' && (
+      <div>
       {/* 각본 드롭존 */}
       <div
         onClick={() => !scriptFile && scriptRef.current.click()}
@@ -198,26 +420,39 @@ export default function UploadStep({ onLoad, onRestore }) {
             </div>
           )}
 
-          {history.map(h => (
-            <div key={h.id} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 14px', background: T.bgCard,
-              border: `1px solid ${T.rule}`, borderRadius: 10, marginBottom: 6,
-            }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: T.fg, fontWeight: 500, fontSize: 14 }}>{h.title}</div>
-                <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
-                  {h.scenes}씬 · {fmtDuration(h.duration)} · {fmtTokens(h.tokens)}tok
-                  {h.costUsd != null && ` · $${h.costUsd.toFixed(2)}`}
-                  {' · '}{new Date(h.id).toLocaleDateString('ko')}
+          {history.map(h => {
+            const doneCount = h.sceneData ? h.sceneData.filter(s => s.status === 'done').length : 0
+            const total = h.sceneData ? h.sceneData.length : (h.sceneCount || 0)
+            const isComplete = total > 0 && doneCount === total
+            const canResume = !!h.sceneData && total > 0 && !isComplete
+
+            return (
+              <div key={h.id} onClick={canResume ? () => onRestore({ title: h.title, scenes: h.sceneData, startTime: h.startTime, jobId: h.id, smiLines: null }) : undefined} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px', background: T.bgCard,
+                border: `1px solid ${canResume ? T.accent + '44' : T.rule}`, borderRadius: 10, marginBottom: 6,
+                cursor: canResume ? 'pointer' : 'default',
+              }}>
+                {canResume && <span style={{ color: T.accent, fontSize: 15 }}>▶</span>}
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: canResume ? T.accent : T.fg, fontWeight: 500, fontSize: 14 }}>{h.title}</div>
+                  <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
+                    {doneCount !== null ? `${doneCount}/${total}씬 완료` : `${total}씬`}
+                    {h.duration ? ` · ${fmtDuration(h.duration)}` : ''}
+                    {' · '}{new Date(h.id).toLocaleDateString('ko')}
+                    {canResume && <span style={{ color: T.accent }}> · 이어보기</span>}
+                  </div>
                 </div>
+                <button onClick={e => handleDelete(h.id, e)}
+                  style={{ background: 'none', border: 'none', color: T.fgDim, cursor: 'pointer', fontSize: 18, padding: '2px 4px' }}>×</button>
               </div>
-              <button onClick={e => handleDelete(h.id, e)}
-                style={{ background: 'none', border: 'none', color: T.fgDim, cursor: 'pointer', fontSize: 18, padding: '2px 4px' }}>×</button>
-            </div>
-          ))}
+            )
+          })}
         </div>
+      )}
+      </div>
       )}
     </div>
   )
 }
+
