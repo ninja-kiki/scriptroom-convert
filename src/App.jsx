@@ -510,25 +510,33 @@ export default function App() {
         />
       )}
 
-      {step === 'extracting' && (
-        <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-          <div style={{ fontSize: 22, marginBottom: 12, animation: 'spin 1.4s linear infinite', display: 'inline-block' }}>⟳</div>
-          <div style={{ color: T.fg, fontSize: 15, marginBottom: 6 }}>
-            {extractProgress.label || '파일 불러오는 중...'}
-            {extractElapsed > 0 && <span style={{ color: T.fgMuted, fontWeight: 400 }}>  ·  {extractElapsed}초</span>}
-          </div>
-          {extractProgress.total > 0 && !extractProgress.label && (
-            <div style={{ color: T.fgMuted, fontSize: 13 }}>{extractProgress.cur} / {extractProgress.total} 페이지</div>
-          )}
-          {extractProgress.label?.includes('분석') && (
-            <div style={{ color: T.fgDim, fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
-              {extractProgress.cur > 0 && <>{extractProgress.cur}줄에서 씬 경계를 찾는 중 · </>}
-              각본이 길면 1분 넘게 걸릴 수 있어요. 끝나면 자동으로 넘어가요.
-              {extractElapsed >= 110 && <div style={{ color: T.warn, marginTop: 4 }}>오래 걸리네요 — 곧 기본 방식으로 자동 전환돼요.</div>}
+      {step === 'extracting' && (() => {
+        const analyzing = extractProgress.label?.includes('분석')
+        // 분석중 단계별 문구 (8초마다 전환 → 같은 말 반복 지루함 해소)
+        const phases = ['씬 경계를 찾는 중', '줄마다 씬 헤딩인지 판단하는 중', '구조를 정리하는 중', '거의 다 됐어요']
+        const mainLabel = analyzing
+          ? phases[Math.min(phases.length - 1, Math.floor(extractElapsed / 8))]
+          : (extractProgress.label || '파일 불러오는 중...')
+        return (
+          <div style={{ padding: '60px 24px', textAlign: 'center' }}>
+            <div style={{ fontSize: 22, marginBottom: 12, animation: 'spin 1.4s linear infinite', display: 'inline-block' }}>⟳</div>
+            <div style={{ color: T.fg, fontSize: 15, marginBottom: 6 }}>
+              {mainLabel}<span style={{ color: T.fgMuted }}>{'.'.repeat((extractElapsed % 3) + 1)}</span>
+              {extractElapsed > 0 && <span style={{ color: T.fgMuted, fontWeight: 400 }}>  ·  {extractElapsed}초</span>}
             </div>
-          )}
-        </div>
-      )}
+            {extractProgress.total > 0 && !extractProgress.label && (
+              <div style={{ color: T.fgMuted, fontSize: 13 }}>{extractProgress.cur} / {extractProgress.total} 페이지</div>
+            )}
+            {analyzing && (
+              <div style={{ color: T.fgDim, fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
+                {extractProgress.cur > 0 && <>{extractProgress.cur}줄 분석 · </>}
+                각본이 길면 1분 넘게 걸릴 수 있어요. 끝나면 자동으로 넘어가요.
+                {extractElapsed >= 110 && <div style={{ color: T.warn, marginTop: 4 }}>오래 걸리네요 — 곧 기본 방식으로 자동 전환돼요.</div>}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {step === 'review' && (
         <ReviewStep
