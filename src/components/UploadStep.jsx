@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens } from '../lib/core.js'
+import { decodeSubtitle, parseSubtitleLines, subtitleInfo } from '../lib/smi.js'
 import { detectIssues, detectFileType, planLLMChunks, estimateTokens, applyAutoFixes, patchText } from '../lib/revise.js'
 
 const SESSION_KEY = 'convert_session'
@@ -24,6 +25,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
   const [tab, setTab] = useState('convert') // convert | revise
   const [scriptFile, setScriptFile] = useState(null)
   const [smiFile, setSmiFile] = useState(null)
+  const [smiMeta, setSmiMeta] = useState(null)  // { lang, count } 불러온 자막 감지 결과
   const [dragOverScript, setDragOverScript] = useState(false)
   const [dragOverSmi, setDragOverSmi] = useState(false)
   const [smiWarning, setSmiWarning] = useState(false)
@@ -54,10 +56,15 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
     setSmiWarning(false)
   }
 
-  function handleSmiFile(file) {
+  async function handleSmiFile(file) {
     if (!file || !SMI_EXTS.includes(getExt(file))) return
     setSmiFile(file)
     setSmiWarning(false)
+    setSmiMeta(null)
+    try {
+      const txt = await decodeSubtitle(file)
+      setSmiMeta(subtitleInfo(parseSubtitleLines(txt)))
+    } catch { setSmiMeta({ lang: 'unknown', count: 0 }) }
   }
 
   function handleScriptDrop(e) {
@@ -352,11 +359,20 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         }}
       >
         <span style={{ color: T.fgDim, fontSize: 13, flexShrink: 0 }}>자막</span>
-        <span style={{ color: smiFile ? T.good : T.fgDim, fontSize: 13, flex: 1 }}>
+        <span style={{ color: smiFile ? T.good : T.fgDim, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {smiFile ? smiFile.name : 'SMI / SRT 드롭 또는 클릭 (선택)'}
         </span>
+        {smiFile && smiMeta && (
+          <span style={{
+            flexShrink: 0, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+            background: smiMeta.lang === 'ko' ? '#143024' : smiMeta.lang === 'en' ? '#1b1f33' : '#332018',
+            color: smiMeta.lang === 'ko' ? T.good : smiMeta.lang === 'en' ? '#8aa0ff' : T.fgDim,
+          }}>
+            {smiMeta.lang === 'ko' ? '한글 자막' : smiMeta.lang === 'en' ? '영어 자막' : '인식 실패'} · {smiMeta.count}줄
+          </span>
+        )}
         {smiFile ? (
-          <button onClick={e => { e.stopPropagation(); setSmiFile(null); setSmiWarning(false) }}
+          <button onClick={e => { e.stopPropagation(); setSmiFile(null); setSmiWarning(false); setSmiMeta(null) }}
             style={{ background: 'none', border: 'none', color: T.fgDim, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
         ) : (
           <span style={{ color: T.fgDim, fontSize: 11 }}>선택사항</span>

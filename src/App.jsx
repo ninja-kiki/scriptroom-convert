@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi } from './lib/core.js'
 import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI } from './lib/pdf.js'
 import { analyzeScenes } from './lib/analyze.js'
-import { parseSMIEntries, validateSMI, matchSmiToTranslation } from './lib/smi.js'
+import { parseSMIEntries, matchSmiToTranslation, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
 import { detectFileType } from './lib/revise.js'
 import UploadStep from './components/UploadStep.jsx'
 import ReviewStep from './components/ReviewStep.jsx'
@@ -30,6 +30,7 @@ export default function App() {
   const smiLinesRef = useRef(session?.smiLines || null)
   const smiEntriesRef = useRef(null)
   const [smiWarning, setSmiWarning] = useState(null)
+  const [smiInfo, setSmiInfo] = useState(null)  // { lang:'ko'|'en', count } 불러온 자막 정보
   const scenesRef = useRef(session?.scenes || [])
   const jobIdRef = useRef(session?.jobId || null)
   const isProcessing = useRef(false)
@@ -160,19 +161,21 @@ export default function App() {
     let smiLines = null
     if (smiFile) {
       try {
-        const txt = await smiFile.text()
-        smiLines = parseSMI(txt).split('\n').filter(Boolean)
+        const txt = await decodeSubtitle(smiFile)        // UTF-8/EUC-KR 자동
+        smiLines = parseSubtitleLines(txt)               // SMI/SRT 공통
         smiLinesRef.current = smiLines
-        const entries = parseSMIEntries(txt)
-        smiEntriesRef.current = entries
-        const validation = validateSMI(entries)
-        if (!validation.ok) setSmiWarning(validation.reason)
-        else setSmiWarning(null)
-        setReviewSmiFile(smiFile)
+        smiEntriesRef.current = parseSMIEntries(txt)      // 한글 매칭용
+        const info = subtitleInfo(smiLines)
+        setSmiInfo(info)
+        // 줄이 거의 없을 때만 경고 (영어 자막도 정상 허용)
+        setSmiWarning(smiLines.length < 5
+          ? `자막을 ${smiLines.length}줄밖에 못 읽었어요. 파일 형식·인코딩을 확인해 주세요.` : null)
       } catch (e) {
+        setSmiInfo(null)
         setSmiWarning('자막 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.')
-        console.warn('SMI 파싱 오류:', e.message)
+        console.warn('자막 파싱 오류:', e.message)
       }
+      setReviewSmiFile(smiFile)
     }
 
     const { text: rawText, candidates } = await extractText(scriptFile, (cur, total) => {

@@ -1,5 +1,39 @@
 // SMI 파싱 + 번역-자막 매칭
 
+// 자막 파일 디코딩 (UTF-8 우선, 깨지면 EUC-KR/CP949 폴백)
+export async function decodeSubtitle(file) {
+  const buf = await file.arrayBuffer()
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf) }
+  catch {
+    try { return new TextDecoder('euc-kr').decode(buf) }
+    catch { return new TextDecoder('utf-8').decode(buf) }
+  }
+}
+
+// SMI / SRT / 평문 → 깨끗한 자막 줄 배열 (타임코드·태그 제거)
+export function parseSubtitleLines(text) {
+  let t = (text || '').replace(/\r/g, '')
+  if (/<SYNC/i.test(t)) {
+    // SMI
+    t = t.replace(/<SYNC[^>]*>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ')
+  } else if (/-->/.test(t)) {
+    // SRT: 인덱스 줄·타임코드 줄 제거
+    t = t.split('\n').filter(l => !/^\d+$/.test(l.trim()) && !l.includes('-->')).join('\n')
+    t = t.replace(/<[^>]+>/g, '')
+  }
+  return t.split('\n').map(l => l.trim()).filter(Boolean)
+}
+
+// 자막 언어·줄수 감지 (불러올 때 표시용)
+export function subtitleInfo(lines) {
+  const joined = (lines || []).join('')
+  const hangul = (joined.match(/[가-힣]/g) || []).length
+  const latin = (joined.match(/[A-Za-z]/g) || []).length
+  const ratio = hangul / (hangul + latin || 1)
+  const lang = ratio > 0.2 ? 'ko' : (latin > 0 ? 'en' : 'unknown')
+  return { lang, count: (lines || []).length, hangul, latin }
+}
+
 // SMI → 한국어 대사 라인 배열
 export function parseSMIEntries(text) {
   const cleaned = text
