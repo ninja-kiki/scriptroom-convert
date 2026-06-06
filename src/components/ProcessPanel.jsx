@@ -20,6 +20,16 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
   const costUsd = (totalIn * 3 + totalOut * 15) / 1_000_000
   const fmtCost = costUsd < 0.01 ? '<$0.01' : `$${costUsd.toFixed(2)}`
 
+  // 전체 자막 매칭 요약 (한글 자막 사용 시)
+  let smiAttempts = 0, smiMatched = 0
+  for (const s of scenes) {
+    if (!s.smiMatches?.length) continue
+    smiAttempts += s.smiMatches.length
+    smiMatched += s.smiMatches.filter(m => m.replaced).length
+  }
+  const smiPct = smiAttempts > 0 ? Math.round((smiMatched / smiAttempts) * 100) : null
+  const smiColor = smiPct == null ? T.fgMuted : smiPct >= 60 ? T.good : smiPct >= 35 ? T.warn : T.err
+
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0
   const isDone = doneCount === total && total > 0
   const hasIncomplete = phase === 'done' && scenes.some(s => s.status !== 'done')
@@ -64,6 +74,12 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
           <span>{pct}%</span>
           {startTime && <span>{fmtDuration(Date.now() - startTime)}</span>}
           {totalTokens > 0 && <span>{fmtTokens(totalTokens)} tokens · {fmtCost}</span>}
+          {smiPct != null && (
+            <span style={{ color: smiColor }}
+              title={`자막과 일치한 대사 ${smiMatched}/${smiAttempts}. 낮으면 각본과 영화 자막 차이가 큰 것(번역이 자막에 덜 맞춰짐).`}>
+              자막매칭 {smiPct}%{smiPct < 35 ? ' ⚠ 차이 큼' : smiPct >= 60 ? ' ✓' : ''}
+            </span>
+          )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
             {phase !== 'done' && !isPaused && <span style={{ color: T.fgMuted }}>{phase === 'formatting' ? '포맷 중...' : '번역 중...'}</span>}
             {phase !== 'done' && !isPaused && (

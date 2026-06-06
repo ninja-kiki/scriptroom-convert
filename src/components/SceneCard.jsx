@@ -59,6 +59,20 @@ export default function SceneCard({ scene, index, onRetry, onReprocess, expanded
           {STATUS_LABEL[scene.status]}
         </span>
 
+        {isDone && scene.smiMatches?.length > 0 && (() => {
+          const total = scene.smiMatches.length
+          const matched = scene.smiMatches.filter(m => m.replaced).length
+          const rate = matched / total
+          const color = rate >= 0.6 ? T.good : rate >= 0.3 ? T.warn : T.err
+          const low = rate < 0.3
+          return (
+            <span title={`자막과 일치한 대사 ${matched}/${total} (${Math.round(rate * 100)}%)${low ? ' · 각본과 영화 자막 차이가 커요 — 번역이 자막에 덜 맞춰졌을 수 있어요' : ''}`}
+              style={{ fontSize: 11, color, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2 }}>
+              {low && '⚠'}자막 {matched}/{total}
+            </span>
+          )
+        })()}
+
         {totalTokens > 0 && (
           <span style={{ color: T.fgDim, fontSize: 11 }}>{totalTokens.toLocaleString()}tok</span>
         )}
