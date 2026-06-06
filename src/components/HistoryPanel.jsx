@@ -41,9 +41,9 @@ export default function HistoryPanel({ onClose, onRestore }) {
         ) : (
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {history.map(h => {
-              const doneCount = h.sceneData ? h.sceneData.filter(s => s.status === 'done').length : 0
-              const total = h.sceneData ? h.sceneData.length : (h.sceneCount || h.scenes || 0)
-              const isComplete = total > 0 && doneCount === total
+              const total = h.sceneCount ?? (h.sceneData ? h.sceneData.length : (h.scenes || 0))
+              const doneCount = h.doneCount ?? (h.sceneData ? h.sceneData.filter(s => s.status === 'done').length : 0)
+              const isComplete = total > 0 && doneCount >= total
               const hasData = !!h.sceneData && total > 0
 
               return (

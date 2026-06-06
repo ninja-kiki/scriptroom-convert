@@ -90,20 +90,58 @@ export function sliceSmi(smiLines, sceneIndex, totalScenes, windowLines = 60) {
 export function saveHistory(entry) {
   const hist = loadHistory()
   const id = entry.id || Date.now()
-  const existing = hist.findIndex(h => h.id === id)
-  if (existing >= 0) hist[existing] = { ...hist[existing], ...entry, id }
-  else hist.unshift({ ...entry, id })
+  const done = (entry.sceneData || []).filter(s => s.status === 'done').length
+  const total = entry.sceneCount ?? (entry.sceneData || []).length
+  const complete = total > 0 && done >= total
+  const doneOf = e => e.doneCount ?? (e.sceneData || []).filter(s => s.status === 'done').length
+
+  // 새 기록: 완료본은 무거운 sceneData 버림(이어보기 불필요), 미완은 보존
+  let record = {
+    id, title: entry.title,
+    startTime: entry.startTime, duration: entry.duration,
+    sceneCount: total, doneCount: done,
+    sceneData: complete ? undefined : entry.sceneData,
+  }
+
+  // 같은 작품(같은 id 또는 같은 title)은 한 항목으로 병합 — 중복 방지
+  const idx = hist.findIndex(h => h.id === id || (entry.title && h.title === entry.title))
+  if (idx >= 0) {
+    const prev = hist[idx]
+    // 기존이 더 진행됐으면 기존 내용 유지(후퇴 방지), 날짜/시간만 최신으로
+    if (doneOf(prev) > done) {
+      record = { ...prev, id, startTime: entry.startTime ?? prev.startTime, duration: entry.duration ?? prev.duration }
+    }
+    hist.splice(idx, 1)
+  }
+  hist.unshift(record)
+
+  const trimmed = hist.slice(0, 50)
   try {
-    localStorage.setItem('convert_history', JSON.stringify(hist.slice(0, 10)))
+    localStorage.setItem('convert_history', JSON.stringify(trimmed))
   } catch {
-    // localStorage 용량 초과 시 씬 데이터 없이 저장
-    const light = hist.slice(0, 10).map(h => ({ ...h, scenes: h.sceneCount, sceneData: undefined }))
-    localStorage.setItem('convert_history', JSON.stringify(light))
+    // 용량 초과: 가장 최근 미완(이어보기) 1건만 sceneData 유지, 나머지는 메타만
+    let kept = false
+    const light = trimmed.map(h => {
+      if (h.sceneData && !kept) { kept = true; return h }
+      return { ...h, sceneData: undefined }
+    })
+    try { localStorage.setItem('convert_history', JSON.stringify(light)) }
+    catch { localStorage.setItem('convert_history', JSON.stringify(light.map(h => ({ ...h, sceneData: undefined })))) }
   }
 }
 
 export function loadHistory() {
-  try { return JSON.parse(localStorage.getItem('convert_history') || '[]') } catch { return [] }
+  let hist
+  try { hist = JSON.parse(localStorage.getItem('convert_history') || '[]') } catch { return [] }
+  // 같은 작품 중복 정리: 작품당 가장 진행된 1건만 (기존에 쌓인 중복도 즉시 제거)
+  const byKey = new Map()
+  for (const h of hist) {
+    const key = h.title || h.id
+    const done = h.doneCount ?? (h.sceneData || []).filter(s => s.status === 'done').length
+    const cur = byKey.get(key)
+    if (!cur || done > cur._done) byKey.set(key, { ...h, _done: done })
+  }
+  return [...byKey.values()].map(({ _done, ...h }) => h)
 }
 
 export function deleteHistory(id) {
