@@ -50,6 +50,11 @@ export default function SceneCard({ scene, index, onRetry, onReprocess, expanded
       >
         <span style={{ color: T.fgDim, fontSize: 12, minWidth: 28 }}>#{index + 1}</span>
 
+        {scene.forceSplit && (
+          <span title="긴 씬을 처리 단위로 나눈 조각 — 결과물에선 한 씬으로 이어져요"
+            style={{ flexShrink: 0, fontSize: 10, color: T.fgDim, background: T.chip, padding: '1px 6px', borderRadius: 999 }}>이어짐</span>
+        )}
+
         <span style={{ flex: 1, color: T.fg, fontSize: 13, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
           {scene.heading || scene.raw.split('\n')[0].trim().slice(0, 80) || '(무제)'}
         </span>

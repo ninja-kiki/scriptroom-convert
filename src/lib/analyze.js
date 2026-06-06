@@ -69,10 +69,10 @@ export function analyzeScenes(scenes, rawText) {
   const forceSplitCount = scenes.filter(s => s.forceSplit).length
   if (forceSplitCount > 0) {
     warnings.push({
-      level: 'warn',
+      level: 'info',
       code: 'force_split',
-      label: `강제 분할 ${forceSplitCount}개 씬 (80줄 초과)`,
-      detail: `씬 ${forceSplitCount}개가 80줄을 초과해 자동 분할되었습니다. 씬 경계가 부자연스러울 수 있으나 토큰 초과 방지를 위해 자동 처리됩니다.`,
+      label: `긴 씬 ${forceSplitCount}개 자동 분할 처리`,
+      detail: `80줄 넘는 긴 씬은 처리 단위로 나눠서 돌려요. 최종 결과물에선 다시 하나로 이어지니 씬 번호·내용엔 영향 없어요.`,
     })
   }
 

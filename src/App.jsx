@@ -31,6 +31,15 @@ export default function App() {
   const smiEntriesRef = useRef(null)
   const [smiWarning, setSmiWarning] = useState(null)
   const [smiInfo, setSmiInfo] = useState(null)  // { lang:'ko'|'en', count } 불러온 자막 정보
+  const [extractElapsed, setExtractElapsed] = useState(0)  // 분석중 경과초
+
+  // 추출/분석 단계 경과 시간 타이머
+  useEffect(() => {
+    if (step !== 'extracting') return
+    setExtractElapsed(0)
+    const t = setInterval(() => setExtractElapsed(e => e + 1), 1000)
+    return () => clearInterval(t)
+  }, [step])
   const scenesRef = useRef(session?.scenes || [])
   const jobIdRef = useRef(session?.jobId || null)
   const isProcessing = useRef(false)
@@ -201,19 +210,24 @@ export default function App() {
     let rawScenes = null
     const isPdf = scriptFile.name.toLowerCase().endsWith('.pdf')
     if (isPdf && candidates.length > 0) {
-      setExtractProgress({ cur: 0, total: 0, label: '씬 구조 분석 중...' })
+      setExtractProgress({ cur: candidates.length, total: 0, label: '씬 구조 분석 중...' })
+      const ctrl = new AbortController()
+      const to = setTimeout(() => ctrl.abort(), 120000) // 2분 넘으면 포기 → 무한대기 방지
       try {
         const res = await fetch('/api/detect-headings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ candidates }),
+          signal: ctrl.signal,
         })
         if (res.ok) {
           const { indices } = await res.json()
           if (indices.length > 1) rawScenes = splitByHeadingIndices(rawText, indices)
         }
       } catch (e) {
-        console.warn('detect-headings 실패, regex fallback:', e.message)
+        console.warn('detect-headings 실패/시간초과, regex fallback:', e.message)
+      } finally {
+        clearTimeout(to)
       }
     }
     // LLM 실패하거나 PDF 아닌 경우 regex fallback
@@ -493,11 +507,20 @@ export default function App() {
 
       {step === 'extracting' && (
         <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-          <div style={{ color: T.fgMuted, marginBottom: 8 }}>
+          <div style={{ fontSize: 22, marginBottom: 12, animation: 'spin 1.4s linear infinite', display: 'inline-block' }}>⟳</div>
+          <div style={{ color: T.fg, fontSize: 15, marginBottom: 6 }}>
             {extractProgress.label || '파일 불러오는 중...'}
+            {extractElapsed > 0 && <span style={{ color: T.fgMuted, fontWeight: 400 }}>  ·  {extractElapsed}초</span>}
           </div>
           {extractProgress.total > 0 && !extractProgress.label && (
-            <div style={{ color: T.fg }}>{extractProgress.cur} / {extractProgress.total} 페이지</div>
+            <div style={{ color: T.fgMuted, fontSize: 13 }}>{extractProgress.cur} / {extractProgress.total} 페이지</div>
+          )}
+          {extractProgress.label?.includes('분석') && (
+            <div style={{ color: T.fgDim, fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
+              {extractProgress.cur > 0 && <>{extractProgress.cur}줄에서 씬 경계를 찾는 중 · </>}
+              각본이 길면 1분 넘게 걸릴 수 있어요. 끝나면 자동으로 넘어가요.
+              {extractElapsed >= 110 && <div style={{ color: T.warn, marginTop: 4 }}>오래 걸리네요 — 곧 기본 방식으로 자동 전환돼요.</div>}
+            </div>
           )}
         </div>
       )}
