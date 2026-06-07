@@ -73,16 +73,24 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
     } catch { setSmiMeta({ lang: 'unknown', count: 0 }) }
   }
 
+  // 여러 파일을 한 번에 드롭 — 확장자로 자동 분류 (PDF+자막 동시 가능)
+  function routeFiles(fileList) {
+    for (const f of Array.from(fileList || [])) {
+      if (SMI_EXTS.includes(getExt(f))) handleSmiFile(f)
+      else if (SCRIPT_EXTS.includes(getExt(f))) handleScriptFile(f)
+    }
+  }
+
   function handleScriptDrop(e) {
     e.preventDefault()
     setDragOverScript(false)
-    handleScriptFile(e.dataTransfer.files[0])
+    routeFiles(e.dataTransfer.files)
   }
 
   function handleSmiDrop(e) {
     e.preventDefault()
     setDragOverSmi(false)
-    handleSmiFile(e.dataTransfer.files[0])
+    routeFiles(e.dataTransfer.files)
   }
 
   function handleDelete(id, e) {
@@ -420,12 +428,12 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         ) : (
           <>
             <div style={{ color: T.fgMuted, fontSize: 28, marginBottom: 10, lineHeight: 1 }}>⬇</div>
-            <div style={{ color: T.fg, fontWeight: 600, fontSize: 15, marginBottom: 4 }}>각본 파일 드롭 또는 클릭</div>
-            <div style={{ color: T.fgDim, fontSize: 12 }}>PDF · TXT · RTF · FDX · Fountain</div>
+            <div style={{ color: T.fg, fontWeight: 600, fontSize: 15, marginBottom: 4 }}>각본 + 자막 한 번에 드롭 또는 클릭</div>
+            <div style={{ color: T.fgDim, fontSize: 12 }}>각본 PDF·TXT·RTF·FDX·Fountain + 자막 SMI·SRT 같이 끌어다 놔도 됨</div>
           </>
         )}
-        <input ref={scriptRef} type="file" accept=".pdf,.txt,.rtf,.fdx,.fountain" hidden
-          onChange={e => handleScriptFile(e.target.files[0])} />
+        <input ref={scriptRef} type="file" accept=".pdf,.txt,.rtf,.fdx,.fountain,.smi,.srt" multiple hidden
+          onChange={e => routeFiles(e.target.files)} />
       </div>
 
       {/* SMI 드롭존 */}
