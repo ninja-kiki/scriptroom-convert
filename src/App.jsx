@@ -50,35 +50,6 @@ export default function App() {
     handleLoad(items[0])
   }
 
-
-  // 추출/분석 단계 경과 시간 타이머
-  useEffect(() => {
-    if (step !== 'extracting') return
-    setExtractElapsed(0)
-    const t = setInterval(() => setExtractElapsed(e => e + 1), 1000)
-    return () => clearInterval(t)
-  }, [step])
-  const scenesRef = useRef(session?.scenes || [])
-  const jobIdRef = useRef(session?.jobId || null)
-  const isProcessing = useRef(false)
-  const isPausedRef = useRef(false)
-  const isStoppedRef = useRef(false)
-  const characterMemoRef = useRef('')  // 이번 작업의 인물 글로서리 (재처리에서도 동일 사용)
-  const diagRef = useRef(null)  // 이번 작업의 처리 진단 (완료 시/수동 리포트 시 기록)
-  const [isPaused, setIsPaused] = useState(false)
-  const [isRateLimited, setIsRateLimited] = useState(false)
-  const [readerOpen, setReaderOpen] = useState(false)
-  const [readerStartIdx, setReaderStartIdx] = useState(0)
-  const [reportOpen, setReportOpen] = useState(false)
-  const [reportNote, setReportNote] = useState('')
-  const [reportSaved, setReportSaved] = useState(false)
-  // 배치 큐 — 여러 편 자동 연속 변환 (자고 오기용)
-  const queueRef = useRef([])           // [{ scriptFile, smiFile, title }]
-  const queueIdxRef = useRef(0)
-  const queueOnRef = useRef(false)
-  const [queueState, setQueueState] = useState(null) // { idx, total, title } | null
-  const queueRetryRef = useRef(null)
-
   // 큐 오케스트레이터 — 검토 자동 통과 / 완료 시 자동 다운로드 + 다음 편
   useEffect(() => {
     if (!queueOnRef.current) return
@@ -107,6 +78,34 @@ export default function App() {
     }, 10 * 60 * 1000)
     return () => clearTimeout(queueRetryRef.current)
   }, [isRateLimited])
+
+  // 추출/분석 단계 경과 시간 타이머
+  useEffect(() => {
+    if (step !== 'extracting') return
+    setExtractElapsed(0)
+    const t = setInterval(() => setExtractElapsed(e => e + 1), 1000)
+    return () => clearInterval(t)
+  }, [step])
+  const scenesRef = useRef(session?.scenes || [])
+  const jobIdRef = useRef(session?.jobId || null)
+  const isProcessing = useRef(false)
+  const isPausedRef = useRef(false)
+  const isStoppedRef = useRef(false)
+  const characterMemoRef = useRef('')  // 이번 작업의 인물 글로서리 (재처리에서도 동일 사용)
+  const diagRef = useRef(null)  // 이번 작업의 처리 진단 (완료 시/수동 리포트 시 기록)
+  const [isPaused, setIsPaused] = useState(false)
+  const [isRateLimited, setIsRateLimited] = useState(false)
+  const [readerOpen, setReaderOpen] = useState(false)
+  const [readerStartIdx, setReaderStartIdx] = useState(0)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportNote, setReportNote] = useState('')
+  const [reportSaved, setReportSaved] = useState(false)
+  // 배치 큐 — 여러 편 자동 연속 변환 (자고 오기용)
+  const queueRef = useRef([])           // [{ scriptFile, smiFile, title }]
+  const queueIdxRef = useRef(0)
+  const queueOnRef = useRef(false)
+  const [queueState, setQueueState] = useState(null) // { idx, total, title } | null
+  const queueRetryRef = useRef(null)
 
   const updateScene = useCallback((id, patch) => {
     setScenes(prev => {
