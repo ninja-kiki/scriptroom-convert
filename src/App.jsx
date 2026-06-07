@@ -145,6 +145,7 @@ export default function App() {
       const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
       const { translated: rawTranslated, tokens } = await postJSON('/api/translate', {
         formattedText: scene.formatted, smiContext, prevTail,
+        smiAuthoritative: smiInfo?.lang === 'ko',  // KO 자막이면 대사는 자막 우선
         characterMemo: characterMemo || null, guidelines,
         sceneIndex: scene.id, totalScenes: scenesRef.current.length,
         model: loadSettings().model,

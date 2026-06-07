@@ -108,10 +108,14 @@ ${sceneText}`
 }
 
 async function handleTranslate(body) {
-  const { formattedText, smiContext, characterMemo, guidelines, sceneIndex, totalScenes, targetLang, prevTail } = body
+  const { formattedText, smiContext, characterMemo, guidelines, sceneIndex, totalScenes, targetLang, prevTail, smiAuthoritative } = body
   if (!formattedText) throw new Error('formattedText required')
 
-  const smiSection = smiContext ? `\n\n[참고 자막 (해당 씬 인근)]\n${smiContext}` : ''
+  const smiSection = smiContext
+    ? (smiAuthoritative
+        ? `\n\n[공식 한국어 자막 (해당 씬 인근) — 대사는 의미가 통하는 한 이 자막 표현을 그대로 우선 사용. 지문·내레이션은 자막에 없으니 직접 번역]\n${smiContext}`
+        : `\n\n[참고 자막 (해당 씬 인근)]\n${smiContext}`)
+    : ''
   const memoSection = characterMemo ? `\n\n[인물 관계 메모]\n${characterMemo}` : ''
   const prevSection = prevTail ? `\n\n[직전 장면 끝부분 — 대명사·상황 맥락 참고용. 번역하지 말 것]\n${prevTail}` : ''
   const lang = targetLang || '한국어'
