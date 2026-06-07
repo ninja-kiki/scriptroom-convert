@@ -400,7 +400,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
 
       {tab === 'convert' && (
       <div>
-      {/* 각본 드롭존 */}
+      {/* 드롭존 — 각본 + 자막 한 번에 */}
       <div
         onClick={() => !scriptFile && scriptRef.current.click()}
         onDragOver={e => { e.preventDefault(); setDragOverScript(true) }}
@@ -408,67 +408,60 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         onDrop={handleScriptDrop}
         style={{
           border: `2px dashed ${dragOverScript ? T.accent : scriptFile ? T.accent + '66' : T.rule}`,
-          borderRadius: 12, padding: scriptFile ? '16px 18px' : '36px 24px',
+          borderRadius: 12, padding: scriptFile ? '14px 16px' : '36px 24px',
           textAlign: 'center', cursor: scriptFile ? 'default' : 'pointer',
           background: dragOverScript ? '#1e1a13' : T.bgCard,
-          transition: 'all .15s', marginBottom: 8,
+          transition: 'all .15s', marginBottom: 16,
         }}
       >
         {scriptFile ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1, textAlign: 'left' }}>
-              <div style={{ color: T.accent, fontWeight: 600, fontSize: 14 }}>{scriptFile.name}</div>
-              <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
-                {(scriptFile.size / 1024 / 1024).toFixed(1)} MB · {getExt(scriptFile).toUpperCase()}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left' }}>
+            {/* 각본 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <div style={{ color: T.accent, fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scriptFile.name}</div>
+                <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
+                  {(scriptFile.size / 1024 / 1024).toFixed(1)} MB · {getExt(scriptFile).toUpperCase()}
+                </div>
               </div>
+              <button onClick={e => { e.stopPropagation(); setScriptFile(null); setSmiWarning(false) }}
+                style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
-            <button onClick={e => { e.stopPropagation(); setScriptFile(null); setSmiWarning(false) }}
-              style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            {/* 자막 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: `1px solid ${T.rule}`, paddingTop: 10 }}>
+              {smiFile ? (
+                <>
+                  <span style={{ color: T.good, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{smiFile.name}</span>
+                  {smiMeta && (
+                    <span style={{
+                      flexShrink: 0, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+                      background: smiMeta.lang === 'ko' ? '#143024' : smiMeta.lang === 'en' ? '#1b1f33' : '#332018',
+                      color: smiMeta.lang === 'ko' ? T.good : smiMeta.lang === 'en' ? '#8aa0ff' : T.fgDim,
+                    }}>
+                      {smiMeta.lang === 'ko' ? '한글 자막' : smiMeta.lang === 'en' ? '영어 자막' : '인식 실패'} · {smiMeta.count}줄
+                    </span>
+                  )}
+                  <button onClick={e => { e.stopPropagation(); setSmiFile(null); setSmiWarning(false); setSmiMeta(null) }}
+                    style={{ background: 'none', border: 'none', color: T.fgDim, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+                </>
+              ) : (
+                <>
+                  <span style={{ color: T.fgDim, fontSize: 13, flex: 1 }}>자막 없음</span>
+                  <button onClick={e => { e.stopPropagation(); smiRef.current.click() }}
+                    style={{ background: 'none', border: `1px solid ${T.rule}`, color: T.fgMuted, fontSize: 12, padding: '4px 10px', borderRadius: 7, cursor: 'pointer' }}>자막 추가</button>
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <>
             <div style={{ color: T.fgMuted, fontSize: 28, marginBottom: 10, lineHeight: 1 }}>⬇</div>
-            <div style={{ color: T.fg, fontWeight: 600, fontSize: 15, marginBottom: 4 }}>각본 + 자막 한 번에 드롭 또는 클릭</div>
-            <div style={{ color: T.fgDim, fontSize: 12 }}>각본 PDF·TXT·RTF·FDX·Fountain + 자막 SMI·SRT 같이 끌어다 놔도 됨</div>
+            <div style={{ color: T.fg, fontWeight: 600, fontSize: 15, marginBottom: 4 }}>각본과 자막을 함께 올리세요</div>
+            <div style={{ color: T.fgDim, fontSize: 12 }}>각본 PDF · TXT · RTF · FDX · Fountain &nbsp;/&nbsp; 자막 SMI · SRT (선택)</div>
           </>
         )}
         <input ref={scriptRef} type="file" accept=".pdf,.txt,.rtf,.fdx,.fountain,.smi,.srt" multiple hidden
           onChange={e => routeFiles(e.target.files)} />
-      </div>
-
-      {/* SMI 드롭존 */}
-      <div
-        onClick={() => smiRef.current.click()}
-        onDragOver={e => { e.preventDefault(); setDragOverSmi(true) }}
-        onDragLeave={() => setDragOverSmi(false)}
-        onDrop={handleSmiDrop}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          border: `1.5px dashed ${dragOverSmi ? T.accent : smiFile ? T.good + '66' : T.rule}`,
-          borderRadius: 10, padding: '11px 14px',
-          background: dragOverSmi ? '#0d1a12' : T.bgCard,
-          cursor: 'pointer', marginBottom: 16, transition: 'all .15s',
-        }}
-      >
-        <span style={{ color: T.fgDim, fontSize: 13, flexShrink: 0 }}>자막</span>
-        <span style={{ color: smiFile ? T.good : T.fgDim, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {smiFile ? smiFile.name : 'SMI / SRT 드롭 또는 클릭 (선택)'}
-        </span>
-        {smiFile && smiMeta && (
-          <span style={{
-            flexShrink: 0, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
-            background: smiMeta.lang === 'ko' ? '#143024' : smiMeta.lang === 'en' ? '#1b1f33' : '#332018',
-            color: smiMeta.lang === 'ko' ? T.good : smiMeta.lang === 'en' ? '#8aa0ff' : T.fgDim,
-          }}>
-            {smiMeta.lang === 'ko' ? '한글 자막' : smiMeta.lang === 'en' ? '영어 자막' : '인식 실패'} · {smiMeta.count}줄
-          </span>
-        )}
-        {smiFile ? (
-          <button onClick={e => { e.stopPropagation(); setSmiFile(null); setSmiWarning(false); setSmiMeta(null) }}
-            style={{ background: 'none', border: 'none', color: T.fgDim, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
-        ) : (
-          <span style={{ color: T.fgDim, fontSize: 11 }}>선택사항</span>
-        )}
         <input ref={smiRef} type="file" accept=".smi,.srt" hidden onChange={e => handleSmiFile(e.target.files[0] || null)} />
       </div>
 
