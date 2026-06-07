@@ -167,6 +167,82 @@ export default function App() {
     }
   }
 
+  // 짧은 씬을 묶어 배치 구성 (②와 충돌 줄이려 배치당 최대 3씬·60줄)
+  function buildBatches(scenes, enabled) {
+    if (!enabled) return scenes.map(s => [s])
+    const SHORT = 25, MAX_BATCH = 3, MAX_LINES = 60
+    const batches = []; let cur = [], curLines = 0
+    for (const s of scenes) {
+      const lines = (s.formatted || '').split('\n').length
+      const short = lines <= SHORT && (s.formatted || '').trimStart().startsWith('#') // 헤딩으로 시작해야 분할 가능
+      if (short && cur.length < MAX_BATCH && curLines + lines <= MAX_LINES) {
+        cur.push(s); curLines += lines
+      } else {
+        if (cur.length) { batches.push(cur); cur = []; curLines = 0 }
+        if (short) { cur = [s]; curLines = lines } else batches.push([s])
+      }
+    }
+    if (cur.length) batches.push(cur)
+    return batches
+  }
+
+  // 번역본을 # 헤딩 기준으로 분할 (배치 응답 쪼개기)
+  function splitByHeading(text) {
+    const parts = []; let cur = []
+    for (const l of text.split('\n')) {
+      if (/^#\s/.test(l) && cur.length) { parts.push(cur.join('\n')); cur = [] }
+      cur.push(l)
+    }
+    if (cur.length) parts.push(cur.join('\n').replace(/\n+$/, ''))
+    return parts.map(p => p.replace(/\n+$/, ''))
+  }
+
+  async function processTranslateBatch(batch, guidelines, characterMemo) {
+    batch.forEach(s => updateScene(s.id, { status: 'translating' }))
+    const fallback = async () => { for (const s of batch) await processTranslate(s, guidelines, characterMemo) }
+    try {
+      const combined = batch.map(s => s.formatted).join('\n\n')
+      const firstId = batch[0].id
+      const totalLines = batch.reduce((a, s) => a + s.raw.split('\n').filter(Boolean).length, 0)
+      const smiContext = smiLinesRef.current
+        ? sliceSmi(smiLinesRef.current, firstId, scenesRef.current.length, Math.min(160, Math.max(40, Math.round(totalLines * 1.4))))
+        : null
+      const idx = scenesRef.current.findIndex(s => s.id === firstId)
+      const prev = idx > 0 ? scenesRef.current[idx - 1] : null
+      const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
+      const { translated: raw } = await postJSON('/api/translate', {
+        formattedText: combined, smiContext, prevTail,
+        smiAuthoritative: smiInfo?.lang === 'ko',
+        characterMemo: characterMemo || null, guidelines,
+        totalScenes: scenesRef.current.length,
+        model: loadSettings().translateModel || loadSettings().model,
+      })
+      const parts = splitByHeading(raw)
+      if (parts.length !== batch.length) { await fallback(); return } // 안전: 개수 안 맞으면 개별로
+      batch.forEach((s, i) => {
+        const { text, matches } = smiEntriesRef.current
+          ? matchSmiToTranslation(parts[i], smiEntriesRef.current)
+          : { text: parts[i], matches: [] }
+        updateScene(s.id, { status: 'done', translated: text, smiMatches: matches, batched: true,
+          tokens: { ...s.tokens, translate_in: 0, translate_out: 0 } })
+      })
+    } catch (e) {
+      if (e.code === 'RATE_LIMIT') { setIsRateLimited(true); isPausedRef.current = true; setIsPaused(true) }
+      await fallback()
+    }
+  }
+
+  async function translateScenes(guidelines, characterMemo, settings) {
+    const pending = scenesRef.current.filter(s => s.formatted && s.status !== 'done')
+    const batches = buildBatches(pending, settings.batchShort !== false)
+    await runWithConcurrency(batches, async (batch) => {
+      if (isStoppedRef.current) return
+      await waitWhilePaused()
+      if (batch.length === 1) await processTranslate(batch[0], guidelines, characterMemo)
+      else await processTranslateBatch(batch, guidelines, characterMemo)
+    }, settings.concurrency)
+  }
+
   function waitWhilePaused() {
     return new Promise(resolve => {
       const check = () => isPausedRef.current ? setTimeout(check, 300) : resolve()
@@ -310,22 +386,20 @@ export default function App() {
 
     const allFormatted = initialScenes.every(s => s.status === 'formatted' && s.formatted)
 
-    if (allFormatted) {
-      // formatted.txt에서 로드된 경우: 포맷 단계 건너뛰고 바로 번역
-      setPhase('translating')
-      await runWithConcurrency(initialScenes, async (s) => {
-        await processTranslate(s, transGuidelines, characterMemo)
-      }, settings.concurrency)
-    } else {
+    // 1단계: 포맷 (규칙 우선 → 대부분 0토큰). formatted.txt 로드면 건너뜀.
+    if (!allFormatted) {
       setPhase('formatting')
       await runWithConcurrency(initialScenes, async (s) => {
-        const ok = await processFormat(s, fmtGuidelines)
-        if (ok) {
-          setPhase('translating')
-          const updated = scenesRef.current.find(x => x.id === s.id)
-          if (updated?.formatted) await processTranslate(updated, transGuidelines, characterMemo)
-        }
+        if (isStoppedRef.current) return
+        await waitWhilePaused()
+        if (s.status !== 'formatted') await processFormat(s, fmtGuidelines)
       }, settings.concurrency)
+    }
+
+    // 2단계: 번역 (짧은 씬 배칭 → 호출수 절감, 개수 안 맞으면 개별 폴백)
+    if (!isStoppedRef.current) {
+      setPhase('translating')
+      await translateScenes(transGuidelines, characterMemo, settings)
     }
 
     isProcessing.current = false
