@@ -50,34 +50,6 @@ export default function App() {
     handleLoad(items[0])
   }
 
-  // 큐 오케스트레이터 — 검토 자동 통과 / 완료 시 자동 다운로드 + 다음 편
-  useEffect(() => {
-    if (!queueOnRef.current) return
-    if (step === 'review') {
-      handleStart('') // 검토 건너뛰고 바로 변환
-    } else if (step === 'done') {
-      handleDownload('formatted'); handleDownload('translated')
-      const next = queueIdxRef.current + 1
-      if (next < queueRef.current.length) {
-        queueIdxRef.current = next
-        setQueueState({ idx: next, total: queueRef.current.length, title: queueRef.current[next].title })
-        setTimeout(() => handleLoad(queueRef.current[next]), 1200)
-      } else {
-        queueOnRef.current = false
-        setQueueState(null)
-        setTimeout(() => alert('큐 변환 완료 🎉 모든 편 다운로드됨'), 300)
-      }
-    }
-  }, [step])
-
-  // 큐 중 사용량 한도 → 10분 뒤 자동 재개 (자는 동안 알아서 이어감)
-  useEffect(() => {
-    if (!queueOnRef.current || !isRateLimited) return
-    queueRetryRef.current = setTimeout(() => {
-      setIsRateLimited(false); isPausedRef.current = false; setIsPaused(false)
-    }, 10 * 60 * 1000)
-    return () => clearTimeout(queueRetryRef.current)
-  }, [isRateLimited])
 
   // 추출/분석 단계 경과 시간 타이머
   useEffect(() => {
@@ -106,6 +78,35 @@ export default function App() {
   const queueOnRef = useRef(false)
   const [queueState, setQueueState] = useState(null) // { idx, total, title } | null
   const queueRetryRef = useRef(null)
+
+  // 큐 오케스트레이터 — 검토 자동 통과 / 완료 시 자동 다운로드 + 다음 편
+  useEffect(() => {
+    if (!queueOnRef.current) return
+    if (step === 'review') {
+      handleStart('') // 검토 건너뛰고 바로 변환
+    } else if (step === 'done') {
+      handleDownload('formatted'); handleDownload('translated')
+      const next = queueIdxRef.current + 1
+      if (next < queueRef.current.length) {
+        queueIdxRef.current = next
+        setQueueState({ idx: next, total: queueRef.current.length, title: queueRef.current[next].title })
+        setTimeout(() => handleLoad(queueRef.current[next]), 1200)
+      } else {
+        queueOnRef.current = false
+        setQueueState(null)
+        setTimeout(() => alert('큐 변환 완료 🎉 모든 편 다운로드됨'), 300)
+      }
+    }
+  }, [step])
+
+  // 큐 중 사용량 한도 → 10분 뒤 자동 재개 (자는 동안 알아서 이어감)
+  useEffect(() => {
+    if (!queueOnRef.current || !isRateLimited) return
+    queueRetryRef.current = setTimeout(() => {
+      setIsRateLimited(false); isPausedRef.current = false; setIsPaused(false)
+    }, 10 * 60 * 1000)
+    return () => clearTimeout(queueRetryRef.current)
+  }, [isRateLimited])
 
   const updateScene = useCallback((id, patch) => {
     setScenes(prev => {
