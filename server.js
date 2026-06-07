@@ -1,6 +1,6 @@
 import { createServer } from 'http'
 import { spawn, execSync } from 'child_process'
-import { readdirSync, readFileSync, writeFileSync } from 'fs'
+import { readdirSync, readFileSync, writeFileSync, appendFileSync } from 'fs'
 
 const PORT = 3001
 const PROMPTS_PATH = `${process.cwd()}/prompts.json`
@@ -27,6 +27,13 @@ function handleSaveGlossary(body) {
   const cur = handleLoadGlossary()
   if (body.title) cur[body.title] = body.memo || ''
   writeFileSync(GLOSS_PATH, JSON.stringify(cur, null, 2))
+  return { ok: true }
+}
+
+// 처리 진단 로그 누적 (어떻게 읽고 처리했는지 → 오류 추적·학습용)
+const LOG_PATH = `${process.cwd()}/process-log.jsonl`
+function handleLog(body) {
+  try { appendFileSync(LOG_PATH, JSON.stringify(body) + '\n') } catch {}
   return { ok: true }
 }
 
@@ -226,6 +233,7 @@ const server = createServer(async (req, res) => {
       else if (req.url === '/api/save-prompts') result = handleSavePrompts(data)
       else if (req.url === '/api/load-glossary') result = handleLoadGlossary()
       else if (req.url === '/api/save-glossary') result = handleSaveGlossary(data)
+      else if (req.url === '/api/log') result = handleLog(data)
       else { res.writeHead(404).end(); return }
 
       res.writeHead(200, { 'Content-Type': 'application/json' })

@@ -22,7 +22,12 @@ function detectCharacters(scenes) {
     .map(([name, count]) => ({ name, count }))
 }
 
-export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarnings = [], onStart }) {
+export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarnings = [], processInfo, onStart }) {
+  const methodLabel = !processInfo ? null
+    : processInfo.method === 'ai' ? 'AI 분석'
+    : processInfo.method === 'regex' ? '규칙 분석'
+    : processInfo.method === 'ai→regex' ? 'AI 실패 → 규칙 분석'
+    : '분석'
   const [characterMemo, setCharacterMemo] = useState('')
   const [memoOpen, setMemoOpen] = useState(false)
   const [expandedWarning, setExpandedWarning] = useState(null)
@@ -117,7 +122,16 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
 
       {/* 씬 목록 */}
       <div style={{ marginBottom: 16 }}>
-        <div style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 8 }}>씬 목록</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+          <span style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase' }}>씬 목록</span>
+          {methodLabel && (
+            <span style={{ color: T.fgDim, fontSize: 11 }}>
+              · 씬 감지: {methodLabel}
+              {processInfo.aiDropped > 0 && ` (오탐 ${processInfo.aiDropped}개 제외)`}
+              {' · '}{processInfo.scenes}씬
+            </span>
+          )}
+        </div>
         <div style={{
           maxHeight: 280, overflowY: 'auto',
           borderRadius: 10, border: `1px solid ${T.rule}`,

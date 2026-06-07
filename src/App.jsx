@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi, loadPromptsFromFile } from './lib/core.js'
+import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi, loadPromptsFromFile, logProcess } from './lib/core.js'
 import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
 import { analyzeScenes } from './lib/analyze.js'
 import { parseSMIEntries, matchSmiToTranslation, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
@@ -31,6 +31,7 @@ export default function App() {
   const smiEntriesRef = useRef(null)
   const [smiWarning, setSmiWarning] = useState(null)
   const [smiInfo, setSmiInfo] = useState(null)  // { lang:'ko'|'en', count } 불러온 자막 정보
+  const [processInfo, setProcessInfo] = useState(null)  // 씬 감지 진단(방식·오탐 등)
   const [extractElapsed, setExtractElapsed] = useState(0)  // 분석중 경과초
 
   // 시작 시 repo 지침 파일을 localStorage로 시드 (동료 클론 시 공유 적용)
@@ -218,6 +219,12 @@ export default function App() {
     // PDF이고 후보가 있으면 LLM으로 씬 헤딩 정밀 감지
     let rawScenes = null
     const isPdf = scriptFile.name.toLowerCase().endsWith('.pdf')
+    // 진단: 어떻게 읽고 처리했는지 기록 (오류 추적·학습용)
+    const diag = {
+      title: t, file: scriptFile.name, ext,
+      rawLines: rawText.split('\n').length, candidates: candidates.length,
+      method: null, aiReturned: null, aiKept: null, aiDropped: null, aiError: null,
+    }
     if (isPdf && candidates.length > 0) {
       setExtractProgress({ cur: candidates.length, total: 0, label: '씬 구조 분석 중...' })
       const ctrl = new AbortController()
@@ -234,18 +241,29 @@ export default function App() {
           // LLM 오탐(페이지번호·캐릭터큐·지문) 제거 — 진짜 헤딩만
           const lines = rawText.split('\n')
           const good = indices.filter(i => isLikelyHeading(lines[i]))
-          if (good.length > 1) rawScenes = splitByHeadingIndices(rawText, good)
+          diag.aiReturned = indices.length
+          diag.aiKept = good.length
+          diag.aiDropped = indices.length - good.length
+          if (good.length > 1) { rawScenes = splitByHeadingIndices(rawText, good); diag.method = 'ai' }
         }
       } catch (e) {
+        diag.aiError = (e.message || '').slice(0, 80)
         console.warn('detect-headings 실패/시간초과, regex fallback:', e.message)
       } finally {
         clearTimeout(to)
       }
     }
     // LLM 실패하거나 PDF 아닌 경우 regex fallback
-    if (!rawScenes || rawScenes.length <= 1) rawScenes = splitIntoScenes(rawText)
+    if (!rawScenes || rawScenes.length <= 1) {
+      rawScenes = splitIntoScenes(rawText)
+      diag.method = diag.method === 'ai' ? 'ai→regex' : 'regex'
+    }
+    diag.scenes = rawScenes.length
 
     const warnings = analyzeScenes(rawScenes, rawText)
+    diag.warnings = warnings.map(w => w.code)
+    setProcessInfo(diag)
+    logProcess(diag)
     setPdfWarnings(warnings)
     const scenes = rawScenes.map(s => ({
       ...s, status: 'pending', formatted: null, translated: null, tokens: null, error: null, heading: null
@@ -554,6 +572,7 @@ export default function App() {
           smiFile={reviewSmiFile}
           smiWarning={smiWarning}
           pdfWarnings={pdfWarnings}
+          processInfo={processInfo}
           onStart={handleStart}
           onBack={() => setStep('upload')}
         />

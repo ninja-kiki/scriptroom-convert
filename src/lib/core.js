@@ -81,6 +81,15 @@ export function loadGuidelines(type) {
     (type === 'format' ? DEFAULT_FORMAT_GUIDELINES : DEFAULT_TRANSLATE_GUIDELINES)
 }
 
+// 처리 진단 로그 — 어떻게 읽고 처리했는지 repo 파일(process-log.jsonl)에 누적
+// (오류 원인 추적·학습용. 실패해도 무시)
+export function logProcess(entry) {
+  fetch('/api/log', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...entry, ts: new Date().toISOString() }),
+  }).catch(() => {})
+}
+
 // 영화별 인물 글로서리(메모) 로드/저장 — repo 파일 공유
 export async function loadGlossary(title) {
   if (!title) return ''
