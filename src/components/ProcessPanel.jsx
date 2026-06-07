@@ -131,10 +131,10 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         return (
           <div style={{ marginBottom: 16, borderRadius: 10, overflow: 'hidden', border: `1px solid ${clean ? T.good + '44' : T.err + '44'}`, animation: 'riseIn .2s ease' }}>
             <div style={{ padding: '11px 14px', background: (clean ? T.good : T.err) + '18', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
-              {clean ? '변환 완료 — 문제 없음 ✓' : `변환 완료 — 실패 ${failed.length}개 확인 필요`}
+              {clean ? '변환 완료 ✓' : `변환 완료 — 실패 ${failed.length}개 확인 필요`}
             </div>
             <div style={{ padding: '10px 14px', fontSize: 13, color: T.fgMuted, lineHeight: 1.8 }}>
-              <div>· 씬 {doneCount}/{total} 완료{startTime ? ` · ${fmtDuration(Date.now() - startTime)} 소요` : ''}</div>
+              <div><span style={{ color: T.good }}>· 씬 {doneCount}/{total} 완료</span>{startTime ? ` · ${fmtDuration(Date.now() - startTime)} 소요` : ''}</div>
               {ruleFmtCount > 0 && <div style={{ color: T.good }}>· 규칙포맷 {ruleFmtCount}씬 (LLM 없이 처리 — 토큰 절약)</div>}
               {totalTokens > 0 && <div>· LLM 사용 ~{fmtTokens(totalTokens)} 토큰 (추정)</div>}
               {smiPct != null && <div style={{ color: smiColor }}>· 자막매칭 {smiPct}%{smiPct < 35 ? ' — 각본과 영화 자막 차이가 커요' : smiPct >= 60 ? ' — 잘 맞아요' : ''}</div>}
@@ -148,7 +148,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
                   · 자막 차이 큰 씬: {lowSmi.slice(0, 12).map(s => `#${logicalNoOf[s.id]}`).join(', ')}{lowSmi.length > 12 ? ` 외 ${lowSmi.length - 12}` : ''} — 번역이 영화 자막과 다를 수 있어요
                 </div>
               )}
-              {clean && lowSmi.length === 0 && <div style={{ color: T.good }}>· 특이사항 없음 — 다운로드해서 쓰면 돼요</div>}
+              {clean && lowSmi.length === 0 && <div style={{ color: T.good }}>· 특이사항 없음</div>}
             </div>
           </div>
         )

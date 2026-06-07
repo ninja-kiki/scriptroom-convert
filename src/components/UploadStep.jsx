@@ -485,19 +485,21 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         </div>
       )}
 
-      <button
-        disabled={!scriptFile || loading}
-        onClick={handleLoad}
-        style={{
-          width: '100%', padding: '12px', borderRadius: 10, border: 'none',
-          background: (!scriptFile || loading) ? T.chip : T.accent,
-          color: (!scriptFile || loading) ? T.fgDim : T.accentFg,
-          fontWeight: 700, fontSize: 15, cursor: !scriptFile || loading ? 'default' : 'pointer',
-          marginBottom: 28,
-        }}
-      >
-        {loading ? '불러오는 중...' : '불러오기'}
-      </button>
+      {scriptFile && (
+        <button
+          disabled={loading}
+          onClick={handleLoad}
+          style={{
+            width: '100%', padding: '12px', borderRadius: 10, border: 'none',
+            background: loading ? T.chip : T.accent,
+            color: loading ? T.fgDim : T.accentFg,
+            fontWeight: 700, fontSize: 15, cursor: loading ? 'default' : 'pointer',
+            marginBottom: 28, animation: 'riseIn .2s ease',
+          }}
+        >
+          {loading ? '불러오는 중...' : '불러오기'}
+        </button>
+      )}
 
       {/* 이어하기 + 작업 기록 */}
       {(currentSession || history.length > 0) && (
