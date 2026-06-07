@@ -120,7 +120,7 @@ ${sceneText}`
 }
 
 async function handleTranslate(body) {
-  const { formattedText, smiContext, characterMemo, guidelines, sceneIndex, totalScenes, targetLang, prevTail, smiAuthoritative } = body
+  const { formattedText, smiContext, characterMemo, guidelines, sceneIndex, totalScenes, targetLang, prevTail, smiAuthoritative, model } = body
   if (!formattedText) throw new Error('formattedText required')
 
   const smiSection = smiContext
