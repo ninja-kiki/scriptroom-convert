@@ -40,45 +40,6 @@ export default function App() {
   // 시작 시 repo 지침 파일을 localStorage로 시드 (동료 클론 시 공유 적용)
   useEffect(() => { loadPromptsFromFile() }, [])
 
-  // 배치 큐 시작 — 여러 편을 순서대로 자동 변환
-  function startQueue(items) {
-    if (!items?.length) return
-    queueRef.current = items
-    queueIdxRef.current = 0
-    queueOnRef.current = true
-    setQueueState({ idx: 0, total: items.length, title: items[0].title })
-    handleLoad(items[0])
-  }
-
-  // 큐 오케스트레이터 — 검토 자동 통과 / 완료 시 자동 다운로드 + 다음 편
-  useEffect(() => {
-    if (!queueOnRef.current) return
-    if (step === 'review') {
-      handleStart('') // 검토 건너뛰고 바로 변환
-    } else if (step === 'done') {
-      handleDownload('formatted'); handleDownload('translated')
-      const next = queueIdxRef.current + 1
-      if (next < queueRef.current.length) {
-        queueIdxRef.current = next
-        setQueueState({ idx: next, total: queueRef.current.length, title: queueRef.current[next].title })
-        setTimeout(() => handleLoad(queueRef.current[next]), 1200)
-      } else {
-        queueOnRef.current = false
-        setQueueState(null)
-        setTimeout(() => alert('큐 변환 완료 🎉 모든 편 다운로드됨'), 300)
-      }
-    }
-  }, [step])
-
-  // 큐 중 사용량 한도 → 10분 뒤 자동 재개 (자는 동안 알아서 이어감)
-  useEffect(() => {
-    if (!queueOnRef.current || !isRateLimited) return
-    queueRetryRef.current = setTimeout(() => {
-      setIsRateLimited(false); isPausedRef.current = false; setIsPaused(false)
-    }, 10 * 60 * 1000)
-    return () => clearTimeout(queueRetryRef.current)
-  }, [isRateLimited])
-
   // 추출/분석 단계 경과 시간 타이머
   useEffect(() => {
     if (step !== 'extracting') return
@@ -100,12 +61,6 @@ export default function App() {
   const [reportOpen, setReportOpen] = useState(false)
   const [reportNote, setReportNote] = useState('')
   const [reportSaved, setReportSaved] = useState(false)
-  // 배치 큐 — 여러 편 자동 연속 변환 (자고 오기용)
-  const queueRef = useRef([])           // [{ scriptFile, smiFile, title }]
-  const queueIdxRef = useRef(0)
-  const queueOnRef = useRef(false)
-  const [queueState, setQueueState] = useState(null) // { idx, total, title } | null
-  const queueRetryRef = useRef(null)
 
   const updateScene = useCallback((id, patch) => {
     setScenes(prev => {
@@ -685,16 +640,9 @@ export default function App() {
         <button onClick={() => setShowSettings(true)} style={navBtn}>설정</button>
       </div>
 
-      {queueState && (
-        <div style={{ padding: '8px 20px', background: T.accent + '18', color: T.accent, fontSize: 13, fontWeight: 600, textAlign: 'center', borderBottom: `1px solid ${T.accent}33` }}>
-          자동 큐 {queueState.idx + 1}/{queueState.total} — {queueState.title} 변환 중… (끝나면 자동 다운로드 후 다음 편)
-        </div>
-      )}
-
       {step === 'upload' && (
         <UploadStep
           onLoad={handleLoad}
-          onStartQueue={startQueue}
           onRevise={handleStartRevise}
           onRestore={session => {
             setTitle(session.title); setScenes(session.scenes)

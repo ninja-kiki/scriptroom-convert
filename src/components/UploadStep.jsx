@@ -18,25 +18,10 @@ function titleFromFile(file) {
     .trim()
 }
 
-export default function UploadStep({ onLoad, onRestore, onRevise, onStartQueue }) {
+export default function UploadStep({ onLoad, onRestore, onRevise }) {
   const scriptRef = useRef()
   const smiRef = useRef()
   const reviseRef = useRef()
-  const queueRef = useRef()
-  // 여러 편 → 파일명 기준으로 각본+자막 짝지어 큐 구성
-  function handleQueueFiles(fileList) {
-    const files = Array.from(fileList || [])
-    const scripts = files.filter(f => SCRIPT_EXTS.includes(getExt(f)))
-    const subs = files.filter(f => SMI_EXTS.includes(getExt(f)))
-    const base = f => f.name.replace(/\.[^.]+$/, '')
-    const items = scripts.map(s => {
-      const b = base(s)
-      const smi = subs.find(x => base(x) === b) || subs.find(x => base(x).startsWith(b) || b.startsWith(base(x))) || null
-      return { scriptFile: s, smiFile: smi, title: titleFromFile(s) }
-    })
-    if (!items.length) { alert('각본 파일(PDF 등)을 골라주세요.'); return }
-    onStartQueue?.(items)
-  }
   const [tab, setTab] = useState('convert') // convert | revise
   const [scriptFile, setScriptFile] = useState(null)
   const [smiFile, setSmiFile] = useState(null)
@@ -582,16 +567,6 @@ export default function UploadStep({ onLoad, onRestore, onRevise, onStartQueue }
           {loading ? '불러오는 중...' : '불러오기'}
         </button>
       )}
-
-      {/* 여러 편 자동 큐 */}
-      {!scriptFile && (
-        <button onClick={() => queueRef.current.click()}
-          style={{ width: '100%', padding: '11px', borderRadius: 10, border: `1px dashed ${T.rule}`, background: 'none', color: T.fgMuted, fontSize: 13, cursor: 'pointer', marginBottom: 28 }}>
-          여러 편 한꺼번에 (자동 큐) — 자고 와도 됨
-        </button>
-      )}
-      <input ref={queueRef} type="file" accept=".pdf,.txt,.rtf,.fdx,.fountain,.smi,.srt" multiple hidden
-        onChange={e => { handleQueueFiles(e.target.files); e.target.value = ''; }} />
 
       {/* 이어하기 + 작업 기록 */}
       {(currentSession || history.length > 0) && (
