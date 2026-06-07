@@ -1,26 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { T, loadGlossary, saveGlossary } from '../lib/core.js'
-
-function detectCharacters(scenes) {
-  const counts = {}
-  for (const scene of scenes) {
-    const lines = scene.raw.split('\n')
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim()
-      if (/^[A-Z][A-Z0-9 .'-]{1,29}$/.test(line) && line.length >= 2) {
-        const next = lines[i + 1]?.trim() || ''
-        if (next && !/^(INT\.|EXT\.|CUT |FADE)/.test(next)) {
-          counts[line] = (counts[line] || 0) + 1
-        }
-      }
-    }
-  }
-  return Object.entries(counts)
-    .filter(([, n]) => n >= 2)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
-    .map(([name, count]) => ({ name, count }))
-}
+import { useState } from 'react'
+import { T } from '../lib/core.js'
 
 export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarnings = [], processInfo, smiInfo, onStart }) {
   const methodLabel = !processInfo ? null
@@ -28,19 +7,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
     : processInfo.method === 'regex' ? '규칙 분석'
     : processInfo.method === 'ai→regex' ? 'AI 실패 → 규칙 분석'
     : '분석'
-  const [characterMemo, setCharacterMemo] = useState('')
-  const [memoOpen, setMemoOpen] = useState(false)
   const [expandedWarning, setExpandedWarning] = useState(null)
-  const characters = useMemo(() => detectCharacters(scenes), [scenes])
-
-  // 같은 작품의 저장된 글로서리(메모) 자동 로드
-  useEffect(() => {
-    let alive = true
-    loadGlossary(title).then(memo => {
-      if (alive && memo) { setCharacterMemo(memo); setMemoOpen(true) }
-    })
-    return () => { alive = false }
-  }, [title])
 
   const hasErrors = pdfWarnings.some(w => w.level === 'error')
   const hasWarns = pdfWarnings.some(w => w.level === 'warn')
@@ -54,10 +21,6 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
   const headings = scenes
     .map(s => ({ id: s.id, heading: cleanHeading((s.formatted || s.raw).split('\n')[0].trim()) }))
     .filter(s => s.heading)
-
-  function insertCharacter(name) {
-    setCharacterMemo(m => m ? m + '\n' + name + ': ' : name + ': ')
-  }
 
   return (
     <div style={{ padding: '24px 20px', maxWidth: 560, margin: '0 auto' }}>
@@ -194,49 +157,6 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
         </div>
       </div>
 
-      {/* 인물 메모 (접힘) */}
-      <div style={{ marginBottom: 20 }}>
-        <button onClick={() => setMemoOpen(v => !v)} style={{
-          display: 'flex', alignItems: 'center', gap: 6, width: '100%',
-          background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', textAlign: 'left',
-        }}>
-          <span style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase' }}>인물 메모</span>
-          <span style={{ color: T.fgDim, fontSize: 11 }}>(선택)</span>
-          <span style={{ color: T.fgDim, fontSize: 12, marginLeft: 'auto' }}>{memoOpen ? '▲' : '▼'}</span>
-        </button>
-
-        {memoOpen && (
-          <div style={{ marginTop: 8 }}>
-            {characters.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
-                {characters.map(c => (
-                  <button key={c.name} onClick={() => insertCharacter(c.name)}
-                    style={{
-                      padding: '3px 9px', borderRadius: 5,
-                      background: T.chip, border: `1px solid ${T.rule}`,
-                      color: T.fgMuted, fontSize: 12, cursor: 'pointer',
-                    }}>
-                    {c.name}
-                    <span style={{ color: T.fgDim, fontSize: 10, marginLeft: 3 }}>×{c.count}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            <textarea
-              value={characterMemo}
-              onChange={e => setCharacterMemo(e.target.value)}
-              placeholder={'예: HOWARD = 주인공, 40대 보석상\nEDDIE = Howard 아들 → 부를 때 "아빠"'}
-              style={{
-                width: '100%', minHeight: 80, resize: 'vertical',
-                background: T.bgInput, border: `1px solid ${T.rule}`,
-                borderRadius: 8, color: T.fg, fontSize: 13,
-                padding: 10, fontFamily: 'monospace', lineHeight: 1.6, outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-        )}
-      </div>
 
       {/* 변환/번역 시작 버튼 */}
       {allFormatted && (
@@ -251,9 +171,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
       <button
         onClick={() => {
           if (hasErrors && !window.confirm('씬 분리 오류가 감지되었습니다. 그래도 변환을 시작할까요?')) return
-          const memo = characterMemo.trim()
-          saveGlossary(title, memo)  // 영화별 글로서리 저장 → 다음에 자동 로드·공유
-          onStart(memo)
+          onStart('')
         }}
         style={{
           padding: '11px 28px', borderRadius: 10,
