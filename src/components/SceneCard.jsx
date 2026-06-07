@@ -27,10 +27,14 @@ const STATUS_COLOR = {
   error_translate: T.err,
 }
 
-export default function SceneCard({ scene, index, onRetry, onReprocess, expanded, onToggle }) {
+export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expanded, onToggle }) {
   const isError = scene.status.startsWith('error')
   const isDone = scene.status === 'done'
   const isActive = scene.status === 'formatting' || scene.status === 'translating'
+  // 표시 제목: 헤딩 우선, 없으면 첫 의미 있는 줄(페이지마커 제외)
+  const titleLine = scene.heading ||
+    (scene.formatted || scene.raw).split('\n').find(l => l.trim() && !/^(#|Page\s+\d)/i.test(l.trim()))?.trim().slice(0, 80) ||
+    '(이어지는 내용)'
 
   const totalTokens = scene.tokens
     ? (scene.tokens.format_in || 0) + (scene.tokens.format_out || 0) +
@@ -48,7 +52,9 @@ export default function SceneCard({ scene, index, onRetry, onReprocess, expanded
         onClick={onToggle}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer' }}
       >
-        <span style={{ color: T.fgDim, fontSize: 12, minWidth: 28 }}>#{index + 1}</span>
+        <span style={{ color: T.fgDim, fontSize: 12, minWidth: 28 }}>
+          {sceneNo != null ? `#${sceneNo}` : <span style={{ color: T.fgDim }}>↳</span>}
+        </span>
 
         {scene.forceSplit && (
           <span title="긴 씬을 처리 단위로 나눈 조각 — 결과물에선 한 씬으로 이어져요"
@@ -56,7 +62,7 @@ export default function SceneCard({ scene, index, onRetry, onReprocess, expanded
         )}
 
         <span style={{ flex: 1, color: T.fg, fontSize: 13, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-          {scene.heading || scene.raw.split('\n')[0].trim().slice(0, 80) || '(무제)'}
+          {titleLine}
         </span>
 
         <span style={{ color: STATUS_COLOR[scene.status], fontSize: 12, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>

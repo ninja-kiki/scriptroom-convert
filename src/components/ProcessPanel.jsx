@@ -120,8 +120,9 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
               <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={{ ...ctrlBtn, color: T.err, borderColor: T.err }}>중단</button>
             )}
             {phase === 'done' && !hasIncomplete && <span style={{ color: T.fgMuted }}>완료</span>}
-            {phase === 'done' && doneCount > 0 && (
-              <button onClick={onReader} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>리더 모드</button>
+            {doneCount > 0 && (
+              <button onClick={onReader} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}
+                title="번역 완료된 씬을 화살표로 넘기며 읽기 (변환 중에도 가능)">리더 모드</button>
             )}
             {hasIncomplete && (
               <button onClick={onContinue} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>이어하기</button>
@@ -187,17 +188,24 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
             ))}
           </div>
         )}
-        {scenes.map((scene, i) => matchFilter(scene) && (
-          <SceneCard
-            key={scene.id}
-            scene={scene}
-            index={i}
-            onRetry={onRetry}
-            onReprocess={onReprocess}
-            expanded={expandedId === scene.id}
-            onToggle={() => setExpandedId(expandedId === scene.id ? null : scene.id)}
-          />
-        ))}
+        {(() => {
+          // 논리적 씬 번호 — 이어짐(forceSplit) 조각은 새 번호 안 매김
+          let logical = 0
+          return scenes.map((scene, i) => {
+            if (!scene.forceSplit) logical++
+            return matchFilter(scene) && (
+              <SceneCard
+                key={scene.id}
+                scene={scene}
+                sceneNo={scene.forceSplit ? null : logical}
+                onRetry={onRetry}
+                onReprocess={onReprocess}
+                expanded={expandedId === scene.id}
+                onToggle={() => setExpandedId(expandedId === scene.id ? null : scene.id)}
+              />
+            )
+          })
+        })()}
         {filter !== 'all' && !scenes.some(matchFilter) && (
           <div style={{ color: T.fgDim, fontSize: 13, textAlign: 'center', padding: '16px 0' }}>해당하는 씬 없음</div>
         )}
