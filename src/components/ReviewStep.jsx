@@ -22,7 +22,7 @@ function detectCharacters(scenes) {
     .map(([name, count]) => ({ name, count }))
 }
 
-export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarnings = [], processInfo, onStart }) {
+export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarnings = [], processInfo, smiInfo, onStart }) {
   const methodLabel = !processInfo ? null
     : processInfo.method === 'ai' ? 'AI 분석'
     : processInfo.method === 'regex' ? '규칙 분석'
@@ -69,6 +69,49 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
         {smiFile && !smiWarning && <span style={{ color: T.good, fontSize: 13 }}>자막 ✓</span>}
         {smiFile && smiWarning && <span style={{ color: T.warn, fontSize: 13 }}>자막 ⚠</span>}
       </div>
+
+      {/* 신뢰 신호 — 믿고 가도 되는지 한눈에 */}
+      {(() => {
+        const hasCritical = hasErrors || pdfWarnings.some(w => ['few_scenes', 'undercount', 'low_heading_ratio'].includes(w.code))
+        const okAll = !hasCritical && !smiWarning
+        const signals = []
+        // 씬 인식
+        signals.push(hasCritical
+          ? { ok: false, text: `씬 인식 확인 필요 — 아래 경고 보기` }
+          : { ok: true, text: `씬 ${scenes.length}개 인식${methodLabel ? ` · ${methodLabel}` : ''}` })
+        // 자막
+        if (smiInfo && smiInfo.count > 0) {
+          signals.push(smiInfo.lang === 'ko'
+            ? { ok: true, text: `한글 자막 ${smiInfo.count}줄 — 대사 번역에 활용` }
+            : smiInfo.lang === 'en'
+              ? { ok: true, text: `영어 자막 ${smiInfo.count}줄 — 구조 잡는 데 활용`, blue: true }
+              : { ok: false, text: `자막 인식 실패 — 파일 확인` })
+        } else {
+          signals.push({ neutral: true, text: `자막 없음 — 대사 번역에 자막 도움은 못 받아요` })
+        }
+        return (
+          <div style={{
+            marginBottom: 16, borderRadius: 10, overflow: 'hidden',
+            border: `1px solid ${okAll ? T.good + '44' : T.warn + '44'}`,
+          }}>
+            <div style={{ padding: '9px 14px', background: (okAll ? T.good : T.warn) + '18', color: okAll ? T.good : T.warn, fontSize: 13, fontWeight: 600 }}>
+              {okAll ? '믿고 시작해도 좋아요' : '시작 전 아래 확인'}
+            </div>
+            <div style={{ padding: '4px 14px 8px' }}>
+              {signals.map((sig, i) => {
+                const c = sig.ok ? T.good : sig.blue ? '#8aa0ff' : sig.neutral ? T.fgDim : T.warn
+                const icon = sig.ok ? '✓' : sig.neutral ? '·' : '⚠'
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13, color: sig.neutral ? T.fgDim : T.fgMuted }}>
+                    <span style={{ color: c, fontWeight: 700, width: 14, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
+                    <span>{sig.text}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {smiWarning && (
         <div style={{

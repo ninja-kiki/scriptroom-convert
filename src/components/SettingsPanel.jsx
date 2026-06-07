@@ -33,11 +33,10 @@ export default function SettingsPanel({ onClose }) {
         <div style={{ flex: 1, overflowY: 'auto' }}>
 
           {/* 처리 */}
-          <SectionLabel>처리</SectionLabel>
           <div style={{ borderTop: `1px solid ${T.rule}`, borderBottom: `1px solid ${T.rule}` }}>
             <Row label="동시 처리 씬 수" desc="높을수록 빠름, 오류 가능성 증가">
               <div style={{ display: 'flex', gap: 6 }}>
-                {[1, 2, 3, 4].map(n => (
+                {[2, 3, 4, 5].map(n => (
                   <button key={n} onClick={() => patch({ concurrency: n })} style={{
                     width: 38, height: 34, borderRadius: 7, border: 'none',
                     background: s.concurrency === n ? T.accent : T.chip,
@@ -54,30 +53,23 @@ export default function SettingsPanel({ onClose }) {
               <ModelPicker value={s.translateModel || s.model} onChange={m => patch({ translateModel: m })} />
             </Row>
             <Row label="짧은 씬 배칭" desc="짧은 씬 여러 개를 한 번에 — 호출수·비용 절감" last>
-              <button onClick={() => patch({ batchShort: !s.batchShort })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                <Checkmark on={s.batchShort !== false} />
-              </button>
+              <Toggle on={s.batchShort !== false} onClick={() => patch({ batchShort: s.batchShort === false })} />
             </Row>
           </div>
 
-          {/* 지침 (접힘) */}
-          <SectionLabel collapsible expanded={guidelinesOpen} onToggle={() => setGuidelinesOpen(v => !v)}>
-            지침
-          </SectionLabel>
-          {guidelinesOpen && (
-            <div style={{ borderTop: `1px solid ${T.rule}`, borderBottom: `1px solid ${T.rule}` }}>
-              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.rule}` }}>
-                <div style={{ color: T.fgMuted, fontSize: 13, marginBottom: 8 }}>포맷 지침</div>
-                <textarea value={formatText} onChange={e => setFormatText(e.target.value)} style={taStyle} />
-                <ResetBtn onClick={() => { if (window.confirm('포맷 지침을 기본값으로 되돌릴까요?')) setFormatText(DEFAULT_FORMAT_GUIDELINES) }} />
-              </div>
-              <div style={{ padding: '16px 20px' }}>
-                <div style={{ color: T.fgMuted, fontSize: 13, marginBottom: 8 }}>번역 지침</div>
-                <textarea value={translateText} onChange={e => setTranslateText(e.target.value)} style={taStyle} />
-                <ResetBtn onClick={() => { if (window.confirm('번역 지침을 기본값으로 되돌릴까요?')) setTranslateText(DEFAULT_TRANSLATE_GUIDELINES) }} />
-              </div>
-            </div>
-          )}
+          {/* 포맷 지침 */}
+          <div style={{ padding: '18px 20px 8px', color: T.fgMuted, fontSize: 13, fontWeight: 600 }}>포맷 지침</div>
+          <div style={{ padding: '0 20px 16px' }}>
+            <textarea value={formatText} onChange={e => setFormatText(e.target.value)} style={taStyle} />
+            <ResetBtn onClick={() => { if (window.confirm('포맷 지침을 기본값으로 되돌릴까요?')) setFormatText(DEFAULT_FORMAT_GUIDELINES) }} />
+          </div>
+
+          {/* 번역 지침 */}
+          <div style={{ padding: '8px 20px 8px', color: T.fgMuted, fontSize: 13, fontWeight: 600 }}>번역 지침</div>
+          <div style={{ padding: '0 20px 16px' }}>
+            <textarea value={translateText} onChange={e => setTranslateText(e.target.value)} style={taStyle} />
+            <ResetBtn onClick={() => { if (window.confirm('번역 지침을 기본값으로 되돌릴까요?')) setTranslateText(DEFAULT_TRANSLATE_GUIDELINES) }} />
+          </div>
 
         </div>
 
@@ -137,6 +129,20 @@ function Row({ label, desc, children, last }) {
       </div>
       {children}
     </div>
+  )
+}
+
+function Toggle({ on, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      width: 46, height: 26, borderRadius: 999, border: 'none', cursor: 'pointer',
+      background: on ? T.accent : T.chip, position: 'relative', transition: 'background .15s', flexShrink: 0,
+    }}>
+      <span style={{
+        position: 'absolute', top: 3, left: on ? 23 : 3, width: 20, height: 20, borderRadius: '50%',
+        background: on ? T.accentFg : T.fgDim, transition: 'left .15s',
+      }} />
+    </button>
   )
 }
 

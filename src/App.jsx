@@ -56,6 +56,9 @@ export default function App() {
   const [isRateLimited, setIsRateLimited] = useState(false)
   const [readerOpen, setReaderOpen] = useState(false)
   const [readerStartIdx, setReaderStartIdx] = useState(0)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportNote, setReportNote] = useState('')
+  const [reportSaved, setReportSaved] = useState(false)
 
   const updateScene = useCallback((id, patch) => {
     setScenes(prev => {
@@ -426,19 +429,19 @@ export default function App() {
     })
   }
 
-  // 수동 문제 리포트 — 취소/에러처럼 자동 로그 안 되는 경우 사용자가 직접 기록
-  const handleReport = useCallback(() => {
-    const note = window.prompt('무슨 문제인가요? (선택 — 비워도 됨)\n이 작업의 처리 정보가 함께 기록됩니다.')
-    if (note === null) return // 취소
+  // 수동 문제 리포트 — 모달로 입력
+  const handleReport = useCallback(() => { setReportNote(''); setReportSaved(false); setReportOpen(true) }, [])
+  function submitReport() {
     const cur = scenesRef.current || []
     logProcess({
-      ...(diagRef.current || {}), event: 'report', manual: true, note: note || '',
+      ...(diagRef.current || {}), event: 'report', manual: true, note: reportNote || '',
       doneCount: cur.filter(s => s.status === 'done').length,
       total: cur.length,
       errorScenes: cur.filter(s => s.status.startsWith('error')).slice(0, 10).map(s => ({ id: s.id, error: (s.error || '').slice(0, 120) })),
     })
-    window.alert('문제 리포트가 기록됐어요 (process-log.jsonl)')
-  }, [])
+    setReportSaved(true)
+    setTimeout(() => setReportOpen(false), 700)
+  }
 
   // 수정 모드: 기존 txt → 씬 분리 → Claude 수정
   async function handleStartRevise({ text, title: t, mode }) {
@@ -651,10 +654,10 @@ export default function App() {
 
       {step === 'extracting' && (() => {
         const analyzing = extractProgress.label?.includes('분석')
-        // 분석중 단계별 문구 (8초마다 전환 → 같은 말 반복 지루함 해소)
-        const phases = ['씬 경계를 찾는 중', '줄마다 씬 헤딩인지 판단하는 중', '구조를 정리하는 중', '거의 다 됐어요']
+        // 분석중 단계별 문구 (정직하게 — 길어지면 과장 없이 안내)
+        const phases = ['씬 경계 찾는 중', '대사·지문 구분 중', '구조 정리 중']
         const mainLabel = analyzing
-          ? phases[Math.min(phases.length - 1, Math.floor(extractElapsed / 8))]
+          ? (extractElapsed >= 30 ? '긴 각본이라 분석이 길어지고 있어요' : (phases[Math.floor(extractElapsed / 10)] || phases[phases.length - 1]))
           : (extractProgress.label || '파일 불러오는 중...')
         return (
           <div style={{ padding: '60px 24px', textAlign: 'center' }}>
@@ -685,6 +688,7 @@ export default function App() {
           smiWarning={smiWarning}
           pdfWarnings={pdfWarnings}
           processInfo={processInfo}
+          smiInfo={smiInfo}
           onStart={handleStart}
           onBack={() => setStep('upload')}
         />
@@ -699,6 +703,29 @@ export default function App() {
           onRetry={handleRetry} onReprocess={handleReprocess}
           onDownload={handleDownload} onReset={handleReset} onReport={handleReport}
         />
+      )}
+
+      {reportOpen && (
+        <div onClick={() => setReportOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: '#000b', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, background: T.bgCard, borderRadius: 14, border: `1px solid ${T.rule}`, padding: 20 }}>
+            <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, marginBottom: 6 }}>문제 리포트</div>
+            <div style={{ color: T.fgDim, fontSize: 12.5, marginBottom: 12, lineHeight: 1.5 }}>
+              뭐가 이상한지 적어줘 (선택). 이 작업의 처리 정보가 함께 기록돼 나중에 원인 찾는 데 쓰여.
+            </div>
+            <textarea value={reportNote} onChange={e => setReportNote(e.target.value)} autoFocus
+              placeholder={'예: 12번 씬 대사가 지문으로 합쳐짐'}
+              style={{ width: '100%', minHeight: 96, resize: 'vertical', boxSizing: 'border-box',
+                background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 9, color: T.fg,
+                fontSize: 14, padding: 12, lineHeight: 1.5, outline: 'none' }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button onClick={() => setReportOpen(false)} style={{ flex: 1, padding: '11px', borderRadius: 9, border: `1px solid ${T.rule}`, background: 'none', color: T.fgMuted, fontSize: 14, cursor: 'pointer' }}>취소</button>
+              <button onClick={submitReport} style={{ flex: 2, padding: '11px', borderRadius: 9, border: 'none', background: reportSaved ? T.good : T.accent, color: T.accentFg, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                {reportSaved ? '기록됨 ✓' : '기록'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}

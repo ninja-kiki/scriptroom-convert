@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { T, fmtDuration, fmtTokens, loadSettings } from '../lib/core.js'
 import SceneCard from './SceneCard.jsx'
 
@@ -45,6 +45,14 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0
   const isDone = doneCount === total && total > 0
   const hasIncomplete = phase === 'done' && scenes.some(s => s.status !== 'done')
+
+  // 경과시간 1초마다 갱신 (작업 중에만)
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (isDone || phase === 'done') return
+    const t = setInterval(() => setTick(n => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [isDone, phase])
 
   return (
     <div style={{ padding: '24px 16px', maxWidth: 640, margin: '0 auto' }}>

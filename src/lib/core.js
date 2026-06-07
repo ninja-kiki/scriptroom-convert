@@ -62,7 +62,7 @@ export const DEFAULT_SETTINGS = {
   concurrency: 3,                    // 동시 처리 씬 수
   model: 'claude-haiku-4-5',         // (구) 공통 모델 — 폴백용
   formatModel: 'claude-haiku-4-5',   // 구조/포맷 LLM 폴백 (싸게)
-  translateModel: 'claude-haiku-4-5',// 번역 (품질 원하면 sonnet)
+  translateModel: 'claude-sonnet-4-6',// 번역 (기본 Sonnet — 품질)
   batchShort: true,                  // 짧은 씬 배칭으로 호출수 절감
 }
 
