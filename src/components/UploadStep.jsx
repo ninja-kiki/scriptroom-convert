@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens } from '../lib/core.js'
+import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens, loadGuidelines } from '../lib/core.js'
 import { decodeSubtitle, parseSubtitleLines, subtitleInfo } from '../lib/smi.js'
 import { detectIssues, detectFileType, planLLMChunks, estimateTokens, applyAutoFixes, patchText, parseFeedback, classifyFeedback, applyDirectEdits } from '../lib/revise.js'
 
@@ -135,6 +135,32 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
       const dr = applyDirectEdits(result, feedbackItems)
       result = dr.text
       directApplied = dr.applied.length
+    }
+
+    // 1.7 검수 피드백의 '해석필요'(태그·메모만) — 블록별 LLM 내용수정 후 치환
+    const llmFeedback = feedbackClass?.llm || []
+    if (llmFeedback.length) {
+      setLlmProgress({ done: 0, total: llmFeedback.length })
+      const guidelines = loadGuidelines('translate')
+      const edited = []
+      for (let i = 0; i < llmFeedback.length; i++) {
+        const it = llmFeedback[i]
+        if (it.ko) {
+          const note = it.marks.map(m => `[${m.tags.join('·')}]${m.memo ? ' ' + m.memo : ''}`).join(' / ')
+          try {
+            const res = await fetch('/api/fix-feedback', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ko: it.ko, en: it.en, note, guidelines }),
+            })
+            if (res.ok) {
+              const { fixed } = await res.json()
+              if (fixed && fixed !== it.ko) edited.push({ ...it, edited: fixed })
+            }
+          } catch {}
+        }
+        setLlmProgress({ done: i + 1, total: llmFeedback.length })
+      }
+      if (edited.length) result = applyDirectEdits(result, edited).text
     }
 
     // 2. LLM 패치 (사용자 지시사항 있을 때)
@@ -347,10 +373,10 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
           )}
 
           {/* 수정 적용 버튼 */}
-          {reviseIssues !== null && (reviseIssues.length > 0 || llmChunks.length > 0 || feedbackClass?.direct.length > 0) && (
+          {reviseIssues !== null && (reviseIssues.length > 0 || llmChunks.length > 0 || feedbackItems?.length > 0) && (
             <button
               onClick={handleReviseApply}
-              disabled={reviseRunning || (reviseSelected.length === 0 && llmChunks.length === 0 && !(feedbackClass?.direct.length > 0))}
+              disabled={reviseRunning || (reviseSelected.length === 0 && llmChunks.length === 0 && !(feedbackItems?.length > 0))}
               style={{
                 width: '100%', padding: '13px', borderRadius: 10, border: 'none',
                 background: reviseDone ? T.good : reviseRunning ? T.chip : T.accent,

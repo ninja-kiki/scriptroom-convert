@@ -152,6 +152,25 @@ ${instruction}
   return { patched }
 }
 
+// 검수 피드백(해석필요) — 지적에 맞게 번역 '내용'을 고침
+async function handleFixFeedback(body) {
+  const { ko, en, note, guidelines } = body
+  if (!ko) throw new Error('ko required')
+  const systemPrompt = `당신은 영화 각본 번역 교정가입니다. 검수자의 지적에 따라 한국어 번역을 자연스럽게 고칩니다.
+${guidelines ? `\n번역 지침:\n${guidelines}\n` : ''}
+검수자 지적:
+${note}
+${en ? `\n원문(영어): ${en}` : ''}
+
+중요:
+- 지적에 맞게 번역 '내용'을 고치세요 (반말/존댓말, 오역, 어색함 등 포함)
+- 고친 한국어 텍스트만 출력 (설명·따옴표 없이)
+- @·#·괄호 등 마커와 구조는 유지`
+  const userPrompt = `현재 번역:\n${ko}\n\n위를 지적에 맞게 고친 번역만 출력하세요.`
+  const fixed = await runClaude(systemPrompt, userPrompt)
+  return { fixed: (fixed || '').trim() }
+}
+
 async function handleDetectHeadings(body) {
   const { candidates } = body
   if (!candidates || candidates.length === 0) return { indices: [] }
@@ -234,6 +253,7 @@ const server = createServer(async (req, res) => {
       else if (req.url === '/api/load-glossary') result = handleLoadGlossary()
       else if (req.url === '/api/save-glossary') result = handleSaveGlossary(data)
       else if (req.url === '/api/log') result = handleLog(data)
+      else if (req.url === '/api/fix-feedback') result = await handleFixFeedback(data)
       else { res.writeHead(404).end(); return }
 
       res.writeHead(200, { 'Content-Type': 'application/json' })
