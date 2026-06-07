@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens } from '../lib/core.js'
 import { decodeSubtitle, parseSubtitleLines, subtitleInfo } from '../lib/smi.js'
-import { detectIssues, detectFileType, planLLMChunks, estimateTokens, applyAutoFixes, patchText } from '../lib/revise.js'
+import { detectIssues, detectFileType, planLLMChunks, estimateTokens, applyAutoFixes, patchText, parseFeedback, classifyFeedback, applyDirectEdits } from '../lib/revise.js'
 
 const SESSION_KEY = 'convert_session'
 const SCRIPT_EXTS = ['pdf', 'txt', 'fdx', 'fountain', 'rtf']
@@ -43,6 +43,12 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
   const [llmChunks, setLlmChunks] = useState([])
   const [llmProgress, setLlmProgress] = useState(null) // null | { done, total }
   const [reviseRunning, setReviseRunning] = useState(false)
+  // 검수 피드백 파일 (B: _feedback.txt)
+  const [feedbackFile, setFeedbackFile] = useState(null)
+  const [feedbackItems, setFeedbackItems] = useState(null)
+  const [dragOverFeedback, setDragOverFeedback] = useState(false)
+  const feedbackRef = useRef()
+  const feedbackClass = feedbackItems ? classifyFeedback(feedbackItems) : null
 
   const currentSession = (() => {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null') } catch { return null }
@@ -100,6 +106,15 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
     setReviseSelected(issues.map(i => i.id))
   }
 
+  async function handleFeedbackSelect(file) {
+    if (!file || !file.name.endsWith('.txt')) return
+    setReviseDone(false)
+    const text = await file.text()
+    const items = parseFeedback(text)
+    setFeedbackFile(file)
+    setFeedbackItems(items)
+  }
+
   function handleInstructionChange(val) {
     setUserInstruction(val)
     if (!reviseText) return
@@ -113,6 +128,14 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
 
     // 1. 자동 수정
     let result = applyAutoFixes(reviseText, reviseSelected)
+
+    // 1.5 검수 피드백의 '수정됨'(직접수정) 적용 — LLM 0토큰
+    let directApplied = 0
+    if (feedbackItems?.length) {
+      const dr = applyDirectEdits(result, feedbackItems)
+      result = dr.text
+      directApplied = dr.applied.length
+    }
 
     // 2. LLM 패치 (사용자 지시사항 있을 때)
     if (llmChunks.length > 0 && userInstruction.trim()) {
@@ -205,7 +228,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                     </div>
                   )}
                 </div>
-                <button onClick={e => { e.stopPropagation(); setReviseFile(null); setReviseIssues(null); setReviseDone(false); setLlmChunks([]) }}
+                <button onClick={e => { e.stopPropagation(); setReviseFile(null); setReviseIssues(null); setReviseDone(false); setLlmChunks([]); setFeedbackFile(null); setFeedbackItems(null) }}
                   style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 20, cursor: 'pointer' }}>×</button>
               </div>
             ) : (
@@ -217,6 +240,41 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             )}
             <input ref={reviseRef} type="file" accept=".txt" hidden onChange={e => handleReviseFileSelect(e.target.files[0])} />
           </div>
+
+          {/* 검수 피드백 파일 (선택) */}
+          {reviseFile && (
+            <div
+              onClick={() => !feedbackFile && feedbackRef.current.click()}
+              onDragOver={e => { e.preventDefault(); setDragOverFeedback(true) }}
+              onDragLeave={() => setDragOverFeedback(false)}
+              onDrop={e => { e.preventDefault(); setDragOverFeedback(false); handleFeedbackSelect(e.dataTransfer.files[0]) }}
+              style={{
+                border: `2px dashed ${dragOverFeedback ? T.accent : feedbackFile ? T.good + '66' : T.rule}`,
+                borderRadius: 12, padding: feedbackFile ? '14px 16px' : '20px 24px',
+                textAlign: 'center', cursor: feedbackFile ? 'default' : 'pointer',
+                background: dragOverFeedback ? '#13201a' : T.bgCard, marginBottom: 16,
+              }}
+            >
+              {feedbackFile ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1, textAlign: 'left' }}>
+                    <div style={{ color: T.good, fontWeight: 600, fontSize: 13 }}>{feedbackFile.name}</div>
+                    <div style={{ color: T.fgDim, fontSize: 12, marginTop: 2 }}>
+                      피드백 {feedbackItems.length}건 · 직접수정 {feedbackClass.direct.length} (0토큰) · 해석필요 {feedbackClass.llm.length} <span style={{ color: T.fgDim }}>(LLM 예정)</span>
+                    </div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); setFeedbackFile(null); setFeedbackItems(null) }}
+                    style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 20, cursor: 'pointer' }}>×</button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ color: T.fg, fontWeight: 600, fontSize: 13, marginBottom: 3 }}>검수 피드백 (_feedback.txt) 드롭 — 선택</div>
+                  <div style={{ color: T.fgDim, fontSize: 12 }}>모바일에서 직접 고친 건 그대로 반영(0토큰)</div>
+                </>
+              )}
+              <input ref={feedbackRef} type="file" accept=".txt" hidden onChange={e => handleFeedbackSelect(e.target.files[0])} />
+            </div>
+          )}
 
           {/* 이슈 목록 */}
           {reviseIssues !== null && (
@@ -289,10 +347,10 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
           )}
 
           {/* 수정 적용 버튼 */}
-          {reviseIssues !== null && (reviseIssues.length > 0 || llmChunks.length > 0) && (
+          {reviseIssues !== null && (reviseIssues.length > 0 || llmChunks.length > 0 || feedbackClass?.direct.length > 0) && (
             <button
               onClick={handleReviseApply}
-              disabled={reviseRunning || (reviseSelected.length === 0 && llmChunks.length === 0)}
+              disabled={reviseRunning || (reviseSelected.length === 0 && llmChunks.length === 0 && !(feedbackClass?.direct.length > 0))}
               style={{
                 width: '100%', padding: '13px', borderRadius: 10, border: 'none',
                 background: reviseDone ? T.good : reviseRunning ? T.chip : T.accent,
