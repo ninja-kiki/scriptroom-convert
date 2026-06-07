@@ -93,7 +93,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         <div style={{ display: 'flex', gap: 16, fontSize: 12, color: T.fgMuted }}>
           <span>{pct}%</span>
           {startTime && <span>{fmtDuration(Date.now() - startTime)}</span>}
-          {totalTokens > 0 && <span>{fmtTokens(totalTokens)} tokens · {fmtCost}</span>}
+          {totalTokens > 0 && <span title="LLM에 보낸/받은 양 추정치 (규칙·자막 직결분은 제외)">~{fmtTokens(totalTokens)} 토큰 (추정)</span>}
           {smiPct != null && (
             <span style={{ color: smiColor }}
               title={`자막과 일치한 대사 ${smiMatched}/${smiAttempts}. 낮으면 각본과 영화 자막 차이가 큰 것(번역이 자막에 덜 맞춰짐).`}>
@@ -111,13 +111,13 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
             {phase !== 'done' && !isPaused && <span style={{ color: T.fgMuted }}>{phase === 'formatting' ? '포맷 중...' : '번역 중...'}</span>}
             {phase !== 'done' && !isPaused && (
-              <button onClick={onPause} style={ctrlBtn}>일시정지</button>
+              <button onClick={onPause} style={ctrlBtn} title="잠깐 멈춤 — 재개하면 그 자리에서 이어서 계속">일시정지</button>
             )}
             {phase !== 'done' && isPaused && (
               <button onClick={onResume} style={{ ...ctrlBtn, color: T.good, borderColor: T.good }}>재개</button>
             )}
             {phase !== 'done' && (
-              <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={{ ...ctrlBtn, color: T.err, borderColor: T.err }}>중단</button>
+              <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={{ ...ctrlBtn, color: T.err, borderColor: T.err }} title="작업 종료 — 진행된 씬은 보존, 다시 하려면 '이어하기'">중단</button>
             )}
             {phase === 'done' && !hasIncomplete && <span style={{ color: T.fgMuted }}>완료</span>}
             {doneCount > 0 && (

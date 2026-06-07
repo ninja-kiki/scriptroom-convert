@@ -6,7 +6,8 @@ export default function SettingsPanel({ onClose }) {
   const [s, setS] = useState(() => loadSettings())
   const [formatText, setFormatText] = useState(() => loadGuidelines('format'))
   const [translateText, setTranslateText] = useState(() => loadGuidelines('translate'))
-  const [guidelinesOpen, setGuidelinesOpen] = useState(false)
+  const [formatOpen, setFormatOpen] = useState(false)
+  const [translateOpen, setTranslateOpen] = useState(false)
   const [saved, setSaved] = useState(false)
 
   function patch(p) { setS(prev => ({ ...prev, ...p })) }
@@ -20,10 +21,11 @@ export default function SettingsPanel({ onClose }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#000b', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, background: '#000b', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100, animation: 'fadeIn .15s ease' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         width: '100%', maxWidth: 600, background: T.bgCard,
         borderRadius: '16px 16px 0 0', maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        animation: 'slideUp .24s cubic-bezier(.2,.8,.2,1)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 20px 14px', borderBottom: `1px solid ${T.rule}` }}>
           <span style={{ color: T.fg, fontWeight: 700, fontSize: 17 }}>설정</span>
@@ -57,19 +59,17 @@ export default function SettingsPanel({ onClose }) {
             </Row>
           </div>
 
-          {/* 포맷 지침 */}
-          <div style={{ padding: '18px 20px 8px', color: T.fgMuted, fontSize: 13, fontWeight: 600 }}>포맷 지침</div>
-          <div style={{ padding: '0 20px 16px' }}>
+          {/* 포맷 지침 (기본 닫힘) */}
+          <Collapsible label="포맷 지침" open={formatOpen} onToggle={() => setFormatOpen(v => !v)}>
             <textarea value={formatText} onChange={e => setFormatText(e.target.value)} style={taStyle} />
             <ResetBtn onClick={() => { if (window.confirm('포맷 지침을 기본값으로 되돌릴까요?')) setFormatText(DEFAULT_FORMAT_GUIDELINES) }} />
-          </div>
+          </Collapsible>
 
-          {/* 번역 지침 */}
-          <div style={{ padding: '8px 20px 8px', color: T.fgMuted, fontSize: 13, fontWeight: 600 }}>번역 지침</div>
-          <div style={{ padding: '0 20px 16px' }}>
+          {/* 번역 지침 (기본 닫힘) */}
+          <Collapsible label="번역 지침" open={translateOpen} onToggle={() => setTranslateOpen(v => !v)}>
             <textarea value={translateText} onChange={e => setTranslateText(e.target.value)} style={taStyle} />
             <ResetBtn onClick={() => { if (window.confirm('번역 지침을 기본값으로 되돌릴까요?')) setTranslateText(DEFAULT_TRANSLATE_GUIDELINES) }} />
-          </div>
+          </Collapsible>
 
         </div>
 
@@ -128,6 +128,18 @@ function Row({ label, desc, children, last }) {
         {desc && <div style={{ color: T.fgDim, fontSize: 12, marginTop: 2 }}>{desc}</div>}
       </div>
       {children}
+    </div>
+  )
+}
+
+function Collapsible({ label, open, onToggle, children }) {
+  return (
+    <div style={{ borderBottom: `1px solid ${T.rule}` }}>
+      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', cursor: 'pointer' }}>
+        <span style={{ color: T.fgMuted, fontSize: 13, fontWeight: 600 }}>{label}</span>
+        <span style={{ color: T.fgDim, fontSize: 12, transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none' }}>▼</span>
+      </div>
+      {open && <div style={{ padding: '0 20px 16px', animation: 'riseIn .18s ease' }}>{children}</div>}
     </div>
   )
 }

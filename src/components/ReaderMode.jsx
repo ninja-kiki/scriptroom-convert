@@ -62,22 +62,21 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
         e.preventDefault()
         const el = contentRef.current
         if (!el) return
-        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8
-        if (atBottom) goScene(sceneIdx + 1)
+        const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
+        if (remaining <= el.clientHeight * 0.2) goScene(sceneIdx + 1) // 바닥 근처면 바로 다음
         else el.scrollBy({ top: 120, behavior: 'smooth' })
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         const el = contentRef.current
         if (!el) return
-        const atTop = el.scrollTop <= 0
-        if (atTop) goScene(sceneIdx - 1)
+        if (el.scrollTop <= 8) goScene(sceneIdx - 1)
         else el.scrollBy({ top: -120, behavior: 'smooth' })
       } else if (e.key === ' ') {
         e.preventDefault()
         const el = contentRef.current
         if (!el) return
-        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8
-        if (atBottom) goScene(sceneIdx + 1)
+        const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
+        if (remaining <= el.clientHeight * 0.2) goScene(sceneIdx + 1)
         else el.scrollBy({ top: el.clientHeight * 0.8, behavior: 'smooth' })
       } else if (e.key === 'c' || e.key === 'C') {
         setChecked(prev => {

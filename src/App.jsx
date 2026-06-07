@@ -15,6 +15,8 @@ const SESSION_KEY = 'convert_session'
 function saveSession(data) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(data)) } catch {} }
 function loadSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null') } catch { return null } }
 function clearSession() { localStorage.removeItem(SESSION_KEY) }
+// 토큰 추정 (서버가 실제 수치를 안 줘서 길이 기반 근사 — 한/영 혼합 ~3자/토큰)
+const estTokens = (s) => Math.round((s || '').length / 3)
 
 export default function App() {
   const session = loadSession()
@@ -129,7 +131,7 @@ export default function App() {
       updateScene(scene.id, {
         status: 'formatted', formatted, formatMethod: 'llm',
         heading: heading.startsWith('#') ? heading : null,
-        tokens: { format_in: tokens?.input ?? 0, format_out: tokens?.output ?? 0 },
+        tokens: { format_in: estTokens(scene.raw), format_out: estTokens(formatted) },
       })
       return true
     } catch (e) {
@@ -160,7 +162,7 @@ export default function App() {
         : { text: rawTranslated, matches: [] }
       updateScene(scene.id, {
         status: 'done', translated, smiMatches,
-        tokens: { ...scene.tokens, translate_in: tokens?.input ?? 0, translate_out: tokens?.output ?? 0 },
+        tokens: { ...scene.tokens, translate_in: estTokens(scene.formatted) + estTokens(smiContext || ''), translate_out: estTokens(rawTranslated) },
       })
       return true
     } catch (e) {
@@ -227,7 +229,7 @@ export default function App() {
           ? matchSmiToTranslation(parts[i], smiEntriesRef.current)
           : { text: parts[i], matches: [] }
         updateScene(s.id, { status: 'done', translated: text, smiMatches: matches, batched: true,
-          tokens: { ...s.tokens, translate_in: 0, translate_out: 0 } })
+          tokens: { ...s.tokens, translate_in: estTokens(s.formatted), translate_out: estTokens(parts[i]) } })
       })
     } catch (e) {
       if (e.code === 'RATE_LIMIT') { setIsRateLimited(true); isPausedRef.current = true; setIsPaused(true) }
@@ -707,14 +709,14 @@ export default function App() {
 
       {reportOpen && (
         <div onClick={() => setReportOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: '#000b', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, background: T.bgCard, borderRadius: 14, border: `1px solid ${T.rule}`, padding: 20 }}>
+          style={{ position: 'fixed', inset: 0, background: '#000b', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 20, animation: 'fadeIn .15s ease' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, background: T.bgCard, borderRadius: 14, border: `1px solid ${T.rule}`, padding: 20, animation: 'popIn .18s ease' }}>
             <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, marginBottom: 6 }}>문제 리포트</div>
             <div style={{ color: T.fgDim, fontSize: 12.5, marginBottom: 12, lineHeight: 1.5 }}>
-              뭐가 이상한지 적어줘 (선택). 이 작업의 처리 정보가 함께 기록돼 나중에 원인 찾는 데 쓰여.
+              어떤 점이 이상한지 적어 주세요 (선택). 이 작업의 처리 정보가 함께 기록되어 나중에 원인을 찾는 데 쓰입니다.
             </div>
             <textarea value={reportNote} onChange={e => setReportNote(e.target.value)} autoFocus
-              placeholder={'예: 12번 씬 대사가 지문으로 합쳐짐'}
+              placeholder={'예: 12번 씬 대사가 지문으로 합쳐졌어요'}
               style={{ width: '100%', minHeight: 96, resize: 'vertical', boxSizing: 'border-box',
                 background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 9, color: T.fg,
                 fontSize: 14, padding: 12, lineHeight: 1.5, outline: 'none' }} />
@@ -731,7 +733,13 @@ export default function App() {
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       {readerOpen && <ReaderMode scenes={scenes} initialIndex={readerStartIdx} onClose={() => setReaderOpen(false)} />}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes slideUp { from { transform: translateY(24px); opacity: .4 } to { transform: translateY(0); opacity: 1 } }
+        @keyframes popIn { from { transform: scale(.94); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+        @keyframes riseIn { from { transform: translateY(8px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+      `}</style>
     </div>
   )
 }
