@@ -92,6 +92,14 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
               자막매칭 {smiPct}%{smiPct < 35 ? ' ⚠ 차이 큼' : smiPct >= 60 ? ' ✓' : ''}
             </span>
           )}
+          {(() => {
+            const ruleFmt = scenes.filter(s => s.formatMethod === 'rule').length
+            return ruleFmt > 0 ? (
+              <span style={{ color: T.good }} title="규칙으로 포맷한 씬 (LLM 안 씀, 0토큰)">
+                규칙포맷 {ruleFmt}씬 ✓
+              </span>
+            ) : null
+          })()}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
             {phase !== 'done' && !isPaused && <span style={{ color: T.fgMuted }}>{phase === 'formatting' ? '포맷 중...' : '번역 중...'}</span>}
             {phase !== 'done' && !isPaused && (

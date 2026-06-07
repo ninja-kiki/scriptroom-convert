@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi, loadPromptsFromFile, logProcess } from './lib/core.js'
 import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
+import { ruleFormat } from './lib/format-rules.js'
 import { analyzeScenes } from './lib/analyze.js'
 import { parseSMIEntries, matchSmiToTranslation, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
 import { detectFileType } from './lib/revise.js'
@@ -104,6 +105,17 @@ export default function App() {
 
   async function processFormat(scene, guidelines) {
     updateScene(scene.id, { status: 'formatting' })
+    // 규칙 우선 — 깔끔한 씬은 LLM 없이(0토큰). 확신 낮으면 LLM 폴백.
+    const rf = ruleFormat(scene.raw)
+    if (rf.confidence >= 0.7) {
+      const heading = rf.formatted.split('\n')[0].trim()
+      updateScene(scene.id, {
+        status: 'formatted', formatted: rf.formatted, formatMethod: 'rule',
+        heading: heading.startsWith('#') ? heading : null,
+        tokens: { format_in: 0, format_out: 0 },
+      })
+      return true
+    }
     try {
       const { formatted, tokens } = await postJSON('/api/format', {
         sceneText: scene.raw, guidelines, sceneIndex: scene.id,
@@ -111,7 +123,7 @@ export default function App() {
       })
       const heading = formatted.split('\n')[0].trim()
       updateScene(scene.id, {
-        status: 'formatted', formatted,
+        status: 'formatted', formatted, formatMethod: 'llm',
         heading: heading.startsWith('#') ? heading : null,
         tokens: { format_in: tokens?.input ?? 0, format_out: tokens?.output ?? 0 },
       })
