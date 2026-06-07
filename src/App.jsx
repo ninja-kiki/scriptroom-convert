@@ -117,9 +117,10 @@ export default function App() {
       return true
     }
     try {
+      const fs = loadSettings()
       const { formatted, tokens } = await postJSON('/api/format', {
         sceneText: scene.raw, guidelines, sceneIndex: scene.id,
-        totalScenes: scenesRef.current.length, model: loadSettings().model,
+        totalScenes: scenesRef.current.length, model: fs.formatModel || fs.model,
       })
       const heading = formatted.split('\n')[0].trim()
       updateScene(scene.id, {
@@ -148,7 +149,7 @@ export default function App() {
         smiAuthoritative: smiInfo?.lang === 'ko',  // KO 자막이면 대사는 자막 우선
         characterMemo: characterMemo || null, guidelines,
         sceneIndex: scene.id, totalScenes: scenesRef.current.length,
-        model: loadSettings().model,
+        model: loadSettings().translateModel || loadSettings().model,
       })
       // SMI 매칭: 번역 완료 후 대사 라인을 자막과 비교·교체
       const { text: translated, matches: smiMatches } = smiEntriesRef.current

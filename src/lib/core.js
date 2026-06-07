@@ -53,9 +53,17 @@ export const DEFAULT_TRANSLATE_GUIDELINES = `동일 구조 유지. @인물명·�
 SMI 참고 시: 대사는 SMI 1순위, 오역 판단 시 독자 판단 우선. 호칭·말투·경어는 SMI 기준.`
 
 // Settings
+export const MODELS = [
+  { id: 'claude-haiku-4-5', label: 'Haiku (빠름·쌈)' },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet (균형)' },
+  { id: 'claude-opus-4-8', label: 'Opus (고품질)' },
+]
 export const DEFAULT_SETTINGS = {
-  concurrency: 3,             // 동시 처리 씬 수
-  model: 'claude-haiku-4-5',  // 사용 모델
+  concurrency: 3,                    // 동시 처리 씬 수
+  model: 'claude-haiku-4-5',         // (구) 공통 모델 — 폴백용
+  formatModel: 'claude-haiku-4-5',   // 구조/포맷 LLM 폴백 (싸게)
+  translateModel: 'claude-haiku-4-5',// 번역 (품질 원하면 sonnet)
+  batchShort: true,                  // 짧은 씬 배칭으로 호출수 절감
 }
 
 export function loadSettings() {

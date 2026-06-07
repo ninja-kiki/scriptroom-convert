@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { T, loadGuidelines, saveGuidelines, loadSettings, saveSettings, DEFAULT_FORMAT_GUIDELINES, DEFAULT_TRANSLATE_GUIDELINES } from '../lib/core.js'
+import { T, loadGuidelines, saveGuidelines, loadSettings, saveSettings, DEFAULT_FORMAT_GUIDELINES, DEFAULT_TRANSLATE_GUIDELINES, MODELS } from '../lib/core.js'
 
 
 export default function SettingsPanel({ onClose }) {
@@ -35,7 +35,7 @@ export default function SettingsPanel({ onClose }) {
           {/* 처리 */}
           <SectionLabel>처리</SectionLabel>
           <div style={{ borderTop: `1px solid ${T.rule}`, borderBottom: `1px solid ${T.rule}` }}>
-            <Row label="동시 처리 씬 수" desc="높을수록 빠름, 오류 가능성 증가" last>
+            <Row label="동시 처리 씬 수" desc="높을수록 빠름, 오류 가능성 증가">
               <div style={{ display: 'flex', gap: 6 }}>
                 {[1, 2, 3, 4].map(n => (
                   <button key={n} onClick={() => patch({ concurrency: n })} style={{
@@ -46,6 +46,17 @@ export default function SettingsPanel({ onClose }) {
                   }}>{n}</button>
                 ))}
               </div>
+            </Row>
+            <Row label="포맷 모델" desc="구조 파악 — 보통 규칙으로 처리, 폴백 때만 사용">
+              <ModelPicker value={s.formatModel || s.model} onChange={m => patch({ formatModel: m })} />
+            </Row>
+            <Row label="번역 모델" desc="품질 중요하면 Sonnet 이상">
+              <ModelPicker value={s.translateModel || s.model} onChange={m => patch({ translateModel: m })} />
+            </Row>
+            <Row label="짧은 씬 배칭" desc="짧은 씬 여러 개를 한 번에 — 호출수·비용 절감" last>
+              <button onClick={() => patch({ batchShort: !s.batchShort })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                <Checkmark on={s.batchShort !== false} />
+              </button>
             </Row>
           </div>
 
@@ -90,6 +101,25 @@ function SectionLabel({ children, collapsible, expanded, onToggle }) {
     }}>
       <span style={{ color: T.fgMuted, fontSize: 12, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase' }}>{children}</span>
       {collapsible && <span style={{ color: T.fgDim, fontSize: 12 }}>{expanded ? '▲' : '▼'}</span>}
+    </div>
+  )
+}
+
+function ModelPicker({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {MODELS.map(m => {
+        const on = value === m.id
+        return (
+          <button key={m.id} onClick={() => onChange(m.id)}
+            title={m.label}
+            style={{
+              padding: '6px 9px', borderRadius: 7, border: 'none',
+              background: on ? T.accent : T.chip, color: on ? T.accentFg : T.fgMuted,
+              fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>{m.label.split(' ')[0]}</button>
+        )
+      })}
     </div>
   )
 }

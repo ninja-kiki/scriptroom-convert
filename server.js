@@ -57,10 +57,22 @@ function findClaude() {
 
 const CLAUDE_BIN = findClaude()
 
-function runClaude(systemPrompt, userPrompt) {
+function modelAlias(m) {
+  if (!m) return null
+  const s = String(m).toLowerCase()
+  if (s.includes('opus')) return 'opus'
+  if (s.includes('sonnet')) return 'sonnet'
+  if (s.includes('haiku')) return 'haiku'
+  return null
+}
+
+function runClaude(systemPrompt, userPrompt, model) {
   return new Promise((resolve, reject) => {
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}`
-    const proc = spawn(CLAUDE_BIN, ['-p'], {
+    const args = ['-p']
+    const alias = modelAlias(model)
+    if (alias) args.push('--model', alias)
+    const proc = spawn(CLAUDE_BIN, args, {
       env: process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
@@ -89,7 +101,7 @@ function runClaude(systemPrompt, userPrompt) {
 }
 
 async function handleFormat(body) {
-  const { sceneText, guidelines, sceneIndex, totalScenes } = body
+  const { sceneText, guidelines, sceneIndex, totalScenes, model } = body
   if (!sceneText) throw new Error('sceneText required')
 
   const systemPrompt = `당신은 영화 각본 포매터입니다. 원본 각본 텍스트를 받아 지정된 형식으로 변환하세요.
@@ -103,7 +115,7 @@ ${guidelines}
 
 ${sceneText}`
 
-  const formatted = await runClaude(systemPrompt, userPrompt)
+  const formatted = await runClaude(systemPrompt, userPrompt, model)
   return { formatted, tokens: null }
 }
 
@@ -131,7 +143,7 @@ ${guidelines}${memoSection}${prevSection}${smiSection}
 
 ${formattedText}`
 
-  const translated = await runClaude(systemPrompt, userPrompt)
+  const translated = await runClaude(systemPrompt, userPrompt, model)
   return { translated, tokens: null }
 }
 
@@ -158,7 +170,7 @@ ${instruction}
 
 // 검수 피드백(해석필요) — 지적에 맞게 번역 '내용'을 고침
 async function handleFixFeedback(body) {
-  const { ko, en, note, guidelines } = body
+  const { ko, en, note, guidelines, model } = body
   if (!ko) throw new Error('ko required')
   const systemPrompt = `당신은 영화 각본 번역 교정가입니다. 검수자의 지적에 따라 한국어 번역을 자연스럽게 고칩니다.
 ${guidelines ? `\n번역 지침:\n${guidelines}\n` : ''}
@@ -171,7 +183,7 @@ ${en ? `\n원문(영어): ${en}` : ''}
 - 고친 한국어 텍스트만 출력 (설명·따옴표 없이)
 - @·#·괄호 등 마커와 구조는 유지`
   const userPrompt = `현재 번역:\n${ko}\n\n위를 지적에 맞게 고친 번역만 출력하세요.`
-  const fixed = await runClaude(systemPrompt, userPrompt)
+  const fixed = await runClaude(systemPrompt, userPrompt, model)
   return { fixed: (fixed || '').trim() }
 }
 
