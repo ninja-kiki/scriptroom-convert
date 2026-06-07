@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { T, fmtDuration, fmtTokens, loadSettings } from '../lib/core.js'
 import SceneCard from './SceneCard.jsx'
 
-export default function ProcessPanel({ title, scenes, phase, startTime, isPaused, isRateLimited, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onDownload, onReset, onReader }) {
+export default function ProcessPanel({ title, scenes, phase, startTime, isPaused, isRateLimited, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onDownload, onReset, onReader, onReport }) {
   const [expandedId, setExpandedId] = useState(null)
   const [filter, setFilter] = useState('all')  // all | warn | error
 
@@ -109,6 +109,10 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
             )}
             {hasIncomplete && (
               <button onClick={onContinue} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>이어하기</button>
+            )}
+            {onReport && (
+              <button onClick={onReport} title="이 작업의 처리 정보를 로그에 기록 (문제 추적용)"
+                style={{ ...ctrlBtn, color: T.fgDim, borderColor: T.rule }}>문제 리포트</button>
             )}
           </span>
         </div>

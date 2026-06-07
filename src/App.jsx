@@ -50,6 +50,7 @@ export default function App() {
   const isPausedRef = useRef(false)
   const isStoppedRef = useRef(false)
   const characterMemoRef = useRef('')  // 이번 작업의 인물 글로서리 (재처리에서도 동일 사용)
+  const diagRef = useRef(null)  // 이번 작업의 처리 진단 (완료 시/수동 리포트 시 기록)
   const [isPaused, setIsPaused] = useState(false)
   const [isRateLimited, setIsRateLimited] = useState(false)
   const [readerOpen, setReaderOpen] = useState(false)
@@ -263,7 +264,7 @@ export default function App() {
     const warnings = analyzeScenes(rawScenes, rawText)
     diag.warnings = warnings.map(w => w.code)
     setProcessInfo(diag)
-    logProcess(diag)
+    diagRef.current = diag  // 로그는 완료 시점/수동 리포트 때만 (취소·초기에러 노이즈 방지)
     setPdfWarnings(warnings)
     const scenes = rawScenes.map(s => ({
       ...s, status: 'pending', formatted: null, translated: null, tokens: null, error: null, heading: null
@@ -326,7 +327,30 @@ export default function App() {
       totalOut: acc.totalOut + (s.tokens?.format_out || 0) + (s.tokens?.translate_out || 0),
     }), { totalIn: 0, totalOut: 0 })
     saveHistory({ id: jobIdRef.current, title, sceneCount: finalScenes.length, sceneData: finalScenes, startTime: st, duration: Date.now() - st })
+
+    // 작업 마무리 시점에만 진단 로그 기록 (의미 있는 완료 기록)
+    logProcess({
+      ...(diagRef.current || {}), event: 'done',
+      doneCount: finalScenes.filter(s => s.status === 'done').length,
+      total: finalScenes.length,
+      errors: finalScenes.filter(s => s.status.startsWith('error')).length,
+      durationMs: Date.now() - st,
+    })
   }
+
+  // 수동 문제 리포트 — 취소/에러처럼 자동 로그 안 되는 경우 사용자가 직접 기록
+  const handleReport = useCallback(() => {
+    const note = window.prompt('무슨 문제인가요? (선택 — 비워도 됨)\n이 작업의 처리 정보가 함께 기록됩니다.')
+    if (note === null) return // 취소
+    const cur = scenesRef.current || []
+    logProcess({
+      ...(diagRef.current || {}), event: 'report', manual: true, note: note || '',
+      doneCount: cur.filter(s => s.status === 'done').length,
+      total: cur.length,
+      errorScenes: cur.filter(s => s.status.startsWith('error')).slice(0, 10).map(s => ({ id: s.id, error: (s.error || '').slice(0, 120) })),
+    })
+    window.alert('문제 리포트가 기록됐어요 (process-log.jsonl)')
+  }, [])
 
   // 수정 모드: 기존 txt → 씬 분리 → Claude 수정
   async function handleStartRevise({ text, title: t, mode }) {
@@ -585,7 +609,7 @@ export default function App() {
           onPause={handlePause} onResume={handleResume} onStop={handleStop} onContinue={handleContinue}
           onReader={() => { setReaderStartIdx(0); setReaderOpen(true) }}
           onRetry={handleRetry} onReprocess={handleReprocess}
-          onDownload={handleDownload} onReset={handleReset}
+          onDownload={handleDownload} onReset={handleReset} onReport={handleReport}
         />
       )}
 
