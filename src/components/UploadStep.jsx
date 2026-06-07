@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens, loadGuidelines } from '../lib/core.js'
+import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens, loadGuidelines, loadSettings } from '../lib/core.js'
 import { decodeSubtitle, parseSubtitleLines, subtitleInfo } from '../lib/smi.js'
 import { detectIssues, detectFileType, planLLMChunks, estimateTokens, applyAutoFixes, patchText, parseFeedback, classifyFeedback, applyDirectEdits } from '../lib/revise.js'
 
@@ -49,6 +49,46 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
   const [dragOverFeedback, setDragOverFeedback] = useState(false)
   const feedbackRef = useRef()
   const feedbackClass = feedbackItems ? classifyFeedback(feedbackItems) : null
+  // 리더 '수정요청.json' → Max LLM 수정 → 오버레이.json
+  const [fixReq, setFixReq] = useState(null)
+  const [fixRunning, setFixRunning] = useState(false)
+  const [fixProgress, setFixProgress] = useState(null)
+  const fixReqRef = useRef()
+  async function handleFixReqSelect(file) {
+    if (!file) return
+    try {
+      const obj = JSON.parse(await file.text())
+      if (!Array.isArray(obj.items)) { alert('수정요청 JSON 형식이 아니에요.'); return }
+      setFixReq(obj)
+    } catch { alert('JSON을 읽을 수 없어요.') }
+  }
+  async function runFixReq() {
+    if (!fixReq?.items?.length) return
+    setFixRunning(true); setFixProgress({ done: 0, total: fixReq.items.length })
+    const guidelines = loadGuidelines('translate')
+    const model = (loadSettings().translateModel || loadSettings().model)
+    const edits = {}
+    for (let i = 0; i < fixReq.items.length; i++) {
+      const it = fixReq.items[i]
+      if (it.ko) {
+        const note = [it.tags?.length ? `[${it.tags.join('·')}]` : '', it.memo || ''].filter(Boolean).join(' ')
+        try {
+          const res = await fetch('/api/fix-feedback', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ko: it.ko, en: it.en, note, guidelines, model }),
+          })
+          if (res.ok) { const { fixed } = await res.json(); if (fixed && fixed !== it.ko) edits[it.blockId] = fixed }
+        } catch {}
+      }
+      setFixProgress({ done: i + 1, total: fixReq.items.length })
+    }
+    const blob = new Blob([JSON.stringify({ id: fixReq.id, title: fixReq.title, edits }, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `${fixReq.id || 'overlay'}_수정.json`; a.click()
+    URL.revokeObjectURL(url)
+    setFixRunning(false); setFixProgress(null)
+    alert(`${Object.keys(edits).length}개 수정 완료 → 리더에서 '수정 가져오기'로 반영하세요.`)
+  }
 
   const currentSession = (() => {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null') } catch { return null }
@@ -238,6 +278,33 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
 
       {tab === 'revise' && (
         <div>
+          {/* 리더 수정요청(JSON) → AI 수정 → 오버레이 */}
+          <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, border: `1px solid ${T.rule}`, background: T.bgCard }}>
+            <div style={{ color: T.fg, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>리더 수정요청 처리 <span style={{ color: T.fgDim, fontWeight: 400 }}>(오류 마크 → AI 수정)</span></div>
+            {!fixReq ? (
+              <>
+                <div style={{ color: T.fgDim, fontSize: 12, marginBottom: 10 }}>리더에서 내보낸 <code>_수정요청.json</code>을 올리면 Max로 고쳐 <code>_수정.json</code>(오버레이)을 만들어요. 원본은 안 건드림.</div>
+                <button onClick={() => fixReqRef.current.click()} style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${T.rule}`, background: T.chip, color: T.fg, fontSize: 13, cursor: 'pointer' }}>수정요청 JSON 불러오기</button>
+              </>
+            ) : (
+              <>
+                <div style={{ color: T.fgMuted, fontSize: 12, marginBottom: 10 }}>{fixReq.title || fixReq.id} · 오류 마크 {fixReq.items.length}건</div>
+                {fixProgress && (
+                  <div style={{ height: 4, background: T.rule, borderRadius: 2, marginBottom: 8 }}>
+                    <div style={{ height: '100%', borderRadius: 2, background: T.accent, width: `${(fixProgress.done / fixProgress.total) * 100}%`, transition: 'width .3s' }} />
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={runFixReq} disabled={fixRunning} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: fixRunning ? T.chip : T.accent, color: fixRunning ? T.fgDim : T.accentFg, fontSize: 13, fontWeight: 700, cursor: fixRunning ? 'default' : 'pointer' }}>
+                    {fixRunning ? `수정 중 ${fixProgress?.done || 0}/${fixProgress?.total || 0}` : 'AI 수정 → 오버레이 다운로드'}
+                  </button>
+                  {!fixRunning && <button onClick={() => setFixReq(null)} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.rule}`, background: 'none', color: T.fgMuted, fontSize: 13, cursor: 'pointer' }}>취소</button>}
+                </div>
+              </>
+            )}
+            <input ref={fixReqRef} type="file" accept=".json" hidden onChange={e => { handleFixReqSelect(e.target.files[0]); e.target.value = ''; }} />
+          </div>
+
           {/* 파일 드롭존 */}
           <div
             onClick={() => !reviseFile && reviseRef.current.click()}
