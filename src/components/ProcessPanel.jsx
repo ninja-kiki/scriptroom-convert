@@ -17,6 +17,10 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
   const matchFilter = (s) => filter === 'all' ? true : filter === 'error' ? s.status.startsWith('error') : isWarnScene(s)
   const warnSceneCount = scenes.filter(isWarnScene).length
 
+  // 논리적 씬 번호 맵 (이어짐 조각은 부모 번호 공유) — 목록·보고서 공용
+  const logicalNoOf = (() => { const m = {}; let n = 0; for (const s of scenes) { if (!s.forceSplit) n++; m[s.id] = n } return m })()
+  const ruleFmtCount = scenes.filter(s => s.formatMethod === 'rule').length
+
   const total = scenes.length
   const doneCount = scenes.filter(s => s.status === 'done').length
   const errCount = scenes.filter(s => s.status.startsWith('error')).length
@@ -70,70 +74,85 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         </div>
       )}
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
           <h2 style={{ color: T.fg, fontSize: 18, fontWeight: 700 }}>{title}</h2>
-          <span style={{ color: T.fgMuted, fontSize: 13 }}>
-            {doneCount}/{total} 씬
-            {errCount > 0 && <span style={{ color: T.err }}> · {errCount}개 오류</span>}
-          </span>
+          <span style={{ color: T.fgMuted, fontSize: 13 }}>{doneCount}/{total} 씬</span>
+          {phase !== 'done' && !isPaused && <span style={{ color: T.accent, fontSize: 12 }}>{phase === 'formatting' ? '포맷 중' : '번역 중'}</span>}
+          {isPaused && <span style={{ color: T.warn, fontSize: 12 }}>일시정지됨</span>}
         </div>
 
         {/* Progress bar */}
-        <div style={{ height: 4, background: T.rule, borderRadius: 2, marginBottom: 8 }}>
-          <div style={{
-            height: '100%', borderRadius: 2,
-            width: `${pct}%`,
-            background: errCount > 0 ? T.err : isDone ? T.good : T.accent,
-            transition: 'width .3s',
-          }} />
+        <div style={{ height: 6, background: T.rule, borderRadius: 3, marginBottom: 10, overflow: 'hidden' }}>
+          <div style={{ height: '100%', borderRadius: 3, width: `${pct}%`,
+            background: errCount > 0 ? T.err : isDone ? T.good : T.accent, transition: 'width .3s' }} />
         </div>
 
-        {/* Stats row */}
-        <div style={{ display: 'flex', gap: 16, fontSize: 12, color: T.fgMuted }}>
-          <span>{pct}%</span>
-          {startTime && <span>{fmtDuration(Date.now() - startTime)}</span>}
-          {totalTokens > 0 && <span title="LLM에 보낸/받은 양 추정치 (규칙·자막 직결분은 제외)">~{fmtTokens(totalTokens)} 토큰 (추정)</span>}
-          {smiPct != null && (
-            <span style={{ color: smiColor }}
-              title={`자막과 일치한 대사 ${smiMatched}/${smiAttempts}. 낮으면 각본과 영화 자막 차이가 큰 것(번역이 자막에 덜 맞춰짐).`}>
-              자막매칭 {smiPct}%{smiPct < 35 ? ' ⚠ 차이 큼' : smiPct >= 60 ? ' ✓' : ''}
-            </span>
-          )}
-          {(() => {
-            const ruleFmt = scenes.filter(s => s.formatMethod === 'rule').length
-            return ruleFmt > 0 ? (
-              <span style={{ color: T.good }} title="규칙으로 포맷한 씬 (LLM 안 씀, 0토큰)">
-                규칙포맷 {ruleFmt}씬 ✓
-              </span>
-            ) : null
-          })()}
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-            {phase !== 'done' && !isPaused && <span style={{ color: T.fgMuted }}>{phase === 'formatting' ? '포맷 중...' : '번역 중...'}</span>}
-            {phase !== 'done' && !isPaused && (
-              <button onClick={onPause} style={ctrlBtn} title="잠깐 멈춤 — 재개하면 그 자리에서 이어서 계속">일시정지</button>
-            )}
-            {phase !== 'done' && isPaused && (
-              <button onClick={onResume} style={{ ...ctrlBtn, color: T.good, borderColor: T.good }}>재개</button>
-            )}
-            {phase !== 'done' && (
-              <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={{ ...ctrlBtn, color: T.err, borderColor: T.err }} title="작업 종료 — 진행된 씬은 보존, 다시 하려면 '이어하기'">중단</button>
-            )}
-            {phase === 'done' && !hasIncomplete && <span style={{ color: T.fgMuted }}>완료</span>}
-            {doneCount > 0 && (
-              <button onClick={onReader} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}
-                title="번역 완료된 씬을 화살표로 넘기며 읽기 (변환 중에도 가능)">리더 모드</button>
-            )}
-            {hasIncomplete && (
-              <button onClick={onContinue} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>이어하기</button>
-            )}
-            {onReport && (
-              <button onClick={onReport} title="이 작업의 처리 정보를 로그에 기록 (문제 추적용)"
-                style={{ ...ctrlBtn, color: T.fgDim, borderColor: T.rule }}>문제 리포트</button>
-            )}
-          </span>
+        {/* Stat badges */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <Badge>{pct}%</Badge>
+          {startTime && <Badge>{fmtDuration(Date.now() - startTime)}</Badge>}
+          {totalTokens > 0 && <Badge title="LLM 입출력 추정치 (규칙·자막 직결분 제외)">~{fmtTokens(totalTokens)} 토큰</Badge>}
+          {ruleFmtCount > 0 && <Badge color={T.good} title="규칙으로 포맷 — LLM 안 씀(0토큰)">규칙포맷 {ruleFmtCount}씬</Badge>}
+          {smiPct != null && <Badge color={smiColor} title={`자막 일치 대사 ${smiMatched}/${smiAttempts}`}>자막매칭 {smiPct}%</Badge>}
+          {errCount > 0 && <Badge color={T.err}>오류 {errCount}</Badge>}
         </div>
       </div>
+
+      {/* Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {phase !== 'done' && !isPaused && (
+          <button onClick={onPause} style={ctrlBtn} title="잠깐 멈춤 — 재개하면 그 자리에서 이어서 계속">일시정지</button>
+        )}
+        {phase !== 'done' && isPaused && (
+          <button onClick={onResume} style={{ ...ctrlBtn, color: T.good, borderColor: T.good }}>재개</button>
+        )}
+        {phase !== 'done' && (
+          <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={{ ...ctrlBtn, color: T.err, borderColor: T.err }} title="작업 종료 — 진행된 씬은 보존, 다시 하려면 '이어하기'">중단</button>
+        )}
+        {hasIncomplete && (
+          <button onClick={onContinue} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>이어하기</button>
+        )}
+        {doneCount > 0 && (
+          <button onClick={onReader} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}
+            title="완료된 씬을 화살표로 넘기며 읽기 (변환 중에도 가능)">리더 모드</button>
+        )}
+        {onReport && (
+          <button onClick={onReport} title="이 작업의 처리 정보를 로그에 기록 (문제 추적용)"
+            style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 12, cursor: 'pointer', marginLeft: 'auto', textDecoration: 'underline' }}>문제 리포트</button>
+        )}
+      </div>
+
+      {/* 완료 보고서 */}
+      {isDone && (() => {
+        const failed = scenes.filter(s => s.status.startsWith('error'))
+        const lowSmi = scenes.filter(s => { const m = s.smiMatches; return m?.length && m.filter(x => x.replaced).length / m.length < 0.3 })
+        const clean = failed.length === 0
+        return (
+          <div style={{ marginBottom: 16, borderRadius: 10, overflow: 'hidden', border: `1px solid ${clean ? T.good + '44' : T.err + '44'}`, animation: 'riseIn .2s ease' }}>
+            <div style={{ padding: '11px 14px', background: (clean ? T.good : T.err) + '18', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
+              {clean ? '변환 완료 — 문제 없음 ✓' : `변환 완료 — 실패 ${failed.length}개 확인 필요`}
+            </div>
+            <div style={{ padding: '10px 14px', fontSize: 13, color: T.fgMuted, lineHeight: 1.8 }}>
+              <div>· 씬 {doneCount}/{total} 완료{startTime ? ` · ${fmtDuration(Date.now() - startTime)} 소요` : ''}</div>
+              {ruleFmtCount > 0 && <div style={{ color: T.good }}>· 규칙포맷 {ruleFmtCount}씬 (LLM 없이 처리 — 토큰 절약)</div>}
+              {totalTokens > 0 && <div>· LLM 사용 ~{fmtTokens(totalTokens)} 토큰 (추정)</div>}
+              {smiPct != null && <div style={{ color: smiColor }}>· 자막매칭 {smiPct}%{smiPct < 35 ? ' — 각본과 영화 자막 차이가 커요' : smiPct >= 60 ? ' — 잘 맞아요' : ''}</div>}
+              {failed.length > 0 && (
+                <div style={{ color: T.err, marginTop: 4 }}>
+                  · 실패한 씬: {failed.map(s => `#${logicalNoOf[s.id]}`).join(', ')} — 해당 씬에서 재시도하거나 실패 필터로 확인하세요
+                </div>
+              )}
+              {lowSmi.length > 0 && (
+                <div style={{ color: T.warn, marginTop: 4 }}>
+                  · 자막 차이 큰 씬: {lowSmi.slice(0, 12).map(s => `#${logicalNoOf[s.id]}`).join(', ')}{lowSmi.length > 12 ? ` 외 ${lowSmi.length - 12}` : ''} — 번역이 영화 자막과 다를 수 있어요
+                </div>
+              )}
+              {clean && lowSmi.length === 0 && <div style={{ color: T.good }}>· 특이사항 없음 — 다운로드해서 쓰면 돼요</div>}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Download buttons */}
       {scenes.length > 0 && (() => {
@@ -188,24 +207,17 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
             ))}
           </div>
         )}
-        {(() => {
-          // 논리적 씬 번호 — 이어짐(forceSplit) 조각은 새 번호 안 매김
-          let logical = 0
-          return scenes.map((scene, i) => {
-            if (!scene.forceSplit) logical++
-            return matchFilter(scene) && (
-              <SceneCard
-                key={scene.id}
-                scene={scene}
-                sceneNo={scene.forceSplit ? null : logical}
-                onRetry={onRetry}
-                onReprocess={onReprocess}
-                expanded={expandedId === scene.id}
-                onToggle={() => setExpandedId(expandedId === scene.id ? null : scene.id)}
-              />
-            )
-          })
-        })()}
+        {scenes.map((scene) => matchFilter(scene) && (
+          <SceneCard
+            key={scene.id}
+            scene={scene}
+            sceneNo={scene.forceSplit ? null : logicalNoOf[scene.id]}
+            onRetry={onRetry}
+            onReprocess={onReprocess}
+            expanded={expandedId === scene.id}
+            onToggle={() => setExpandedId(expandedId === scene.id ? null : scene.id)}
+          />
+        ))}
         {filter !== 'all' && !scenes.some(matchFilter) && (
           <div style={{ color: T.fgDim, fontSize: 13, textAlign: 'center', padding: '16px 0' }}>해당하는 씬 없음</div>
         )}
@@ -222,10 +234,20 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
   )
 }
 
+function Badge({ children, color, title }) {
+  const c = color || T.fgMuted
+  return (
+    <span title={title} style={{
+      fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
+      background: c + '1e', color: c, whiteSpace: 'nowrap',
+    }}>{children}</span>
+  )
+}
+
 const ctrlBtn = {
-  padding: '3px 10px', borderRadius: 6,
+  padding: '5px 12px', borderRadius: 7,
   background: 'none', border: `1px solid ${T.rule}`,
-  color: T.fgMuted, fontSize: 12, cursor: 'pointer',
+  color: T.fgMuted, fontSize: 12.5, cursor: 'pointer',
 }
 
 const dlBtn = {
