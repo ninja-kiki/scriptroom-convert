@@ -1,12 +1,13 @@
 // Theme tokens — scriptroom 바우하우스 결(따뜻한 종이톤 + 3원색), 라이트/다크 분리
 // 색 의미: 파랑=포맷/구조(fmt) · 빨강=번역 KO(trans) · 노랑=주의(warn) · 초록=완료(good)
 export const THEMES = {
+  // 바우하우스 3원색은 scriptroom과 동일한 고정값: 빨강 #C0392B / 파랑 #1E4D8C / 노랑 #D9A400
   light: {
     bg: '#E9E2D2', bgCard: '#F1EADA', bgInput: '#FFFFFF',
     fg: '#1A1A1A', fgMuted: '#3A352C', fgDim: '#7A7163',
     rule: 'rgba(0,0,0,0.16)',
     accent: '#1E4D8C', accentFg: '#FFFFFF',
-    good: '#3F8F61', warn: '#C8920A', err: '#C0392B',
+    good: '#3F8F61', warn: '#D9A400', err: '#C0392B',
     fmt: '#1E4D8C',    // 포맷/구조 = 파랑
     trans: '#C0392B',  // 번역(KO) = 빨강
     chip: 'rgba(0,0,0,0.06)',
@@ -16,10 +17,10 @@ export const THEMES = {
     bg: '#17150F', bgCard: '#221F17', bgInput: '#1B1812',
     fg: '#EDE7D8', fgMuted: '#B6AF9D', fgDim: '#7E7666',
     rule: 'rgba(255,255,255,0.14)',
-    accent: '#5B8FD6', accentFg: '#11100B',
-    good: '#5FB985', warn: '#E6BB3A', err: '#E0654F',
-    fmt: '#5B8FD6',    // 포맷/구조 = 파랑(밝게)
-    trans: '#E0654F',  // 번역(KO) = 빨강(밝게)
+    accent: '#1E4D8C', accentFg: '#FFFFFF',
+    good: '#7AB37A', warn: '#D9A400', err: '#C0392B',
+    fmt: '#1E4D8C',    // 포맷/구조 = 파랑 (scriptroom 고정값)
+    trans: '#C0392B',  // 번역(KO) = 빨강 (scriptroom 고정값)
     chip: 'rgba(255,255,255,0.07)',
     name: 'dark',
   },

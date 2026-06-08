@@ -109,7 +109,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
           <Badge>{pct}%</Badge>
           {startTime && <Badge>{fmtDuration(Date.now() - startTime)}</Badge>}
           {totalTokens > 0 && <Badge title="LLM 입출력 추정치 (규칙·자막 직결분 제외)">~{fmtTokens(totalTokens)} 토큰</Badge>}
-          {ruleFmtCount > 0 && <Badge color={T.good} title="규칙으로 포맷 — LLM 안 씀(0토큰)">규칙포맷 {ruleFmtCount}씬</Badge>}
+          {ruleFmtCount > 0 && <Badge title="규칙으로 포맷 — LLM 안 씀(0토큰)">규칙포맷 {ruleFmtCount}씬</Badge>}
           {smiPct != null && <Badge color={smiColor} title={`자막 일치 대사 ${smiMatched}/${smiAttempts}`}>자막매칭 {smiPct}%</Badge>}
           {errCount > 0 && <Badge color={T.err}>오류 {errCount}</Badge>}
         </div>
@@ -151,7 +151,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
             </div>
             <div style={{ padding: '10px 14px', fontSize: 13, color: T.fgMuted, lineHeight: 1.8 }}>
               <div><span style={{ color: T.good }}>· 씬 {doneCount}/{total} 완료</span>{startTime ? ` · ${fmtDuration(Date.now() - startTime)} 소요` : ''}</div>
-              {ruleFmtCount > 0 && <div style={{ color: T.good }}>· 규칙포맷 {ruleFmtCount}씬 (LLM 없이 처리 — 토큰 절약)</div>}
+              {ruleFmtCount > 0 && <div style={{ color: T.fgMuted }}>· 규칙포맷 {ruleFmtCount}씬 (LLM 없이 처리 — 토큰 절약)</div>}
               {totalTokens > 0 && <div>· LLM 사용 ~{fmtTokens(totalTokens)} 토큰 (추정)</div>}
               {smiPct != null && <div style={{ color: smiColor }}>· 자막매칭 {smiPct}%{smiPct < 35 ? ' — 각본과 영화 자막 차이가 커요' : smiPct >= 60 ? ' — 잘 맞아요' : ''}</div>}
               {failed.length > 0 && (
