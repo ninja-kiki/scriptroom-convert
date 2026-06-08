@@ -43,7 +43,7 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
 
   return (
     <div style={{
-      background: T.bgCard, borderRadius: 8,
+      background: T.bgCard, borderRadius: 3,
       border: `1px solid ${isError ? T.err + '44' : isActive ? T.accent + '44' : T.rule}`,
       marginBottom: 6, overflow: 'hidden',
     }}>

@@ -134,7 +134,7 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
             const available = v === 'raw' || (v === 'formatted' && scene.formatted) || (v === 'translated' && scene.translated)
             return (
               <button key={v} onClick={() => setViewMode(v)} style={{
-                padding: '4px 12px', borderRadius: 6, border: 'none', cursor: available ? 'pointer' : 'default',
+                padding: '4px 12px', borderRadius: 3, border: 'none', cursor: available ? 'pointer' : 'default',
                 background: viewMode === v ? T.accent : T.chip,
                 color: viewMode === v ? T.accentFg : available ? T.fgMuted : T.fgDim,
                 fontSize: 12, fontWeight: viewMode === v ? 700 : 400,
@@ -147,7 +147,7 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
         {/* 검수 체크 */}
         <button onClick={() => setChecked(prev => { const n = new Set(prev); if (n.has(sceneIdx)) n.delete(sceneIdx); else n.add(sceneIdx); return n })}
           style={{
-            padding: '4px 12px', borderRadius: 6, border: `1px solid ${isChecked ? T.good : T.rule}`,
+            padding: '4px 12px', borderRadius: 3, border: `1px solid ${isChecked ? T.good : T.rule}`,
             background: isChecked ? T.good + '22' : 'none', cursor: 'pointer',
             color: isChecked ? T.good : T.fgDim, fontSize: 12,
           }}>
@@ -162,7 +162,7 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
             onChange={e => setJumpInput(e.target.value)}
             placeholder="씬#"
             style={{
-              width: 52, padding: '4px 8px', borderRadius: 6,
+              width: 52, padding: '4px 8px', borderRadius: 3,
               background: T.bgInput, border: `1px solid ${T.rule}`,
               color: T.fg, fontSize: 12, outline: 'none',
             }}
@@ -211,7 +211,7 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
 
 function navBtn(enabled) {
   return {
-    background: 'none', border: `1px solid ${T.rule}`, borderRadius: 6,
+    background: 'none', border: `1px solid ${T.rule}`, borderRadius: 3,
     color: enabled ? T.fgMuted : T.fgDim, fontSize: 12,
     padding: '4px 10px', cursor: enabled ? 'pointer' : 'default',
     opacity: enabled ? 1 : 0.3,

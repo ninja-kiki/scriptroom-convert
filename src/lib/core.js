@@ -1,18 +1,19 @@
-// Theme tokens
+// Theme tokens — scriptroom 바우하우스(따뜻한 종이톤 + 3원색)에 맞춤
+// 3원색: red #C0392B / blue #1E4D8C / yellow #D9A400
 export const T = {
-  bg: '#0f0f0f',
-  bgCard: '#1a1a1a',
-  bgInput: '#111',
-  fg: '#f0f0f0',
-  fgMuted: '#888',
-  fgDim: '#555',
-  rule: '#222',
-  accent: '#c8a96e',
-  accentFg: '#0f0f0f',
-  good: '#4caf82',
-  warn: '#e09040',
-  err: '#e05050',
-  chip: '#252525',
+  bg: '#E9E2D2',           // 바우하우스 종이톤 배경
+  bgCard: '#F1EADA',       // 카드/시트
+  bgInput: '#FFFFFF',
+  fg: '#1A1A1A',
+  fgMuted: '#3A352C',
+  fgDim: '#7A7163',
+  rule: 'rgba(0,0,0,0.16)',
+  accent: '#1E4D8C',       // 파랑 — 기본 액션(변환 시작 등)
+  accentFg: '#FFFFFF',
+  good: '#3F8F61',
+  warn: '#D9A400',         // 노랑 — 경고
+  err: '#C0392B',          // 빨강 — 오류
+  chip: 'rgba(0,0,0,0.06)',
 }
 
 export const DEFAULT_FORMAT_GUIDELINES = `PDF 텍스트 추출. 페이지번호/헤더/푸터/타이틀페이지 제거. 내용 추가·요약 금지, 원문 언어 유지, 마커만 추가.

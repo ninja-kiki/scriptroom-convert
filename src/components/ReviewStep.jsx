@@ -54,7 +54,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
         }
         return (
           <div style={{
-            marginBottom: 16, borderRadius: 10, overflow: 'hidden',
+            marginBottom: 16, borderRadius: 3, overflow: 'hidden',
             border: `1px solid ${okAll ? T.good + '44' : T.warn + '44'}`,
           }}>
             <div style={{ padding: '9px 14px', background: (okAll ? T.good : T.warn) + '18', color: okAll ? T.good : T.warn, fontSize: 13, fontWeight: 600 }}>
@@ -62,7 +62,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
             </div>
             <div style={{ padding: '4px 14px 8px' }}>
               {signals.map((sig, i) => {
-                const c = sig.ok ? T.good : sig.blue ? '#8aa0ff' : sig.neutral ? T.fgDim : T.warn
+                const c = sig.ok ? T.good : sig.blue ? '#1E4D8C' : sig.neutral ? T.fgDim : T.warn
                 const icon = sig.ok ? '✓' : sig.neutral ? '·' : '⚠'
                 return (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13, color: sig.neutral ? T.fgDim : T.fgMuted }}>
@@ -79,7 +79,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
       {smiWarning && (
         <div style={{
           background: T.warn + '22', border: `1px solid ${T.warn}`,
-          borderRadius: 10, padding: '12px 16px', marginBottom: 16,
+          borderRadius: 3, padding: '12px 16px', marginBottom: 16,
           color: T.warn, fontSize: 13,
         }}>
           ⚠ {smiWarning}
@@ -97,7 +97,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
             return (
               <div key={w.code} style={{
                 background: bg, border: `1px solid ${color}44`,
-                borderRadius: 9, marginBottom: 6, overflow: 'hidden',
+                borderRadius: 3, marginBottom: 6, overflow: 'hidden',
               }}>
                 <div
                   onClick={() => setExpandedWarning(isOpen ? null : w.code)}
@@ -140,7 +140,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
         </div>
         <div style={{
           maxHeight: 280, overflowY: 'auto',
-          borderRadius: 10, border: `1px solid ${T.rule}`,
+          borderRadius: 3, border: `1px solid ${T.rule}`,
           scrollbarWidth: 'none',
         }}>
           {headings.map((s, i) => (
@@ -161,7 +161,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
       {/* 변환/번역 시작 버튼 */}
       {allFormatted && (
         <div style={{
-          marginBottom: 12, padding: '10px 14px', borderRadius: 9,
+          marginBottom: 12, padding: '10px 14px', borderRadius: 3,
           background: T.good + '18', border: `1px solid ${T.good}44`,
           color: T.good, fontSize: 13,
         }}>
@@ -174,7 +174,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
           onStart('')
         }}
         style={{
-          padding: '11px 28px', borderRadius: 10,
+          padding: '11px 28px', borderRadius: 3,
           background: hasErrors ? T.err : T.accent,
           border: 'none',
           color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer',

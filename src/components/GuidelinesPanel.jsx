@@ -36,7 +36,7 @@ export default function GuidelinesPanel({ onClose }) {
             {['format', 'translate'].map(t => (
               <button key={t} onClick={() => setTab(t)}
                 style={{
-                  padding: '6px 14px', borderRadius: 6, border: 'none',
+                  padding: '6px 14px', borderRadius: 3, border: 'none',
                   background: tab === t ? T.accent : T.chip,
                   color: tab === t ? T.accentFg : T.fgMuted,
                   fontSize: 13, cursor: 'pointer', fontWeight: tab === t ? 600 : 400,
@@ -55,7 +55,7 @@ export default function GuidelinesPanel({ onClose }) {
           style={{
             flex: 1, minHeight: 300, resize: 'none',
             background: T.bgInput, border: `1px solid ${T.rule}`,
-            borderRadius: 8, color: T.fg, fontSize: 13,
+            borderRadius: 3, color: T.fg, fontSize: 13,
             padding: 14, fontFamily: 'monospace', lineHeight: 1.6,
             outline: 'none',
           }}
@@ -64,7 +64,7 @@ export default function GuidelinesPanel({ onClose }) {
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button onClick={handleSave}
             style={{
-              flex: 1, padding: '12px', borderRadius: 8, border: 'none',
+              flex: 1, padding: '12px', borderRadius: 3, border: 'none',
               background: saved ? T.good : T.accent,
               color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer',
             }}>

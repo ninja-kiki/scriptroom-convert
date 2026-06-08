@@ -72,6 +72,6 @@ const preStyle = (fontSize) => ({
 const tooltipStyle = {
   display: 'block', marginTop: 4, marginBottom: 4,
   background: T.bgInput, border: `1px solid ${T.accent}44`,
-  borderRadius: 6, padding: '6px 10px', fontSize: 11,
+  borderRadius: 3, padding: '6px 10px', fontSize: 11,
   fontFamily: 'sans-serif', whiteSpace: 'normal',
 }

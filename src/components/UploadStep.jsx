@@ -268,7 +268,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
         {[{ id: 'convert', label: '변환' }, { id: 'revise', label: '수정' }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '7px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            padding: '7px 18px', borderRadius: 3, border: 'none', cursor: 'pointer',
             background: tab === t.id ? T.accent : T.chip,
             color: tab === t.id ? T.accentFg : T.fgMuted,
             fontWeight: 700, fontSize: 14,
@@ -279,12 +279,12 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
       {tab === 'revise' && (
         <div>
           {/* 리더 수정요청(JSON) → AI 수정 → 오버레이 */}
-          <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, border: `1px solid ${T.rule}`, background: T.bgCard }}>
+          <div style={{ marginBottom: 18, padding: 14, borderRadius: 3, border: `1px solid ${T.rule}`, background: T.bgCard }}>
             <div style={{ color: T.fg, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>리더 수정요청 처리 <span style={{ color: T.fgDim, fontWeight: 400 }}>(오류 마크 → AI 수정)</span></div>
             {!fixReq ? (
               <>
                 <div style={{ color: T.fgDim, fontSize: 12, marginBottom: 10 }}>리더에서 내보낸 <code>_수정요청.json</code>을 올리면 Max로 고쳐 <code>_수정.json</code>(오버레이)을 만들어요. 원본은 안 건드림.</div>
-                <button onClick={() => fixReqRef.current.click()} style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${T.rule}`, background: T.chip, color: T.fg, fontSize: 13, cursor: 'pointer' }}>수정요청 JSON 불러오기</button>
+                <button onClick={() => fixReqRef.current.click()} style={{ padding: '8px 14px', borderRadius: 3, border: `1px solid ${T.rule}`, background: T.chip, color: T.fg, fontSize: 13, cursor: 'pointer' }}>수정요청 JSON 불러오기</button>
               </>
             ) : (
               <>
@@ -295,10 +295,10 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={runFixReq} disabled={fixRunning} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: fixRunning ? T.chip : T.accent, color: fixRunning ? T.fgDim : T.accentFg, fontSize: 13, fontWeight: 700, cursor: fixRunning ? 'default' : 'pointer' }}>
+                  <button onClick={runFixReq} disabled={fixRunning} style={{ padding: '8px 14px', borderRadius: 3, border: 'none', background: fixRunning ? T.chip : T.accent, color: fixRunning ? T.fgDim : T.accentFg, fontSize: 13, fontWeight: 700, cursor: fixRunning ? 'default' : 'pointer' }}>
                     {fixRunning ? `수정 중 ${fixProgress?.done || 0}/${fixProgress?.total || 0}` : 'AI 수정 → 오버레이 다운로드'}
                   </button>
-                  {!fixRunning && <button onClick={() => setFixReq(null)} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.rule}`, background: 'none', color: T.fgMuted, fontSize: 13, cursor: 'pointer' }}>취소</button>}
+                  {!fixRunning && <button onClick={() => setFixReq(null)} style={{ padding: '8px 12px', borderRadius: 3, border: `1px solid ${T.rule}`, background: 'none', color: T.fgMuted, fontSize: 13, cursor: 'pointer' }}>취소</button>}
                 </div>
               </>
             )}
@@ -313,9 +313,9 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             onDrop={e => { e.preventDefault(); setDragOverRevise(false); handleReviseFileSelect(e.dataTransfer.files[0]) }}
             style={{
               border: `2px dashed ${dragOverRevise ? T.accent : reviseFile ? T.accent + '66' : T.rule}`,
-              borderRadius: 12, padding: reviseFile ? '16px 18px' : '36px 24px',
+              borderRadius: 3, padding: reviseFile ? '16px 18px' : '36px 24px',
               textAlign: 'center', cursor: reviseFile ? 'default' : 'pointer',
-              background: dragOverRevise ? '#1e1a13' : T.bgCard,
+              background: dragOverRevise ? '#EBDFC4' : T.bgCard,
               transition: 'all .15s', marginBottom: 16,
             }}
           >
@@ -351,9 +351,9 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
               onDrop={e => { e.preventDefault(); setDragOverFeedback(false); handleFeedbackSelect(e.dataTransfer.files[0]) }}
               style={{
                 border: `2px dashed ${dragOverFeedback ? T.accent : feedbackFile ? T.good + '66' : T.rule}`,
-                borderRadius: 12, padding: feedbackFile ? '14px 16px' : '20px 24px',
+                borderRadius: 3, padding: feedbackFile ? '14px 16px' : '20px 24px',
                 textAlign: 'center', cursor: feedbackFile ? 'default' : 'pointer',
-                background: dragOverFeedback ? '#13201a' : T.bgCard, marginBottom: 16,
+                background: dragOverFeedback ? '#DDE8DE' : T.bgCard, marginBottom: 16,
               }}
             >
               {feedbackFile ? (
@@ -390,7 +390,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                       display: 'flex', alignItems: 'center', gap: 12,
                       padding: '11px 14px', marginBottom: 6,
                       background: T.bgCard, border: `1px solid ${reviseSelected.includes(issue.id) ? T.accent + '66' : T.rule}`,
-                      borderRadius: 10, cursor: 'pointer',
+                      borderRadius: 3, cursor: 'pointer',
                     }}>
                       <div style={{
                         width: 18, height: 18, borderRadius: 4, flexShrink: 0,
@@ -424,7 +424,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                 style={{
                   width: '100%', minHeight: 80, resize: 'vertical',
                   background: T.bgInput, border: `1px solid ${T.rule}`,
-                  borderRadius: 8, color: T.fg, fontSize: 13,
+                  borderRadius: 3, color: T.fg, fontSize: 13,
                   padding: 12, fontFamily: 'inherit', lineHeight: 1.5, outline: 'none',
                   boxSizing: 'border-box',
                 }}
@@ -453,7 +453,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
               onClick={handleReviseApply}
               disabled={reviseRunning || (reviseSelected.length === 0 && llmChunks.length === 0 && !(feedbackItems?.length > 0))}
               style={{
-                width: '100%', padding: '13px', borderRadius: 10, border: 'none',
+                width: '100%', padding: '13px', borderRadius: 3, border: 'none',
                 background: reviseDone ? T.good : reviseRunning ? T.chip : T.accent,
                 color: reviseRunning ? T.fgDim : T.accentFg,
                 fontWeight: 700, fontSize: 15, cursor: reviseRunning ? 'default' : 'pointer',
@@ -475,9 +475,9 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         onDrop={handleScriptDrop}
         style={{
           border: `2px dashed ${dragOverScript ? T.accent : scriptFile ? T.accent + '66' : T.rule}`,
-          borderRadius: 12, padding: scriptFile ? '14px 16px' : '36px 24px',
+          borderRadius: 3, padding: scriptFile ? '14px 16px' : '36px 24px',
           textAlign: 'center', cursor: scriptFile ? 'default' : 'pointer',
-          background: dragOverScript ? '#1e1a13' : T.bgCard,
+          background: dragOverScript ? '#EBDFC4' : T.bgCard,
           transition: 'all .15s', marginBottom: 16,
         }}
       >
@@ -502,8 +502,8 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                   {smiMeta && (
                     <span style={{
                       flexShrink: 0, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
-                      background: smiMeta.lang === 'ko' ? '#143024' : smiMeta.lang === 'en' ? '#1b1f33' : '#332018',
-                      color: smiMeta.lang === 'ko' ? T.good : smiMeta.lang === 'en' ? '#8aa0ff' : T.fgDim,
+                      background: smiMeta.lang === 'ko' ? '#DDE8DE' : smiMeta.lang === 'en' ? '#DCE3EE' : '#EFE6CC',
+                      color: smiMeta.lang === 'ko' ? T.good : smiMeta.lang === 'en' ? '#1E4D8C' : T.fgDim,
                     }}>
                       {smiMeta.lang === 'ko' ? '한글 자막' : smiMeta.lang === 'en' ? '영어 자막' : '인식 실패'} · {smiMeta.count}줄
                     </span>
@@ -515,7 +515,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                 <>
                   <span style={{ color: T.fgDim, fontSize: 13, flex: 1 }}>자막 없음</span>
                   <button onClick={e => { e.stopPropagation(); smiRef.current.click() }}
-                    style={{ background: 'none', border: `1px solid ${T.rule}`, color: T.fgMuted, fontSize: 12, padding: '4px 10px', borderRadius: 7, cursor: 'pointer' }}>자막 추가</button>
+                    style={{ background: 'none', border: `1px solid ${T.rule}`, color: T.fgMuted, fontSize: 12, padding: '4px 10px', borderRadius: 3, cursor: 'pointer' }}>자막 추가</button>
                 </>
               )}
             </div>
@@ -535,7 +535,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
       {/* 경고: SMI 없음 */}
       {smiWarning && (
         <div style={{
-          marginBottom: 12, padding: '12px 14px', borderRadius: 10,
+          marginBottom: 12, padding: '12px 14px', borderRadius: 3,
           background: T.bgCard, border: `1px solid ${T.accent}55`,
         }}>
           <div style={{ color: T.accent, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>SMI 자막 없이 진행할까요?</div>
@@ -544,7 +544,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             <span style={{ color: T.fgDim }}>opensubtitles.org · subscene.com · viki.com 등에서 구할 수 있습니다.</span>
           </div>
           <button onClick={handleLoad} style={{
-            padding: '7px 14px', borderRadius: 7, border: `1px solid ${T.accent}66`,
+            padding: '7px 14px', borderRadius: 3, border: `1px solid ${T.accent}66`,
             background: 'none', color: T.accent, fontSize: 13, cursor: 'pointer', fontWeight: 500,
           }}>
             {loading ? '불러오는 중...' : '자막 없이 시작'}
@@ -557,7 +557,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
           disabled={loading}
           onClick={handleLoad}
           style={{
-            width: '100%', padding: '12px', borderRadius: 10, border: 'none',
+            width: '100%', padding: '12px', borderRadius: 3, border: 'none',
             background: loading ? T.chip : T.accent,
             color: loading ? T.fgDim : T.accentFg,
             fontWeight: 700, fontSize: 15, cursor: loading ? 'default' : 'pointer',
@@ -577,7 +577,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             <div onClick={() => onRestore(currentSession)} style={{
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '11px 14px', background: T.bgCard,
-              border: `1px solid ${T.accent}44`, borderRadius: 10,
+              border: `1px solid ${T.accent}44`, borderRadius: 3,
               cursor: 'pointer', marginBottom: 6,
             }}>
               <span style={{ color: T.accent, fontSize: 15 }}>▶</span>
@@ -600,7 +600,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
               <div key={h.id} onClick={canResume ? () => onRestore({ title: h.title, scenes: h.sceneData, startTime: h.startTime, jobId: h.id, smiLines: null }) : undefined} style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '10px 14px', background: T.bgCard,
-                border: `1px solid ${canResume ? T.accent + '44' : T.rule}`, borderRadius: 10, marginBottom: 6,
+                border: `1px solid ${canResume ? T.accent + '44' : T.rule}`, borderRadius: 3, marginBottom: 6,
                 cursor: canResume ? 'pointer' : 'default',
               }}>
                 {canResume && <span style={{ color: T.accent, fontSize: 15 }}>▶</span>}

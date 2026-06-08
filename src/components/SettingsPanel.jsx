@@ -40,7 +40,7 @@ export default function SettingsPanel({ onClose }) {
               <div style={{ display: 'flex', gap: 6 }}>
                 {[2, 3, 4, 5].map(n => (
                   <button key={n} onClick={() => patch({ concurrency: n })} style={{
-                    width: 38, height: 34, borderRadius: 7, border: 'none',
+                    width: 38, height: 34, borderRadius: 3, border: 'none',
                     background: s.concurrency === n ? T.accent : T.chip,
                     color: s.concurrency === n ? T.accentFg : T.fgMuted,
                     fontWeight: 700, fontSize: 14, cursor: 'pointer',
@@ -75,7 +75,7 @@ export default function SettingsPanel({ onClose }) {
 
         <div style={{ padding: '12px 20px', borderTop: `1px solid ${T.rule}` }}>
           <button onClick={handleSave} style={{
-            width: '100%', padding: '13px', borderRadius: 10, border: 'none',
+            width: '100%', padding: '13px', borderRadius: 3, border: 'none',
             background: saved ? T.good : T.accent,
             color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer',
           }}>{saved ? '저장됨 ✓' : '저장'}</button>
@@ -106,7 +106,7 @@ function ModelPicker({ value, onChange }) {
           <button key={m.id} onClick={() => onChange(m.id)}
             title={m.label}
             style={{
-              padding: '6px 9px', borderRadius: 7, border: 'none',
+              padding: '6px 9px', borderRadius: 3, border: 'none',
               background: on ? T.accent : T.chip, color: on ? T.accentFg : T.fgMuted,
               fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
             }}>{m.label.split(' ')[0]}</button>
@@ -173,6 +173,6 @@ function ResetBtn({ onClick }) {
 const taStyle = {
   width: '100%', minHeight: 200, resize: 'vertical',
   background: T.bgInput, border: `1px solid ${T.rule}`,
-  borderRadius: 8, color: T.fg, fontSize: 13,
+  borderRadius: 3, color: T.fg, fontSize: 13,
   padding: 14, fontFamily: 'monospace', lineHeight: 1.6, outline: 'none',
 }

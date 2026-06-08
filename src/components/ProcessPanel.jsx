@@ -63,7 +63,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
       {isRateLimited && (
         <div style={{
           background: T.warn + '22', border: `1px solid ${T.warn}`,
-          borderRadius: 10, padding: '14px 18px', marginBottom: 20,
+          borderRadius: 3, padding: '14px 18px', marginBottom: 20,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
         }}>
           <div>
@@ -129,7 +129,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         const lowSmi = scenes.filter(s => { const m = s.smiMatches; return m?.length && m.filter(x => x.replaced).length / m.length < 0.3 })
         const clean = failed.length === 0
         return (
-          <div style={{ marginBottom: 16, borderRadius: 10, overflow: 'hidden', border: `1px solid ${clean ? T.good + '44' : T.err + '44'}`, animation: 'riseIn .2s ease' }}>
+          <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', border: `1px solid ${clean ? T.good + '44' : T.err + '44'}`, animation: 'riseIn .2s ease' }}>
             <div style={{ padding: '11px 14px', background: (clean ? T.good : T.err) + '18', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
               {clean ? '변환 완료 ✓' : `변환 완료 — 실패 ${failed.length}개 확인 필요`}
             </div>
@@ -245,13 +245,13 @@ function Badge({ children, color, title }) {
 }
 
 const ctrlBtn = {
-  padding: '5px 12px', borderRadius: 7,
+  padding: '5px 12px', borderRadius: 3,
   background: 'none', border: `1px solid ${T.rule}`,
   color: T.fgMuted, fontSize: 12.5, cursor: 'pointer',
 }
 
 const dlBtn = {
-  flex: 1, padding: '10px 14px', borderRadius: 8,
+  flex: 1, padding: '10px 14px', borderRadius: 3,
   background: T.chip, border: `1px solid ${T.rule}`,
   color: T.fg, fontSize: 13, cursor: 'pointer', fontWeight: 500,
 }

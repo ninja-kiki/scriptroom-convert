@@ -710,7 +710,7 @@ export default function App() {
       {reportOpen && (
         <div onClick={() => setReportOpen(false)}
           style={{ position: 'fixed', inset: 0, background: '#000b', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 20, animation: 'fadeIn .15s ease' }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, background: T.bgCard, borderRadius: 14, border: `1px solid ${T.rule}`, padding: 20, animation: 'popIn .18s ease' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, background: T.bgCard, borderRadius: 3, border: `1px solid ${T.rule}`, padding: 20, animation: 'popIn .18s ease' }}>
             <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, marginBottom: 6 }}>문제 리포트</div>
             <div style={{ color: T.fgDim, fontSize: 12.5, marginBottom: 12, lineHeight: 1.5 }}>
               어떤 점이 이상한지 적어 주세요 (선택). 이 작업의 처리 정보가 함께 기록되어 나중에 원인을 찾는 데 쓰입니다.
@@ -718,11 +718,11 @@ export default function App() {
             <textarea value={reportNote} onChange={e => setReportNote(e.target.value)} autoFocus
               placeholder={'예: 12번 씬 대사가 지문으로 합쳐졌어요'}
               style={{ width: '100%', minHeight: 96, resize: 'vertical', boxSizing: 'border-box',
-                background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 9, color: T.fg,
+                background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg,
                 fontSize: 14, padding: 12, lineHeight: 1.5, outline: 'none' }} />
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <button onClick={() => setReportOpen(false)} style={{ flex: 1, padding: '11px', borderRadius: 9, border: `1px solid ${T.rule}`, background: 'none', color: T.fgMuted, fontSize: 14, cursor: 'pointer' }}>취소</button>
-              <button onClick={submitReport} style={{ flex: 2, padding: '11px', borderRadius: 9, border: 'none', background: reportSaved ? T.good : T.accent, color: T.accentFg, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+              <button onClick={() => setReportOpen(false)} style={{ flex: 1, padding: '11px', borderRadius: 3, border: `1px solid ${T.rule}`, background: 'none', color: T.fgMuted, fontSize: 14, cursor: 'pointer' }}>취소</button>
+              <button onClick={submitReport} style={{ flex: 2, padding: '11px', borderRadius: 3, border: 'none', background: reportSaved ? T.good : T.accent, color: T.accentFg, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
                 {reportSaved ? '기록됨 ✓' : '기록'}
               </button>
             </div>
@@ -745,7 +745,7 @@ export default function App() {
 }
 
 const navBtn = {
-  padding: '6px 12px', borderRadius: 6,
+  padding: '6px 12px', borderRadius: 3,
   background: T.chip, border: `1px solid ${T.rule}`,
   color: T.fgMuted, fontSize: 13, cursor: 'pointer',
 }
