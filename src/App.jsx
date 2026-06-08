@@ -628,28 +628,14 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', background: T.bg, color: T.fg }}>
-      {/* 바우하우스 3원색 스트라이프 */}
-      <div style={{ display: 'flex', height: 5, position: 'sticky', top: 0, zIndex: 11 }}>
-        <div style={{ flex: 1, background: '#C0392B' }} />
-        <div style={{ flex: 1, background: '#D9A400' }} />
-        <div style={{ flex: 1, background: '#1E4D8C' }} />
-      </div>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 20px', borderBottom: `3px solid #1A1A1A`,
-        position: 'sticky', top: 5, background: T.bg, zIndex: 10,
+        padding: '14px 20px', borderBottom: `1px solid ${T.rule}`,
+        position: 'sticky', top: 0, background: T.bg, zIndex: 10,
       }}>
         <span onClick={handleLogoClick}
-          style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: step !== 'upload' ? 'pointer' : 'default' }}>
-          {/* 바우하우스 기하 마크: 빨강 네모 · 노랑 원 · 파랑 삼각 */}
-          <svg width="42" height="16" viewBox="0 0 42 16" aria-hidden>
-            <rect x="0" y="2" width="12" height="12" fill="#C0392B" />
-            <circle cx="21" cy="8" r="6.5" fill="#D9A400" />
-            <path d="M36 1.5l6.5 13H29.5z" fill="#1E4D8C" />
-          </svg>
-          <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-.4px' }}>
-            scriptroom <span style={{ color: T.accent }}>convert</span>
-          </span>
+          style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-.3px', cursor: step !== 'upload' ? 'pointer' : 'default' }}>
+          scriptroom <span style={{ color: T.accent }}>convert</span>
         </span>
         <button onClick={() => setShowSettings(true)} style={navBtn}>설정</button>
       </div>
@@ -759,7 +745,7 @@ export default function App() {
 }
 
 const navBtn = {
-  padding: '6px 14px', borderRadius: 3,
-  background: 'transparent', border: `2px solid #1A1A1A`,
-  color: '#1A1A1A', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+  padding: '6px 12px', borderRadius: 3,
+  background: T.chip, border: `1px solid ${T.rule}`,
+  color: T.fgMuted, fontSize: 13, cursor: 'pointer',
 }

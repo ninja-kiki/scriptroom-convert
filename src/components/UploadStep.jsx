@@ -264,15 +264,14 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
   return (
     <div style={{ padding: '28px 20px', maxWidth: 480, margin: '0 auto' }}>
 
-      {/* 탭 — 바우하우스 블록 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+      {/* 탭 */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
         {[{ id: 'convert', label: '변환' }, { id: 'revise', label: '수정' }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '9px 22px', borderRadius: 3, cursor: 'pointer',
-            border: `2px solid #1A1A1A`,
-            background: tab === t.id ? T.accent : 'transparent',
-            color: tab === t.id ? T.accentFg : '#1A1A1A',
-            fontWeight: 800, fontSize: 14, letterSpacing: '.02em',
+            padding: '7px 18px', borderRadius: 3, border: 'none', cursor: 'pointer',
+            background: tab === t.id ? T.accent : T.chip,
+            color: tab === t.id ? T.accentFg : T.fgMuted,
+            fontWeight: 700, fontSize: 14,
           }}>{t.label}</button>
         ))}
       </div>
@@ -280,7 +279,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
       {tab === 'revise' && (
         <div>
           {/* 리더 수정요청(JSON) → AI 수정 → 오버레이 */}
-          <div style={{ marginBottom: 18, padding: 14, borderRadius: 3, border: `2px solid #1A1A1A`, background: T.bgCard }}>
+          <div style={{ marginBottom: 18, padding: 14, borderRadius: 3, border: `1px solid ${T.rule}`, background: T.bgCard }}>
             <div style={{ color: T.fg, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>리더 수정요청 처리 <span style={{ color: T.fgDim, fontWeight: 400 }}>(오류 마크 → AI 수정)</span></div>
             {!fixReq ? (
               <>
@@ -313,7 +312,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             onDragLeave={() => setDragOverRevise(false)}
             onDrop={e => { e.preventDefault(); setDragOverRevise(false); handleReviseFileSelect(e.dataTransfer.files[0]) }}
             style={{
-              border: `2px dashed ${dragOverRevise ? T.accent : reviseFile ? T.accent + '66' : '#1A1A1A'}`,
+              border: `2px dashed ${dragOverRevise ? T.accent : reviseFile ? T.accent + '66' : T.rule}`,
               borderRadius: 3, padding: reviseFile ? '16px 18px' : '36px 24px',
               textAlign: 'center', cursor: reviseFile ? 'default' : 'pointer',
               background: dragOverRevise ? '#EBDFC4' : T.bgCard,
@@ -475,7 +474,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         onDragLeave={() => setDragOverScript(false)}
         onDrop={handleScriptDrop}
         style={{
-          border: `2px dashed ${dragOverScript ? T.accent : scriptFile ? T.accent + '66' : '#1A1A1A'}`,
+          border: `2px dashed ${dragOverScript ? T.accent : scriptFile ? T.accent + '66' : T.rule}`,
           borderRadius: 3, padding: scriptFile ? '14px 16px' : '36px 24px',
           textAlign: 'center', cursor: scriptFile ? 'default' : 'pointer',
           background: dragOverScript ? '#EBDFC4' : T.bgCard,
