@@ -68,8 +68,19 @@ function modelAlias(m) {
 
 function runClaude(systemPrompt, userPrompt, model) {
   return new Promise((resolve, reject) => {
-    const fullPrompt = `${systemPrompt}\n\n${userPrompt}`
-    const args = ['-p']
+    // 토큰 절감: Claude Code 기본 시스템 프롬프트(~12k) + 툴 정의(~11k)를 통째로 제거.
+    // - --system-prompt : 우리 지침만 시스템으로 (CC 정체성/지침 제거)
+    // - --disallowedTools : 번역엔 툴 불필요 → 툴 정의 제거 (최대 절감)
+    // - --strict-mcp-config + --setting-sources "" : 사용자 MCP·CLAUDE.md·설정 로드 차단
+    // 실측: 호출당 오버헤드 ~12k → ~4.6k
+    const fullPrompt = userPrompt
+    const args = [
+      '-p',
+      '--system-prompt', systemPrompt,
+      '--disallowedTools', 'Bash Read Edit Write Glob Grep Task WebFetch WebSearch NotebookEdit TodoWrite BashOutput KillShell SlashCommand',
+      '--strict-mcp-config',
+      '--setting-sources', '',
+    ]
     const alias = modelAlias(model)
     if (alias) args.push('--model', alias)
     const proc = spawn(CLAUDE_BIN, args, {

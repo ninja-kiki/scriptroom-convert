@@ -15,42 +15,27 @@ export const T = {
   chip: '#252525',
 }
 
-export const DEFAULT_FORMAT_GUIDELINES = `PDF 텍스트 레이어 추출. 페이지 번호/헤더/푸터/타이틀 페이지 제거. 내용 추가·요약 금지. 원문 언어 그대로, 마커만 추가.
+export const DEFAULT_FORMAT_GUIDELINES = `PDF 텍스트 추출. 페이지번호/헤더/푸터/타이틀페이지 제거. 내용 추가·요약 금지, 원문 언어 유지, 마커만 추가.
 
-출력 형식:
-# INT./EXT. 장소-시간대   씬 헤딩
-지문                       일반 텍스트
-@인물명                    캐릭터 큐 (V.O./O.S. 포함 시: @MARK (V.O.))
-(괄호지문)                 괄호 지시
-대사                       일반 텍스트
-CUT TO:                    전환 지시어 (마커 없이 그대로)
-[CREDIT: 텍스트]           오프닝/클로징 크레딧
-[SUPER: 텍스트]            화면 삽입 텍스트 (장소·시간 자막, SUPER: 등)
+형식: #씬헤딩 / 지문(일반텍스트) / @인물명(큐, V.O./O.S.는 @MARK (V.O.)) / (괄호지문) / 대사(일반텍스트) / CUT TO:(마커없이) / [CREDIT:…] / [SUPER:…화면삽입자막]
 
 규칙:
-- 씬 헤딩 시작 키워드: INT. / EXT. / INT./EXT. / EXT./INT. / INSERT / INTERCUT / MONTAGE / SERIES OF SHOTS — 반드시 # 으로 시작
-- 씬 번호 prefix 제거: "19 EXT. LOCATION" → "# EXT. LOCATION", "SCENE 3 - INT. LOCATION" → "# INT. LOCATION"
-- 씬 번호가 헤딩 끝에 반복될 경우 제거: "INT. LOCATION DAY 19" → "# INT. LOCATION - DAY"
-- 비표준 씬 헤딩 정규화: "LOCKER ROOM--BILLY AND TEJADA - DAY" → "# INT. LOCKER ROOM - DAY" 처럼 장소 맥락으로 INT./EXT. 추론 후 # 헤딩으로 변환
-- EXT/INT. 또는 INT/EXT. (점 생략 형식)도 표준 # 헤딩으로 변환
-- 페이지 번호/마커 제거 (Page 40/130, 페이지 단독 숫자 줄 등)
-- 전환 지시어(CUT TO: / FADE IN: / FADE OUT: / SMASH CUT TO: 등)는 그대로 텍스트로
-- 구조 판단은 각본 문법 기준 (들여쓰기, 대문자 패턴 등)
-- 각 씬은 헤딩 포함 완결된 단위로 출력
-- 대사 블록 끝나고 지문 이어지면 빈 줄 하나 삽입`
+- 헤딩 키워드(INT./EXT./INT./EXT./INSERT/INTERCUT/MONTAGE/SERIES OF SHOTS)는 반드시 #로 시작
+- 씬번호 prefix/suffix 제거: "19 EXT. X"→"# EXT. X", "INT. X DAY 19"→"# INT. X - DAY"
+- 비표준 헤딩은 장소맥락으로 INT./EXT. 추론해 #로 정규화("LOCKER ROOM--… - DAY"→"# INT. LOCKER ROOM - DAY"), 점생략형(EXT/INT.)도 표준화
+- 페이지번호/단독 숫자줄 제거
+- 전환지시어(CUT TO:/FADE IN:/FADE OUT:/SMASH CUT TO: 등) 그대로
+- 각 씬은 헤딩 포함 완결 단위. 대사 뒤 지문 이어지면 빈 줄 1개 삽입`
 
-export const DEFAULT_TRANSLATE_GUIDELINES = `동일 구조 유지. @인물명·전환 지시어·마커 형태 그대로. 줄 단위 직역 금지, 장면 단위 맥락 번역. 욕설 질감 살림, 한국어 자연스러운 구어체.
+export const DEFAULT_TRANSLATE_GUIDELINES = `구조·마커 유지(@인물명·전환지시어 형태 그대로). 직역 금지, 장면 맥락 번역. 욕설 질감 살린 자연스러운 구어체.
 
 규칙:
-- 씬 헤딩 전체 번역: # INT. → # 내부. / # EXT. → # 외부. / # INSERT → # 삽입 등. 장소명·시간대도 한국어로.
-- @인물명 절대 번역 금지 (파서 사용) — V.O./O.S./CONT'D 등 수식어도 그대로
-- 지문 안 인물명(대문자) 한국어로 (BLAKE → 블레이크, SOLDIERS → 병사들)
-- (괄호지문) 번역
-- [CREDIT:] → [크레딧:] / [SUPER:] → [자막:] 로 마커 변환, 내용도 번역
-- CUT TO: 등 전환 지시어 그대로
-- 대사-지문 사이 빈 줄 유지
-
-SMI 참고 시: 대사는 SMI 1순위, 오역 판단 시 독자 판단 우선. 호칭·말투·경어는 SMI 기준.`
+- 씬 헤딩 번역: # INT.→내부. EXT.→외부. INSERT→삽입 등, 장소·시간대도 한국어
+- @인물명 번역 금지(V.O./O.S./CONT'D 수식어 포함 그대로)
+- 지문 속 대문자 인물명 한국어로(BLAKE→블레이크, SOLDIERS→병사들)
+- (괄호지문) 번역. [CREDIT:]→[크레딧:], [SUPER:]→[자막:] 내용도 번역
+- CUT TO: 등 전환지시어 그대로. 대사-지문 빈 줄 유지
+- SMI 있으면 대사는 SMI 1순위(호칭·말투·경어 기준), 명백한 오역만 교정`
 
 // Settings
 export const MODELS = [
