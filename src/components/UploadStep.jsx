@@ -522,19 +522,17 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
           </div>
         ) : (
           <>
-            <div style={{
-              width: 52, height: 52, borderRadius: '50%', margin: '0 auto 14px',
-              background: T.accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden>
-                <path d="M10 1v15M3.5 9.5L10 16l6.5-6.5M2 20.5h16" stroke={T.accentFg} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
+            {/* 바우하우스 3원색 트리오 — 세 조각이 모여 한 편이 된다는 위트 */}
+            <svg width="92" height="34" viewBox="0 0 92 34" aria-hidden style={{ display: 'block', margin: '0 auto 16px' }}>
+              <rect x="3" y="3" width="28" height="28" fill={T.trans} />
+              <circle cx="46" cy="17" r="15" fill={T.warn} />
+              <path d="M75 2l16 30H59z" fill={T.fmt} />
+            </svg>
             <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, letterSpacing: '-.2px', marginBottom: 6 }}>각본 자막을 올리세요</div>
             <div style={{ color: T.fgDim, fontSize: 12.5, lineHeight: 1.5 }}>
               <span style={{ color: T.fmt, fontWeight: 600 }}>각본</span> PDF · TXT · RTF · FDX · Fountain
               <span style={{ margin: '0 7px', color: T.rule }}>|</span>
-              <span style={{ color: T.fgMuted, fontWeight: 600 }}>자막</span> SMI · SRT <span style={{ color: T.fgDim }}>(선택)</span>
+              <span style={{ color: T.trans, fontWeight: 600 }}>자막</span> SMI · SRT <span style={{ color: T.fgDim }}>(선택)</span>
             </div>
           </>
         )}

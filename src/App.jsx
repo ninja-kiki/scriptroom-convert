@@ -642,7 +642,12 @@ export default function App() {
         position: 'sticky', top: 0, background: T.bg, zIndex: 10,
       }}>
         <span onClick={handleLogoClick}
-          style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-.3px', cursor: step !== 'upload' ? 'pointer' : 'default' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 9, fontWeight: 700, fontSize: 15, letterSpacing: '-.3px', cursor: step !== 'upload' ? 'pointer' : 'default' }}>
+          <svg width="34" height="12" viewBox="0 0 34 12" aria-hidden>
+            <rect x="0" y="1" width="10" height="10" fill={T.trans} />
+            <circle cx="17" cy="6" r="5.5" fill={T.warn} />
+            <path d="M28.5 1l5 10h-10z" fill={T.fmt} />
+          </svg>
           scriptroom <span style={{ color: T.accent }}>convert</span>
         </span>
         <button onClick={() => setShowSettings(true)} style={navBtn}>설정</button>
