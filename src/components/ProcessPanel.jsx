@@ -94,14 +94,14 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
           <h2 style={{ color: T.fg, fontSize: 18, fontWeight: 700 }}>{title}</h2>
           <span style={{ color: T.fgMuted, fontSize: 13 }}>{doneCount}/{total} 씬</span>
-          {phase !== 'done' && !isPaused && <span style={{ color: phase === 'formatting' ? T.fmt : T.trans, fontSize: 12, fontWeight: 600 }}>{phase === 'formatting' ? '포맷 중' : '번역 중'}</span>}
+          {phase !== 'done' && !isPaused && <span style={{ color: T.warn, fontSize: 12, fontWeight: 600 }}>{phase === 'formatting' ? '포맷 중' : '번역 중'}</span>}
           {isPaused && <span style={{ color: T.warn, fontSize: 12 }}>일시정지됨</span>}
         </div>
 
         {/* Progress bar */}
         <div style={{ height: 6, background: T.rule, borderRadius: 3, marginBottom: 10, overflow: 'hidden' }}>
           <div style={{ height: '100%', borderRadius: 3, width: `${pct}%`,
-            background: errCount > 0 ? T.err : isDone ? T.good : T.accent, transition: 'width .3s' }} />
+            background: errCount > 0 ? T.err : isDone ? T.accent : T.warn, transition: 'width .3s' }} />
         </div>
 
         {/* Stat badges */}
@@ -146,11 +146,11 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         const clean = failed.length === 0
         return (
           <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: T.chip, animation: 'riseIn .2s ease' }}>
-            <div style={{ padding: '11px 14px', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
+            <div style={{ padding: '11px 14px', color: clean ? T.accent : T.err, fontWeight: 700, fontSize: 14 }}>
               {clean ? '변환 완료 ✓' : `변환 완료 — 실패 ${failed.length}개 확인 필요`}
             </div>
             <div style={{ padding: '10px 14px', fontSize: 13, color: T.fgMuted, lineHeight: 1.8 }}>
-              <div><span style={{ color: T.good }}>· 씬 {doneCount}/{total} 완료</span>{startTime ? ` · ${fmtDuration(Date.now() - startTime)} 소요` : ''}</div>
+              <div><span style={{ color: T.accent }}>· 씬 {doneCount}/{total} 완료</span>{startTime ? ` · ${fmtDuration(Date.now() - startTime)} 소요` : ''}</div>
               {ruleFmtCount > 0 && <div style={{ color: T.fgMuted }}>· 규칙포맷 {ruleFmtCount}씬 (LLM 없이 처리 — 토큰 절약)</div>}
               {totalTokens > 0 && <div>· LLM 사용 ~{fmtTokens(totalTokens)} 토큰 (추정)</div>}
               {smiPct != null && <div style={{ color: smiColor }}>· 자막매칭 {smiPct}%{smiPct < 35 ? ' — 각본과 영화 자막 차이가 커요' : smiPct >= 60 ? ' — 잘 맞아요' : ''}</div>}
@@ -164,7 +164,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
                   · 자막 차이 큰 씬: {lowSmi.slice(0, 12).map(s => `#${logicalNoOf[s.id]}`).join(', ')}{lowSmi.length > 12 ? ` 외 ${lowSmi.length - 12}` : ''} — 번역이 영화 자막과 다를 수 있어요
                 </div>
               )}
-              {clean && lowSmi.length === 0 && <div style={{ color: T.good }}>· 특이사항 없음</div>}
+              {clean && lowSmi.length === 0 && <div style={{ color: T.accent }}>· 특이사항 없음</div>}
             </div>
           </div>
         )
@@ -178,12 +178,12 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         return (
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
             {fmtCount > 0 && (
-              <button onClick={() => onDownload('formatted')} style={solidBtn(T.fmt)}>
+              <button onClick={() => onDownload('formatted')} style={dlBtn}>
                 formatted.txt {!isDone && `(${fmtCount}씬)`}
               </button>
             )}
             {transCount > 0 && (
-              <button onClick={() => onDownload('translated')} style={solidBtn(T.trans)}>
+              <button onClick={() => onDownload('translated')} style={dlBtn}>
                 translated.txt {!isDone && `(${transCount}씬)`}
               </button>
             )}

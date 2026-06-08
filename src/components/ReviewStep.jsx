@@ -56,12 +56,12 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
           <div style={{
             marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: T.chip,
           }}>
-            <div style={{ padding: '9px 14px', color: okAll ? T.good : T.warn, fontSize: 13, fontWeight: 700 }}>
+            <div style={{ padding: '9px 14px', color: okAll ? T.accent : T.warn, fontSize: 13, fontWeight: 700 }}>
               {okAll ? '믿고 시작해도 좋아요' : '시작 전 아래 확인'}
             </div>
             <div style={{ padding: '4px 14px 8px' }}>
               {signals.map((sig, i) => {
-                const c = sig.ok ? T.good : sig.blue ? '#1E4D8C' : sig.neutral ? T.fgDim : T.warn
+                const c = sig.ok ? T.accent : sig.blue ? T.accent : sig.neutral ? T.fgDim : T.warn
                 const icon = sig.ok ? '✓' : sig.neutral ? '·' : '⚠'
                 return (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13, color: sig.neutral ? T.fgDim : T.fgMuted }}>
@@ -160,7 +160,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
       {allFormatted && (
         <div style={{
           marginBottom: 12, padding: '10px 14px', borderRadius: 3,
-          background: T.chip, color: T.good, fontSize: 13,
+          background: T.chip, color: T.accent, fontSize: 13,
         }}>
           ✓ 포맷 완료 파일 — 번역만 진행합니다
         </div>

@@ -324,7 +324,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                 <div style={{ flex: 1, textAlign: 'left' }}>
                   <div style={{ color: T.accent, fontWeight: 600, fontSize: 14 }}>{reviseFile.name}</div>
                   {reviseFileType && (
-                    <div style={{ color: reviseFileType === 'translated' ? T.trans : T.fmt, fontSize: 12, fontWeight: 600, marginTop: 2 }}>
+                    <div style={{ color: T.fgMuted, fontSize: 12, fontWeight: 600, marginTop: 2 }}>
                       {reviseFileType === 'translated' ? '번역본으로 인식됨' : '포맷본으로 인식됨'}
                     </div>
                   )}
@@ -503,7 +503,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                     <span style={{
                       flexShrink: 0, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
                       background: T.chip,
-                      color: smiMeta.lang === 'ko' ? T.good : smiMeta.lang === 'en' ? T.fmt : T.fgDim,
+                      color: smiMeta.lang === 'ko' ? T.accent : smiMeta.lang === 'en' ? T.fgMuted : T.fgDim,
                     }}>
                       {smiMeta.lang === 'ko' ? '한글 자막' : smiMeta.lang === 'en' ? '영어 자막' : '인식 실패'} · {smiMeta.count}줄
                     </span>
@@ -530,9 +530,9 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             </svg>
             <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, letterSpacing: '-.2px', marginBottom: 6 }}>각본 자막을 올리세요</div>
             <div style={{ color: T.fgDim, fontSize: 12.5, lineHeight: 1.5 }}>
-              <span style={{ color: T.fmt, fontWeight: 600 }}>각본</span> PDF · TXT · RTF · FDX · Fountain
+              <span style={{ color: T.fgMuted, fontWeight: 600 }}>각본</span> PDF · TXT · RTF · FDX · Fountain
               <span style={{ margin: '0 7px', color: T.rule }}>|</span>
-              <span style={{ color: T.trans, fontWeight: 600 }}>자막</span> SMI · SRT <span style={{ color: T.fgDim }}>(선택)</span>
+              <span style={{ color: T.fgMuted, fontWeight: 600 }}>자막</span> SMI · SRT <span style={{ color: T.fgDim }}>(선택)</span>
             </div>
           </>
         )}

@@ -18,12 +18,13 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
     fontFamily: 'monospace', fontSize: 12, color: T.fg,
     maxHeight: 320, overflowY: 'auto', lineHeight: 1.7, margin: 0,
   }
+  // 상태색: 완료=파랑(accent) · 진행중=노랑(warn) · 문제=빨강(err) · 그 외=중립
   const STATUS_COLOR = {
     pending: T.fgDim,
-    formatting: T.fmt,
-    formatted: T.fmt,
-    translating: T.trans,
-    done: T.good,
+    formatting: T.warn,
+    formatted: T.fgMuted,
+    translating: T.warn,
+    done: T.accent,
     error_format: T.err,
     error_translate: T.err,
   }
