@@ -42,7 +42,7 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
 
   return (
     <div style={{
-      background: isError ? T.err + '14' : isActive ? T.accent + '12' : T.bgCard, borderRadius: 3,
+      background: isActive ? T.accent + '12' : T.bgCard, borderRadius: 3,
       marginBottom: 5, overflow: 'hidden',
     }}>
       {/* Header row */}
@@ -63,6 +63,10 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
           {titleLine}
         </span>
 
+        {totalTokens > 0 && (
+          <span style={{ color: T.fgDim, fontSize: 11 }}>{totalTokens.toLocaleString()}tok</span>
+        )}
+
         <span style={{ color: STATUS_COLOR[scene.status], fontSize: 12, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
           {isActive && <Spinner />}
           {STATUS_LABEL[scene.status]}
@@ -82,17 +86,13 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
           )
         })()}
 
-        {totalTokens > 0 && (
-          <span style={{ color: T.fgDim, fontSize: 11 }}>{totalTokens.toLocaleString()}tok</span>
-        )}
-
         {isError && (
           <button onClick={e => { e.stopPropagation(); onRetry(scene.id) }}
-            style={btnStyle(T.err)}>재시도</button>
+            title="재시도" aria-label="재시도" style={iconBtn(T.fgMuted)}><RetryIcon /></button>
         )}
         {isDone && (
           <button onClick={e => { e.stopPropagation(); onReprocess(scene.id) }}
-            style={btnStyle(T.fgDim)}>재처리</button>
+            title="재처리" aria-label="재처리" style={iconBtn(T.fgDim)}><RetryIcon /></button>
         )}
       </div>
 
@@ -146,9 +146,19 @@ function Spinner() {
   )
 }
 
-function btnStyle(color) {
+function iconBtn(color) {
   return {
-    padding: '4px 10px', borderRadius: 3, border: 'none',
-    background: color + '22', color, fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 26, height: 26, padding: 0, borderRadius: 3, border: 'none',
+    background: 'transparent', color, cursor: 'pointer', flexShrink: 0,
   }
+}
+
+function RetryIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  )
 }
