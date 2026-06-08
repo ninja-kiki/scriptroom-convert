@@ -8,15 +8,17 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
 
   // 테마(live T) 따라가도록 컴포넌트 안에서 정의
   const ctrlBtn = {
-    padding: '5px 12px', borderRadius: 3,
-    background: 'none', border: `1px solid ${T.rule}`,
-    color: T.fgMuted, fontSize: 12.5, cursor: 'pointer',
+    padding: '6px 13px', borderRadius: 3,
+    background: T.chip, border: 'none',
+    color: T.fgMuted, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
   }
   const dlBtn = {
     flex: 1, padding: '10px 14px', borderRadius: 3,
-    background: T.chip, border: `1px solid ${T.rule}`,
-    color: T.fg, fontSize: 13, cursor: 'pointer', fontWeight: 500,
+    background: T.chip, border: 'none',
+    color: T.fg, fontSize: 13, cursor: 'pointer', fontWeight: 600,
   }
+  // 색 버튼: 테두리 대신 옅은 면(fill)
+  const tintBtn = (c) => ({ ...ctrlBtn, background: c + '1e', color: c })
 
   const isWarnScene = (s) => {
     if (s.status.startsWith('error')) return true
@@ -117,16 +119,16 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
           <button onClick={onPause} style={ctrlBtn} title="잠깐 멈춤 — 재개하면 그 자리에서 이어서 계속">일시정지</button>
         )}
         {phase !== 'done' && isPaused && (
-          <button onClick={onResume} style={{ ...ctrlBtn, color: T.good, borderColor: T.good }}>재개</button>
+          <button onClick={onResume} style={tintBtn(T.good)}>재개</button>
         )}
         {phase !== 'done' && (
-          <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={{ ...ctrlBtn, color: T.err, borderColor: T.err }} title="작업 종료 — 진행된 씬은 보존, 다시 하려면 '이어하기'">중단</button>
+          <button onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={tintBtn(T.err)} title="작업 종료 — 진행된 씬은 보존, 다시 하려면 '이어하기'">중단</button>
         )}
         {hasIncomplete && (
-          <button onClick={onContinue} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}>이어하기</button>
+          <button onClick={onContinue} style={tintBtn(T.accent)}>이어하기</button>
         )}
         {doneCount > 0 && (
-          <button onClick={onReader} style={{ ...ctrlBtn, color: T.accent, borderColor: T.accent }}
+          <button onClick={onReader} style={tintBtn(T.accent)}
             title="완료된 씬을 화살표로 넘기며 읽기 (변환 중에도 가능)">리더 모드</button>
         )}
         {onReport && (
@@ -141,7 +143,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         const lowSmi = scenes.filter(s => { const m = s.smiMatches; return m?.length && m.filter(x => x.replaced).length / m.length < 0.3 })
         const clean = failed.length === 0
         return (
-          <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', border: `1px solid ${clean ? T.good + '44' : T.err + '44'}`, animation: 'riseIn .2s ease' }}>
+          <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: (clean ? T.good : T.err) + '10', animation: 'riseIn .2s ease' }}>
             <div style={{ padding: '11px 14px', background: (clean ? T.good : T.err) + '18', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
               {clean ? '변환 완료 ✓' : `변환 완료 — 실패 ${failed.length}개 확인 필요`}
             </div>
@@ -174,12 +176,12 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         return (
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
             {fmtCount > 0 && (
-              <button onClick={() => onDownload('formatted')} style={{ ...dlBtn, color: T.fmt, borderColor: T.fmt + '88' }}>
+              <button onClick={() => onDownload('formatted')} style={{ ...dlBtn, background: T.fmt + '1e', color: T.fmt }}>
                 formatted.txt {!isDone && `(${fmtCount}씬)`}
               </button>
             )}
             {transCount > 0 && (
-              <button onClick={() => onDownload('translated')} style={{ ...dlBtn, color: T.trans, borderColor: T.trans + '88' }}>
+              <button onClick={() => onDownload('translated')} style={{ ...dlBtn, background: T.trans + '1e', color: T.trans }}>
                 translated.txt {!isDone && `(${transCount}씬)`}
               </button>
             )}
@@ -195,7 +197,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
       {/* Retry all errors */}
       {errCount > 0 && phase === 'done' && (
         <button onClick={() => scenes.filter(s => s.status.startsWith('error')).forEach(s => onRetry(s.id))}
-          style={{ ...dlBtn, background: T.err + '22', borderColor: T.err, color: T.err, marginBottom: 12 }}>
+          style={{ ...dlBtn, background: T.err + '22', color: T.err, marginBottom: 12 }}>
           실패 씬 전체 재시도 ({errCount})
         </button>
       )}
@@ -211,10 +213,10 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
             ].map(f => (
               <button key={f.key} onClick={() => setFilter(f.key)}
                 style={{
-                  padding: '4px 10px', borderRadius: 999, fontSize: 12, cursor: 'pointer',
-                  border: `1px solid ${filter === f.key ? f.color : T.rule}`,
-                  background: filter === f.key ? f.color + '22' : 'none',
+                  padding: '5px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer', border: 'none',
+                  background: filter === f.key ? f.color + '22' : T.chip,
                   color: filter === f.key ? f.color : T.fgDim,
+                  fontWeight: filter === f.key ? 700 : 500,
                 }}>{f.label}</button>
             ))}
           </div>

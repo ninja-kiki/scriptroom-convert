@@ -42,9 +42,8 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
 
   return (
     <div style={{
-      background: T.bgCard, borderRadius: 3,
-      border: `1px solid ${isError ? T.err + '44' : isActive ? T.accent + '44' : T.rule}`,
-      marginBottom: 6, overflow: 'hidden',
+      background: isError ? T.err + '14' : isActive ? T.accent + '12' : T.bgCard, borderRadius: 3,
+      marginBottom: 5, overflow: 'hidden',
     }}>
       {/* Header row */}
       <div
@@ -149,7 +148,7 @@ function Spinner() {
 
 function btnStyle(color) {
   return {
-    padding: '3px 8px', borderRadius: 4, border: `1px solid ${color}`,
-    background: 'none', color, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap',
+    padding: '4px 10px', borderRadius: 3, border: 'none',
+    background: color + '22', color, fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
   }
 }
