@@ -54,10 +54,9 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
         }
         return (
           <div style={{
-            marginBottom: 16, borderRadius: 3, overflow: 'hidden',
-            border: `1px solid ${okAll ? T.good + '44' : T.warn + '44'}`,
+            marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: T.chip,
           }}>
-            <div style={{ padding: '9px 14px', background: (okAll ? T.good : T.warn) + '18', color: okAll ? T.good : T.warn, fontSize: 13, fontWeight: 600 }}>
+            <div style={{ padding: '9px 14px', color: okAll ? T.good : T.warn, fontSize: 13, fontWeight: 700 }}>
               {okAll ? '믿고 시작해도 좋아요' : '시작 전 아래 확인'}
             </div>
             <div style={{ padding: '4px 14px 8px' }}>
@@ -78,7 +77,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
 
       {smiWarning && (
         <div style={{
-          background: T.warn + '22', border: `1px solid ${T.warn}`,
+          background: T.chip,
           borderRadius: 3, padding: '12px 16px', marginBottom: 16,
           color: T.warn, fontSize: 13,
         }}>
@@ -91,12 +90,11 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
         <div style={{ marginBottom: 16 }}>
           {pdfWarnings.map(w => {
             const color = w.level === 'error' ? T.err : w.level === 'warn' ? T.warn : T.fgMuted
-            const bg = w.level === 'error' ? T.err + '18' : w.level === 'warn' ? T.warn + '14' : T.chip
             const icon = w.level === 'error' ? '✕' : w.level === 'warn' ? '⚠' : 'i'
             const isOpen = expandedWarning === w.code
             return (
               <div key={w.code} style={{
-                background: bg, border: `1px solid ${color}44`,
+                background: T.chip,
                 borderRadius: 3, marginBottom: 6, overflow: 'hidden',
               }}>
                 <div
@@ -162,8 +160,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
       {allFormatted && (
         <div style={{
           marginBottom: 12, padding: '10px 14px', borderRadius: 3,
-          background: T.good + '18', border: `1px solid ${T.good}44`,
-          color: T.good, fontSize: 13,
+          background: T.chip, color: T.good, fontSize: 13,
         }}>
           ✓ 포맷 완료 파일 — 번역만 진행합니다
         </div>

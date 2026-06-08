@@ -17,8 +17,10 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
     background: T.chip, border: 'none',
     color: T.fg, fontSize: 13, cursor: 'pointer', fontWeight: 600,
   }
-  // 색 버튼: 테두리 대신 옅은 면(fill)
-  const tintBtn = (c) => ({ ...ctrlBtn, background: c + '1e', color: c })
+  // 색 버튼: 중립 칩 + 색 글씨 (색 틴트 박스 금지)
+  const tintBtn = (c) => ({ ...ctrlBtn, color: c })
+  // 솔리드 버튼: 색 채움 + 흰 글씨 (강조 액션)
+  const solidBtn = (c) => ({ ...dlBtn, background: c, color: '#fff' })
 
   const isWarnScene = (s) => {
     if (s.status.startsWith('error')) return true
@@ -143,8 +145,8 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         const lowSmi = scenes.filter(s => { const m = s.smiMatches; return m?.length && m.filter(x => x.replaced).length / m.length < 0.3 })
         const clean = failed.length === 0
         return (
-          <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: (clean ? T.good : T.err) + '10', animation: 'riseIn .2s ease' }}>
-            <div style={{ padding: '11px 14px', background: (clean ? T.good : T.err) + '18', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
+          <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: T.chip, animation: 'riseIn .2s ease' }}>
+            <div style={{ padding: '11px 14px', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
               {clean ? '변환 완료 ✓' : `변환 완료 — 실패 ${failed.length}개 확인 필요`}
             </div>
             <div style={{ padding: '10px 14px', fontSize: 13, color: T.fgMuted, lineHeight: 1.8 }}>
@@ -176,12 +178,12 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         return (
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
             {fmtCount > 0 && (
-              <button onClick={() => onDownload('formatted')} style={{ ...dlBtn, background: T.fmt + '1e', color: T.fmt }}>
+              <button onClick={() => onDownload('formatted')} style={solidBtn(T.fmt)}>
                 formatted.txt {!isDone && `(${fmtCount}씬)`}
               </button>
             )}
             {transCount > 0 && (
-              <button onClick={() => onDownload('translated')} style={{ ...dlBtn, background: T.trans + '1e', color: T.trans }}>
+              <button onClick={() => onDownload('translated')} style={solidBtn(T.trans)}>
                 translated.txt {!isDone && `(${transCount}씬)`}
               </button>
             )}
@@ -197,7 +199,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
       {/* Retry all errors */}
       {errCount > 0 && phase === 'done' && (
         <button onClick={() => scenes.filter(s => s.status.startsWith('error')).forEach(s => onRetry(s.id))}
-          style={{ ...dlBtn, background: T.err + '22', color: T.err, marginBottom: 12 }}>
+          style={{ ...solidBtn(T.err), marginBottom: 12 }}>
           실패 씬 전체 재시도 ({errCount})
         </button>
       )}
@@ -214,8 +216,8 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
               <button key={f.key} onClick={() => setFilter(f.key)}
                 style={{
                   padding: '5px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer', border: 'none',
-                  background: filter === f.key ? f.color + '22' : T.chip,
-                  color: filter === f.key ? f.color : T.fgDim,
+                  background: filter === f.key ? f.color : T.chip,
+                  color: filter === f.key ? '#fff' : T.fgDim,
                   fontWeight: filter === f.key ? 700 : 500,
                 }}>{f.label}</button>
             ))}
@@ -250,10 +252,11 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
 
 function Badge({ children, color, title }) {
   const c = color || T.fgMuted
+  // 중립 회색 칩 + 색 글씨 (색 틴트 박스 금지)
   return (
     <span title={title} style={{
       fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
-      background: c + '1e', color: c, whiteSpace: 'nowrap',
+      background: T.chip, color: c, whiteSpace: 'nowrap',
     }}>{children}</span>
   )
 }

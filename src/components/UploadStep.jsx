@@ -502,8 +502,8 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                   {smiMeta && (
                     <span style={{
                       flexShrink: 0, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
-                      background: smiMeta.lang === 'ko' ? '#DDE8DE' : smiMeta.lang === 'en' ? '#DCE3EE' : '#EFE6CC',
-                      color: smiMeta.lang === 'ko' ? T.good : smiMeta.lang === 'en' ? '#1E4D8C' : T.fgDim,
+                      background: T.chip,
+                      color: smiMeta.lang === 'ko' ? T.good : smiMeta.lang === 'en' ? T.fmt : T.fgDim,
                     }}>
                       {smiMeta.lang === 'ko' ? '한글 자막' : smiMeta.lang === 'en' ? '영어 자막' : '인식 실패'} · {smiMeta.count}줄
                     </span>

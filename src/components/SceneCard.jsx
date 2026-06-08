@@ -42,7 +42,7 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
 
   return (
     <div style={{
-      background: isActive ? T.accent + '12' : T.bgCard, borderRadius: 3,
+      background: T.bgCard, borderRadius: 3,
       marginBottom: 5, overflow: 'hidden',
     }}>
       {/* Header row */}
@@ -53,11 +53,6 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
         <span style={{ color: T.fgDim, fontSize: 12, minWidth: 28 }}>
           {sceneNo != null ? `#${sceneNo}` : <span style={{ color: T.fgDim }}>↳</span>}
         </span>
-
-        {scene.forceSplit && (
-          <span title="긴 씬을 처리 단위로 나눈 조각 — 결과물에선 한 씬으로 이어져요"
-            style={{ flexShrink: 0, fontSize: 10, color: T.fgDim, background: T.chip, padding: '1px 6px', borderRadius: 999 }}>이어짐</span>
-        )}
 
         <span style={{ flex: 1, color: T.fg, fontSize: 13, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
           {titleLine}
@@ -155,10 +150,13 @@ function iconBtn(color) {
 }
 
 function RetryIcon() {
+  // refresh-cw (lucide) — 화살촉이 또렷한 재시도 아이콘
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-      <path d="M21 3v6h-6" />
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M3 21v-5h5" />
     </svg>
   )
 }
