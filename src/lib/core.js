@@ -1,19 +1,40 @@
-// Theme tokens — scriptroom 바우하우스(따뜻한 종이톤 + 3원색)에 맞춤
-// 3원색: red #C0392B / blue #1E4D8C / yellow #D9A400
-export const T = {
-  bg: '#E9E2D2',           // 바우하우스 종이톤 배경
-  bgCard: '#F1EADA',       // 카드/시트
-  bgInput: '#FFFFFF',
-  fg: '#1A1A1A',
-  fgMuted: '#3A352C',
-  fgDim: '#7A7163',
-  rule: 'rgba(0,0,0,0.16)',
-  accent: '#1E4D8C',       // 파랑 — 기본 액션(변환 시작 등)
-  accentFg: '#FFFFFF',
-  good: '#3F8F61',
-  warn: '#D9A400',         // 노랑 — 경고
-  err: '#C0392B',          // 빨강 — 오류
-  chip: 'rgba(0,0,0,0.06)',
+// Theme tokens — scriptroom 바우하우스 결(따뜻한 종이톤 + 3원색), 라이트/다크 분리
+// 색 의미: 파랑=포맷/구조(fmt) · 빨강=번역 KO(trans) · 노랑=주의(warn) · 초록=완료(good)
+export const THEMES = {
+  light: {
+    bg: '#E9E2D2', bgCard: '#F1EADA', bgInput: '#FFFFFF',
+    fg: '#1A1A1A', fgMuted: '#3A352C', fgDim: '#7A7163',
+    rule: 'rgba(0,0,0,0.16)',
+    accent: '#1E4D8C', accentFg: '#FFFFFF',
+    good: '#3F8F61', warn: '#C8920A', err: '#C0392B',
+    fmt: '#1E4D8C',    // 포맷/구조 = 파랑
+    trans: '#C0392B',  // 번역(KO) = 빨강
+    chip: 'rgba(0,0,0,0.06)',
+    name: 'light',
+  },
+  dark: {
+    bg: '#17150F', bgCard: '#221F17', bgInput: '#1B1812',
+    fg: '#EDE7D8', fgMuted: '#B6AF9D', fgDim: '#7E7666',
+    rule: 'rgba(255,255,255,0.14)',
+    accent: '#5B8FD6', accentFg: '#11100B',
+    good: '#5FB985', warn: '#E6BB3A', err: '#E0654F',
+    fmt: '#5B8FD6',    // 포맷/구조 = 파랑(밝게)
+    trans: '#E0654F',  // 번역(KO) = 빨강(밝게)
+    chip: 'rgba(255,255,255,0.07)',
+    name: 'dark',
+  },
+}
+
+const THEME_KEY = 'convert_theme'
+export function currentTheme() { try { return localStorage.getItem(THEME_KEY) || 'light' } catch { return 'light' } }
+
+// live binding — 테마 전환 시 재할당하면 `import { T }` 한 모든 컴포넌트에 반영됨(리렌더 시)
+export let T = THEMES[currentTheme()] || THEMES.light
+export function applyTheme(name) {
+  T = THEMES[name] || THEMES.light
+  try { localStorage.setItem(THEME_KEY, name) } catch {}
+  try { document.body.style.background = T.bg; document.body.style.color = T.fg } catch {}
+  return T
 }
 
 export const DEFAULT_FORMAT_GUIDELINES = `PDF 텍스트 추출. 페이지번호/헤더/푸터/타이틀페이지 제거. 내용 추가·요약 금지, 원문 언어 유지, 마커만 추가.

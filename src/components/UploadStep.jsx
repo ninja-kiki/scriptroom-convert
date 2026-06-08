@@ -324,7 +324,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                 <div style={{ flex: 1, textAlign: 'left' }}>
                   <div style={{ color: T.accent, fontWeight: 600, fontSize: 14 }}>{reviseFile.name}</div>
                   {reviseFileType && (
-                    <div style={{ color: T.fgDim, fontSize: 12, marginTop: 2 }}>
+                    <div style={{ color: reviseFileType === 'translated' ? T.trans : T.fmt, fontSize: 12, fontWeight: 600, marginTop: 2 }}>
                       {reviseFileType === 'translated' ? '번역본으로 인식됨' : '포맷본으로 인식됨'}
                     </div>
                   )}
@@ -522,9 +522,20 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
           </div>
         ) : (
           <>
-            <div style={{ color: T.fgMuted, fontSize: 28, marginBottom: 10, lineHeight: 1 }}>⬇</div>
-            <div style={{ color: T.fg, fontWeight: 600, fontSize: 15, marginBottom: 4 }}>각본과 자막을 함께 올리세요</div>
-            <div style={{ color: T.fgDim, fontSize: 12 }}>각본 PDF · TXT · RTF · FDX · Fountain &nbsp;/&nbsp; 자막 SMI · SRT (선택)</div>
+            <div style={{
+              width: 52, height: 52, borderRadius: '50%', margin: '0 auto 14px',
+              background: T.accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden>
+                <path d="M10 1v15M3.5 9.5L10 16l6.5-6.5M2 20.5h16" stroke={T.accentFg} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, letterSpacing: '-.2px', marginBottom: 6 }}>각본 자막을 올리세요</div>
+            <div style={{ color: T.fgDim, fontSize: 12.5, lineHeight: 1.5 }}>
+              <span style={{ color: T.fmt, fontWeight: 600 }}>각본</span> PDF · TXT · RTF · FDX · Fountain
+              <span style={{ margin: '0 7px', color: T.rule }}>|</span>
+              <span style={{ color: T.fgMuted, fontWeight: 600 }}>자막</span> SMI · SRT <span style={{ color: T.fgDim }}>(선택)</span>
+            </div>
           </>
         )}
         <input ref={scriptRef} type="file" accept=".pdf,.txt,.rtf,.fdx,.fountain,.smi,.srt" multiple hidden

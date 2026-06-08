@@ -6,6 +6,18 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
   const [expandedId, setExpandedId] = useState(null)
   const [filter, setFilter] = useState('all')  // all | warn | error
 
+  // 테마(live T) 따라가도록 컴포넌트 안에서 정의
+  const ctrlBtn = {
+    padding: '5px 12px', borderRadius: 3,
+    background: 'none', border: `1px solid ${T.rule}`,
+    color: T.fgMuted, fontSize: 12.5, cursor: 'pointer',
+  }
+  const dlBtn = {
+    flex: 1, padding: '10px 14px', borderRadius: 3,
+    background: T.chip, border: `1px solid ${T.rule}`,
+    color: T.fg, fontSize: 13, cursor: 'pointer', fontWeight: 500,
+  }
+
   const isWarnScene = (s) => {
     if (s.status.startsWith('error')) return true
     if (s.smiMatches?.length) {
@@ -78,7 +90,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
           <h2 style={{ color: T.fg, fontSize: 18, fontWeight: 700 }}>{title}</h2>
           <span style={{ color: T.fgMuted, fontSize: 13 }}>{doneCount}/{total} 씬</span>
-          {phase !== 'done' && !isPaused && <span style={{ color: T.accent, fontSize: 12 }}>{phase === 'formatting' ? '포맷 중' : '번역 중'}</span>}
+          {phase !== 'done' && !isPaused && <span style={{ color: phase === 'formatting' ? T.fmt : T.trans, fontSize: 12, fontWeight: 600 }}>{phase === 'formatting' ? '포맷 중' : '번역 중'}</span>}
           {isPaused && <span style={{ color: T.warn, fontSize: 12 }}>일시정지됨</span>}
         </div>
 
@@ -162,12 +174,12 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         return (
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
             {fmtCount > 0 && (
-              <button onClick={() => onDownload('formatted')} style={dlBtn}>
+              <button onClick={() => onDownload('formatted')} style={{ ...dlBtn, color: T.fmt, borderColor: T.fmt + '88' }}>
                 formatted.txt {!isDone && `(${fmtCount}씬)`}
               </button>
             )}
             {transCount > 0 && (
-              <button onClick={() => onDownload('translated')} style={dlBtn}>
+              <button onClick={() => onDownload('translated')} style={{ ...dlBtn, color: T.trans, borderColor: T.trans + '88' }}>
                 translated.txt {!isDone && `(${transCount}씬)`}
               </button>
             )}
@@ -244,14 +256,3 @@ function Badge({ children, color, title }) {
   )
 }
 
-const ctrlBtn = {
-  padding: '5px 12px', borderRadius: 3,
-  background: 'none', border: `1px solid ${T.rule}`,
-  color: T.fgMuted, fontSize: 12.5, cursor: 'pointer',
-}
-
-const dlBtn = {
-  flex: 1, padding: '10px 14px', borderRadius: 3,
-  background: T.chip, border: `1px solid ${T.rule}`,
-  color: T.fg, fontSize: 13, cursor: 'pointer', fontWeight: 500,
-}

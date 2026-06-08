@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { T, loadGuidelines, saveHistory, loadSettings, sliceSmi, loadPromptsFromFile, logProcess } from './lib/core.js'
+import { T, applyTheme, currentTheme, loadGuidelines, saveHistory, loadSettings, sliceSmi, loadPromptsFromFile, logProcess } from './lib/core.js'
 import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
 import { ruleFormat } from './lib/format-rules.js'
 import { analyzeScenes } from './lib/analyze.js'
@@ -39,6 +39,14 @@ export default function App() {
 
   // 시작 시 repo 지침 파일을 localStorage로 시드 (동료 클론 시 공유 적용)
   useEffect(() => { loadPromptsFromFile() }, [])
+
+  // 테마(라이트/다크) — live binding T 재할당 + 리렌더
+  const [themeName, setThemeName] = useState(currentTheme())
+  useEffect(() => { applyTheme(themeName) }, [])  // 마운트 시 body 배경 동기화
+  const toggleTheme = useCallback(() => {
+    setThemeName(prev => { const n = prev === 'dark' ? 'light' : 'dark'; applyTheme(n); return n })
+  }, [])
+  const navBtn = { padding: '6px 12px', borderRadius: 3, background: T.chip, border: `1px solid ${T.rule}`, color: T.fgMuted, fontSize: 13, cursor: 'pointer' }
 
   // 추출/분석 단계 경과 시간 타이머
   useEffect(() => {
@@ -730,7 +738,7 @@ export default function App() {
         </div>
       )}
 
-      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} themeName={themeName} onToggleTheme={toggleTheme} />}
       {readerOpen && <ReaderMode scenes={scenes} initialIndex={readerStartIdx} onClose={() => setReaderOpen(false)} />}
 
       <style>{`
@@ -744,8 +752,3 @@ export default function App() {
   )
 }
 
-const navBtn = {
-  padding: '6px 12px', borderRadius: 3,
-  background: T.chip, border: `1px solid ${T.rule}`,
-  color: T.fgMuted, fontSize: 13, cursor: 'pointer',
-}

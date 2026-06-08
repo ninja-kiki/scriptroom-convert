@@ -2,11 +2,6 @@ import { useState } from 'react'
 import { T } from '../lib/core.js'
 import AnnotatedTranslation from './AnnotatedTranslation.jsx'
 
-const preStyle = {
-  fontFamily: 'monospace', fontSize: 12, color: T.fg,
-  maxHeight: 320, overflowY: 'auto', lineHeight: 1.7, margin: 0,
-}
-
 const STATUS_LABEL = {
   pending: '대기',
   formatting: '포맷 중',
@@ -17,17 +12,21 @@ const STATUS_LABEL = {
   error_translate: '번역 실패',
 }
 
-const STATUS_COLOR = {
-  pending: T.fgDim,
-  formatting: T.warn,
-  formatted: T.fgMuted,
-  translating: T.warn,
-  done: T.good,
-  error_format: T.err,
-  error_translate: T.err,
-}
-
 export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expanded, onToggle }) {
+  // 테마(live T) 따라가도록 컴포넌트 안에서 정의 + 의미색(파랑=포맷, 빨강=번역)
+  const preStyle = {
+    fontFamily: 'monospace', fontSize: 12, color: T.fg,
+    maxHeight: 320, overflowY: 'auto', lineHeight: 1.7, margin: 0,
+  }
+  const STATUS_COLOR = {
+    pending: T.fgDim,
+    formatting: T.fmt,
+    formatted: T.fmt,
+    translating: T.trans,
+    done: T.good,
+    error_format: T.err,
+    error_translate: T.err,
+  }
   const isError = scene.status.startsWith('error')
   const isDone = scene.status === 'done'
   const isActive = scene.status === 'formatting' || scene.status === 'translating'

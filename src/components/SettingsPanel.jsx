@@ -2,13 +2,20 @@ import { useState } from 'react'
 import { T, loadGuidelines, saveGuidelines, loadSettings, saveSettings, DEFAULT_FORMAT_GUIDELINES, DEFAULT_TRANSLATE_GUIDELINES, MODELS } from '../lib/core.js'
 
 
-export default function SettingsPanel({ onClose }) {
+export default function SettingsPanel({ onClose, themeName = 'light', onToggleTheme }) {
   const [s, setS] = useState(() => loadSettings())
   const [formatText, setFormatText] = useState(() => loadGuidelines('format'))
   const [translateText, setTranslateText] = useState(() => loadGuidelines('translate'))
   const [formatOpen, setFormatOpen] = useState(false)
   const [translateOpen, setTranslateOpen] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  const taStyle = {
+    width: '100%', minHeight: 200, resize: 'vertical',
+    background: T.bgInput, border: `1px solid ${T.rule}`,
+    borderRadius: 3, color: T.fg, fontSize: 13,
+    padding: 14, fontFamily: 'monospace', lineHeight: 1.6, outline: 'none',
+  }
 
   function patch(p) { setS(prev => ({ ...prev, ...p })) }
 
@@ -33,6 +40,22 @@ export default function SettingsPanel({ onClose }) {
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
+
+          {/* 테마 */}
+          <div style={{ borderTop: `1px solid ${T.rule}` }}>
+            <Row label="테마" desc="라이트 / 다크" last>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[{ id: 'light', label: '라이트' }, { id: 'dark', label: '다크' }].map(t => (
+                  <button key={t.id} onClick={() => { if (themeName !== t.id) onToggleTheme?.() }} style={{
+                    padding: '7px 14px', borderRadius: 3, border: 'none',
+                    background: themeName === t.id ? T.accent : T.chip,
+                    color: themeName === t.id ? T.accentFg : T.fgMuted,
+                    fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                  }}>{t.label}</button>
+                ))}
+              </div>
+            </Row>
+          </div>
 
           {/* 처리 */}
           <div style={{ borderTop: `1px solid ${T.rule}`, borderBottom: `1px solid ${T.rule}` }}>
@@ -170,9 +193,3 @@ function ResetBtn({ onClick }) {
   return <button onClick={onClick} style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 13, cursor: 'pointer', padding: '6px 0', display: 'block', marginTop: 4 }}>기본값으로 리셋</button>
 }
 
-const taStyle = {
-  width: '100%', minHeight: 200, resize: 'vertical',
-  background: T.bgInput, border: `1px solid ${T.rule}`,
-  borderRadius: 3, color: T.fg, fontSize: 13,
-  padding: 14, fontFamily: 'monospace', lineHeight: 1.6, outline: 'none',
-}
