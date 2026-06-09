@@ -55,7 +55,11 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
           {sceneNo != null ? `#${sceneNo}` : <span style={{ color: T.fgDim }}>↳</span>}
         </span>
 
-        <span style={{ flex: 1, color: T.fg, fontSize: 13, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+        <span style={{
+          flex: 1, fontSize: 13, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+          color: scene.heading ? T.fg : T.fgDim,
+          fontStyle: scene.heading ? 'normal' : 'italic',
+        }}>
           {titleLine}
         </span>
 
@@ -71,13 +75,11 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
         {isDone && scene.smiMatches?.length > 0 && (() => {
           const total = scene.smiMatches.length
           const matched = scene.smiMatches.filter(m => m.replaced).length
-          const rate = matched / total
-          const color = rate >= 0.6 ? T.good : rate >= 0.3 ? T.warn : T.err
-          const low = rate < 0.3
+          // 조용한 정보로 — 경고(⚠)·색 알람 제거 (각본≠자막인 작품은 낮은 게 정상이라 노이즈)
           return (
-            <span title={`자막과 일치한 대사 ${matched}/${total} (${Math.round(rate * 100)}%)${low ? ' · 각본과 영화 자막 차이가 커요 — 번역이 자막에 덜 맞춰졌을 수 있어요' : ''}`}
-              style={{ fontSize: 11, color, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2 }}>
-              {low && '⚠'}자막 {matched}/{total}
+            <span title={`자막과 일치한 대사 ${matched}/${total} (${Math.round((matched / total) * 100)}%)`}
+              style={{ fontSize: 11, color: T.fgDim, whiteSpace: 'nowrap' }}>
+              자막 {matched}/{total}
             </span>
           )
         })()}

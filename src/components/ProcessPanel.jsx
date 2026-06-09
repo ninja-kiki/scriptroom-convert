@@ -160,9 +160,16 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
                 </div>
               )}
               {lowSmi.length > 0 && (
-                <div style={{ color: T.warn, marginTop: 4 }}>
-                  · 자막 차이 큰 씬: {lowSmi.slice(0, 12).map(s => `#${logicalNoOf[s.id]}`).join(', ')}{lowSmi.length > 12 ? ` 외 ${lowSmi.length - 12}` : ''} — 번역이 영화 자막과 다를 수 있어요
-                </div>
+                lowSmi.length > total * 0.5 ? (
+                  // 전반적으로 안 맞음(각본≠영화 자막: 다른 언어·버전) — 씬 나열 대신 한 줄 요약
+                  <div style={{ color: T.fgMuted, marginTop: 4 }}>
+                    · 각본과 영화 자막 구조가 전반적으로 달라요 — 대사는 직접 번역됨 (자막 의존 낮음)
+                  </div>
+                ) : (
+                  <div style={{ color: T.warn, marginTop: 4 }}>
+                    · 자막 차이 큰 씬: {lowSmi.slice(0, 12).map(s => `#${logicalNoOf[s.id]}`).join(', ')}{lowSmi.length > 12 ? ` 외 ${lowSmi.length - 12}` : ''} — 번역이 영화 자막과 다를 수 있어요
+                  </div>
+                )
               )}
               {clean && lowSmi.length === 0 && <div style={{ color: T.accent }}>· 특이사항 없음</div>}
             </div>
