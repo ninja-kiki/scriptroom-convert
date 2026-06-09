@@ -599,10 +599,13 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             </div>
           )}
 
-          {history.map(h => {
-            const doneCount = h.sceneData ? h.sceneData.filter(s => s.status === 'done').length : 0
-            const total = h.sceneData ? h.sceneData.length : (h.sceneCount || 0)
-            const isComplete = total > 0 && doneCount === total
+          {history
+            .filter(h => !currentSession || h.title !== currentSession.title) // 위 '이어보기' 카드와 중복 제거
+            .map(h => {
+            // 저장된 doneCount 우선 (완료작은 sceneData를 버리므로 다시 세면 0이 됨)
+            const doneCount = h.doneCount ?? (h.sceneData ? h.sceneData.filter(s => s.status === 'done').length : 0)
+            const total = h.sceneCount ?? (h.sceneData ? h.sceneData.length : 0)
+            const isComplete = total > 0 && doneCount >= total
             const canResume = !!h.sceneData && total > 0 && !isComplete
 
             return (
@@ -616,8 +619,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ color: canResume ? T.accent : T.fg, fontWeight: 500, fontSize: 14 }}>{h.title}</div>
                   <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
-                    {doneCount !== null ? `${doneCount}/${total}씬 완료` : `${total}씬`}
-                    {h.duration ? ` · ${fmtDuration(h.duration)}` : ''}
+                    {isComplete ? `${total}씬 완료` : `${doneCount}/${total}씬`}
                     {' · '}{new Date(h.id).toLocaleDateString('ko')}
                     {canResume && <span style={{ color: T.accent }}> · 이어보기</span>}
                   </div>

@@ -20,7 +20,9 @@ const estTokens = (s) => Math.round((s || '').length / 3)
 
 export default function App() {
   const session = loadSession()
-  const [step, setStep] = useState(session ? 'processing' : 'upload') // upload | extracting | review | processing | done | revising
+  // 새로고침 시 항상 홈(업로드)으로 — 진행 중이던 작업은 홈의 '이어보기' 카드로 복귀 가능
+  // (어차피 새로고침하면 브라우저가 진행 루프를 멈추므로, 멈춘 화면을 보여주기보다 홈+이어보기가 정직함)
+  const [step, setStep] = useState('upload') // upload | extracting | review | processing | done | revising
   const [title, setTitle] = useState(session?.title || '')
   const [scenes, setScenes] = useState(session?.scenes || [])
   const [reviewScenes, setReviewScenes] = useState([]) // 검토용 씬 (raw만, API 전)
