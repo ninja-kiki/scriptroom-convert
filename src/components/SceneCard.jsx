@@ -13,11 +13,6 @@ const STATUS_LABEL = {
 }
 
 export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expanded, onToggle }) {
-  // 테마(live T) 따라가도록 컴포넌트 안에서 정의 + 의미색(파랑=포맷, 빨강=번역)
-  const preStyle = {
-    fontFamily: 'monospace', fontSize: 12, color: T.fg,
-    maxHeight: 320, overflowY: 'auto', lineHeight: 1.7, margin: 0,
-  }
   // 상태색: 완료=파랑(accent) · 진행중=노랑(warn) · 문제=빨강(err) · 그 외=중립
   const STATUS_COLOR = {
     pending: T.fgDim,
@@ -105,6 +100,11 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
 }
 
 function SceneDetail({ scene }) {
+  // 테마(live T) 반영 — 모듈 레벨이 아니라 렌더 시점에 정의
+  const preStyle = {
+    fontFamily: 'monospace', fontSize: 12, color: T.fg,
+    maxHeight: 320, overflowY: 'auto', lineHeight: 1.7, margin: 0,
+  }
   const tabs = [
     { key: 'raw', label: '원문', text: scene.raw },
     scene.formatted && { key: 'formatted', label: '포맷', text: scene.formatted },
