@@ -9,8 +9,7 @@ export async function extractTextFromPDF(file, onProgress) {
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
   const totalPages = pdf.numPages
-  const allLines = []       // 전체 줄 텍스트 (순서 유지)
-  const candidates = []     // 씬 헤딩 후보: { idx, text }
+  const pages = []          // 페이지별 [{text, x}]
 
   for (let i = 1; i <= totalPages; i++) {
     const page = await pdf.getPage(i)
@@ -35,16 +34,44 @@ export async function extractTextFromPDF(file, onProgress) {
       }
     }
     if (lineText.trim()) pageLines.push({ text: lineText, x: lineMinX })
+    pages.push(pageLines)
+    onProgress?.(i, totalPages)
+  }
 
-    for (const { text, x } of pageLines) {
+  // ── 반복 머리말/꼬리말 제거 ──────────────────────────────
+  // 페이지 가장자리(상·하단 2줄)에서, 숫자·날짜를 뺀 시그니처가 여러 페이지에 반복되면
+  // 러닝헤더/푸터로 판단해 제거. (작품명+페이지번호, "FULL Salmon Draft [101] 5/6/22" 등)
+  const sig = (t) => t.trim().toLowerCase()
+    .replace(/\d+/g, ' ')
+    .replace(/[[\]().,/'"“”\-–—:!?]/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+  const edgeCount = new Map()
+  for (const pageLines of pages) {
+    const n = pageLines.length
+    const seen = new Set()
+    pageLines.forEach((l, idx) => {
+      if (idx < 2 || idx >= n - 2) {
+        const s = sig(l.text)
+        if (s.length >= 3 && !seen.has(s)) { seen.add(s); edgeCount.set(s, (edgeCount.get(s) || 0) + 1) }
+      }
+    })
+  }
+  const threshold = Math.max(3, Math.ceil(totalPages * 0.2))
+  const boiler = new Set([...edgeCount].filter(([, c]) => c >= threshold).map(([s]) => s))
+
+  // ── 최종 줄 + 헤딩 후보 (보일러플레이트 제외) ──────────────
+  const allLines = []
+  const candidates = []
+  for (const pageLines of pages) {
+    const n = pageLines.length
+    pageLines.forEach((l, i) => {
+      const isEdge = i < 2 || i >= n - 2
+      if (isEdge && boiler.has(sig(l.text))) return   // 러닝헤더/푸터 제거
+
       const idx = allLines.length
-      allLines.push(text)
+      allLines.push(l.text)
 
-      // 씬 헤딩 후보 조건:
-      // - 좌측 여백 (x < 130pt ≈ 대부분 각본 포맷에서 씬 헤딩/지문 위치)
-      // - 5~75자, 대문자 70% 이상
-      // - 명백한 비헤딩 제외
-      const t = text.trim()
+      const t = l.text.trim(), x = l.x
       if (x < 130 && t.length >= 5 && t.length <= 75) {
         const letters = t.replace(/[^a-zA-Z]/g, '')
         if (letters.length >= 3 && t.replace(/[^A-Z]/g, '').length / letters.length > 0.7) {
@@ -53,9 +80,7 @@ export async function extractTextFromPDF(file, onProgress) {
           }
         }
       }
-    }
-
-    onProgress?.(i, totalPages)
+    })
   }
 
   return { text: allLines.join('\n'), candidates }

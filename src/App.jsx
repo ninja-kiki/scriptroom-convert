@@ -49,6 +49,31 @@ function stripMeta(text) {
   return lines.join('\n')
 }
 
+// 줄나눔 일관화: 씬마다/배치마다 LLM이 빈 줄을 들쭉날쭉 넣는 문제 → 결정적으로 정리.
+// 규칙: 연속 빈 줄은 1개로, # 헤딩·@인물 큐 앞에는 빈 줄 하나 보장, 앞뒤 빈 줄 제거.
+function normalizeSpacing(text) {
+  if (!text) return text
+  const lines = text.split('\n').map(l => l.replace(/\s+$/, ''))
+  const out = []
+  for (const l of lines) {
+    const t = l.trim()
+    if (t === '') {
+      if (out.length && out[out.length - 1] === '') continue
+      out.push(''); continue
+    }
+    if (/^#/.test(t) || /^@/.test(t)) {
+      if (out.length && out[out.length - 1] !== '') out.push('')
+    }
+    out.push(l)
+  }
+  while (out.length && out[0] === '') out.shift()
+  while (out.length && out[out.length - 1] === '') out.pop()
+  return out.join('\n')
+}
+
+// LLM 출력 후처리 한 방: 메타 제거 + 줄나눔 정리
+const cleanOutput = (text) => normalizeSpacing(stripMeta(text))
+
 export default function App() {
   const session = loadSession()
   // 새로고침 시 항상 홈(업로드)으로 — 진행 중이던 작업은 홈의 '이어보기' 카드로 복귀 가능
@@ -169,7 +194,7 @@ export default function App() {
         totalScenes: scenesRef.current.length, model: fs.formatModel || fs.model,
       })
       const tokens = res.tokens
-      const formatted = stripMeta(res.formatted)
+      const formatted = cleanOutput(res.formatted)
       const heading = formatted.split('\n')[0].trim()
       updateScene(scene.id, {
         status: 'formatted', formatted, formatMethod: 'llm',
@@ -199,7 +224,7 @@ export default function App() {
         sceneIndex: scene.id, totalScenes: scenesRef.current.length,
         model: loadSettings().translateModel || loadSettings().model,
       })
-      const rawTranslated = stripMeta(_tr.translated)
+      const rawTranslated = cleanOutput(_tr.translated)
       // SMI 매칭: 번역 완료 후 대사 라인을 자막과 비교·교체
       const { text: translated, matches: smiMatches } = smiEntriesRef.current
         ? matchSmiToTranslation(rawTranslated, smiEntriesRef.current)
@@ -266,7 +291,7 @@ export default function App() {
         totalScenes: scenesRef.current.length,
         model: loadSettings().translateModel || loadSettings().model,
       })
-      const raw = stripMeta(_b.translated)
+      const raw = cleanOutput(_b.translated)
       const parts = splitByHeading(raw)
       if (parts.length !== batch.length) { await fallback(); return } // 안전: 개수 안 맞으면 개별로
       batch.forEach((s, i) => {
