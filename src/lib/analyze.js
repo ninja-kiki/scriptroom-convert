@@ -57,12 +57,12 @@ export function analyzeScenes(scenes, rawText) {
 
   // ── 2. 원본 헤딩 수 vs 인식 씬 수 비교 ─────────────────
   const rawHeadingCount = countRawHeadings(rawText)
-  if (rawHeadingCount > 0 && total < rawHeadingCount * 0.4 && total < rawHeadingCount - 3) {
+  if (rawHeadingCount > 0 && total < rawHeadingCount * 0.7 && total < rawHeadingCount - 3) {
     warnings.push({
       level: 'warn',
       code: 'undercount',
       label: `씬 인식 부족 — 원본 헤딩 ${rawHeadingCount}개 중 ${total}개 인식`,
-      detail: `원본에서 INT./EXT. 헤딩이 ${rawHeadingCount}개 발견되었지만 ${total}개 씬만 분리되었습니다. 씬 번호 형식이나 특수 문자로 인해 일부 헤딩이 누락되었을 수 있습니다.`,
+      detail: `원본에서 INT./EXT. 헤딩이 ${rawHeadingCount}개 발견되었지만 ${total}개 씬만 분리되었습니다. 씬 번호 형식·OCR 잡티·특수 문자로 인해 일부 헤딩이 누락됐을 수 있어요. 씬 목록을 확인해 주세요.`,
     })
   }
 

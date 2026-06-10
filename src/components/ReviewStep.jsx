@@ -35,7 +35,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
 
       {/* 신뢰 신호 — 믿고 가도 되는지 한눈에 */}
       {(() => {
-        const hasCritical = hasErrors || pdfWarnings.some(w => ['few_scenes', 'undercount', 'low_heading_ratio'].includes(w.code))
+        const hasCritical = hasErrors || pdfWarnings.some(w => ['few_scenes', 'undercount', 'low_heading_ratio', 'large_avg'].includes(w.code))
         const okAll = !hasCritical && !smiWarning
         const signals = []
         // 씬 인식
