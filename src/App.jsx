@@ -331,6 +331,7 @@ export default function App() {
       rawLines: rawText.split('\n').length, candidates: candidates.length,
       method: null, aiReturned: null, aiKept: null, aiDropped: null, aiError: null,
     }
+    let aiScenes = null
     if (isPdf && candidates.length > 0) {
       setExtractProgress({ cur: candidates.length, total: 0, label: '씬 구조 분석 중...' })
       const ctrl = new AbortController()
@@ -350,7 +351,7 @@ export default function App() {
           diag.aiReturned = indices.length
           diag.aiKept = good.length
           diag.aiDropped = indices.length - good.length
-          if (good.length > 1) { rawScenes = splitByHeadingIndices(rawText, good); diag.method = 'ai' }
+          if (good.length > 1) aiScenes = splitByHeadingIndices(rawText, good)
         }
       } catch (e) {
         diag.aiError = (e.message || '').slice(0, 80)
@@ -359,11 +360,18 @@ export default function App() {
         clearTimeout(to)
       }
     }
-    // LLM 실패하거나 PDF 아닌 경우 regex fallback
-    if (!rawScenes || rawScenes.length <= 1) {
-      rawScenes = splitIntoScenes(rawText)
-      diag.method = diag.method === 'ai' ? 'ai→regex' : 'regex'
+
+    // 규칙 분할도 항상 계산 — 들여쓰기 헤딩·OCR 잡티에 강하고 x좌표 무관(AI 후보 누락 보완)
+    const ruleScenes = splitIntoScenes(rawText)
+    // 더 나은 쪽 선택: 표준 헤딩(INT./EXT. 등)을 더 많이 인식한 결과를 채택
+    const headedCount = list => (list || []).filter(s => isLikelyHeading((s.raw.split('\n').find(l => l.trim()) || ''))).length
+    const aiH = headedCount(aiScenes), ruleH = headedCount(ruleScenes)
+    if (aiScenes && aiH >= ruleH) {
+      rawScenes = aiScenes; diag.method = 'ai'
+    } else {
+      rawScenes = ruleScenes; diag.method = aiScenes ? 'ai→regex' : 'regex'
     }
+    diag.aiHeadings = aiH; diag.ruleHeadings = ruleH
     diag.scenes = rawScenes.length
 
     const warnings = analyzeScenes(rawScenes, rawText)

@@ -3,16 +3,17 @@
  * level: 'error' | 'warn' | 'info'
  */
 
-// 원본 텍스트에서 INT./EXT. 헤딩 줄 수 추출 (씬 번호 prefix 포함)
+// 원본 텍스트에서 INT./EXT. 헤딩 줄 수 추출 (씬 번호 prefix + OCR 잡티 허용)
 function countRawHeadings(rawText) {
   const lines = rawText.split('\n')
+  const hit = (t) =>
+    /^(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.)/i.test(t) ||
+    /^[A-Z]?\d+\.?\s+(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.)/i.test(t) ||
+    /^SCENE\s+\d+\s*[-–.]/i.test(t)
   return lines.filter(line => {
     const t = line.trim()
-    return (
-      /^(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.)/i.test(t) ||
-      /^[A-Z]?\d+\.?\s+(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.)/i.test(t) ||
-      /^SCENE\s+\d+\s*[-–.]/i.test(t)
-    )
+    const deSpeck = t.replace(/^[A-Za-z0-9*'"\\\/|.\-]{1,3}\s{2,}/, '')  // 앞쪽 OCR 잡티 제거
+    return hit(t) || hit(deSpeck)
   }).length
 }
 

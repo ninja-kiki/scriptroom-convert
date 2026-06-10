@@ -77,18 +77,15 @@ export function splitIntoScenes(rawText) {
 
   for (const line of lines) {
     const trimmed = line.trim()
-    // 씬 헤딩 감지 (다양한 형식 지원):
-    // INT./EXT. LOCATION
-    // 19 EXT. LOCATION (씬 번호 prefix)
-    // 19. EXT. LOCATION (점 있는 prefix)
-    // A19 EXT. LOCATION (알파벳+숫자 prefix)
-    // SCENE 1 - INT. LOCATION
-    // INSERT / INTERCUT / MONTAGE
-    const isHeading =
-      /^(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.)/i.test(trimmed) ||
-      /^[A-Z]?\d+\.?\s+(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.)/i.test(trimmed) ||
-      /^SCENE\s+\d+\s*[-–.]/i.test(trimmed) ||
-      /^(INSERT|INTERCUT WITH|MONTAGE|SERIES OF SHOTS)/i.test(trimmed)
+    // OCR 잡티/씬번호 제거판: 앞쪽 짧은 토큰(f*, \, ', I, 1 등)+공백 다발을 떼고 한 번 더 본다
+    const deSpeck = trimmed.replace(/^[A-Za-z0-9*'"\\\/|.\-]{1,3}\s{2,}/, '')
+    const headMatch = (s) =>
+      /^(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.)/i.test(s) ||
+      /^[A-Z]?\d+\.?\s+(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.)/i.test(s) ||
+      /^SCENE\s+\d+\s*[-–.]/i.test(s) ||
+      /^(INSERT|INTERCUT WITH|MONTAGE|SERIES OF SHOTS)/i.test(s)
+    // 씬 헤딩 감지: INT./EXT. LOCATION, 씬번호 prefix(19/A19), SCENE N -, INSERT/INTERCUT 등
+    const isHeading = headMatch(trimmed) || headMatch(deSpeck)
 
     if (isHeading && trimmed.length > 5) {
       if (current.length > 0) {
