@@ -18,20 +18,34 @@ function clearSession() { localStorage.removeItem(SESSION_KEY) }
 // 토큰 추정 (서버가 실제 수치를 안 줘서 길이 기반 근사 — 한/영 혼합 ~3자/토큰)
 const estTokens = (s) => Math.round((s || '').length / 3)
 
-// LLM이 본문에 흘리는 메타 코멘트 제거 (예: "(타이틀 페이지 제거됨)", "[Title page removed]")
-// 맨 앞/맨 끝의 괄호·대괄호로 둘러싼 "제거/생략/번역할 내용 없음" 류 한 줄만 안전하게 제거.
-const META_LINE = /^\s*[(\[].*(제거|생략|removed|omitted|no (screenplay|script) content|번역할.*없|포맷할.*없).*[)\]]\s*$/i
+// LLM이 본문에 흘리는 "내가 뭘 했다" 메타 코멘트 제거.
+// 안전 원칙: ① 키워드가 명확한 줄만 (진짜 본문 [크레딧:]/[자막:]/FADE IN: 등은 보존)
+//           ② 텍스트 양 끝에서만 (중간 본문은 절대 안 건드림)
+const META_PATTERNS = [
+  /^\s*```/,                                                                       // 코드펜스 ```
+  /^\s*[(\[][^)\]]*(제거|생략|removed|omitted|no (screenplay|script) content|번역할.*?없|포맷할.*?없|내용\s*없)[^)\]]*[)\]]\s*$/i, // (타이틀 페이지 제거됨) 류
+  /^\s*(번역|포맷)\s*(결과|본|텍스트|된\s*각본)?\s*[:：]\s*$/,                        // "번역 결과:" 라벨만
+  /^\s*(다음은|아래는|여기(?:에|는)?)\s.*(번역|포맷|각본|결과).*[:：]\s*$/,            // "다음은 번역입니다:"
+  /^\s*(here(?:'s| is)|below is)\b.*(translat|format|script).*[:：]?\s*$/i,
+  /^\s*(물론입니다|알겠습니다|네[,，]?\s*알겠|좋습니다)[.!]?\s*$/,                     // 인사·수락
+  /^\s*(sure|certainly|of course)\b.*$/i,
+  /^\s*(translator'?s?\s*note|역자\s*주|옮긴이\s*주|주\s*[:：]|참고\s*[:：])/i,        // 역주/참고
+  /^\s*(이상입니다|번역을?\s*(완료|마쳤|마칩니다)|도움이\s*되(?:셨|었))/,             // 꼬리말
+]
+const isMetaLine = (l) => META_PATTERNS.some(re => re.test(l))
 function stripMeta(text) {
   if (!text) return text
   let lines = text.split('\n')
-  while (lines.length && (lines[0].trim() === '' || META_LINE.test(lines[0]))) {
-    if (META_LINE.test(lines[0])) { lines.shift(); while (lines.length && lines[0].trim() === '') lines.shift(); }
-    else break
+  const trimEdge = (fromStart) => {
+    while (lines.length) {
+      const l = fromStart ? lines[0] : lines[lines.length - 1]
+      if (l.trim() === '') { fromStart ? lines.shift() : lines.pop(); continue } // 양끝 빈 줄
+      if (isMetaLine(l)) { fromStart ? lines.shift() : lines.pop(); continue }    // 메타 줄
+      break
+    }
   }
-  while (lines.length && (lines[lines.length - 1].trim() === '' || META_LINE.test(lines[lines.length - 1]))) {
-    if (META_LINE.test(lines[lines.length - 1])) { lines.pop(); while (lines.length && lines[lines.length - 1].trim() === '') lines.pop() }
-    else break
-  }
+  trimEdge(true)
+  trimEdge(false)
   return lines.join('\n')
 }
 
