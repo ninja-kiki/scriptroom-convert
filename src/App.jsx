@@ -18,6 +18,23 @@ function clearSession() { localStorage.removeItem(SESSION_KEY) }
 // 토큰 추정 (서버가 실제 수치를 안 줘서 길이 기반 근사 — 한/영 혼합 ~3자/토큰)
 const estTokens = (s) => Math.round((s || '').length / 3)
 
+// LLM이 본문에 흘리는 메타 코멘트 제거 (예: "(타이틀 페이지 제거됨)", "[Title page removed]")
+// 맨 앞/맨 끝의 괄호·대괄호로 둘러싼 "제거/생략/번역할 내용 없음" 류 한 줄만 안전하게 제거.
+const META_LINE = /^\s*[(\[].*(제거|생략|removed|omitted|no (screenplay|script) content|번역할.*없|포맷할.*없).*[)\]]\s*$/i
+function stripMeta(text) {
+  if (!text) return text
+  let lines = text.split('\n')
+  while (lines.length && (lines[0].trim() === '' || META_LINE.test(lines[0]))) {
+    if (META_LINE.test(lines[0])) { lines.shift(); while (lines.length && lines[0].trim() === '') lines.shift(); }
+    else break
+  }
+  while (lines.length && (lines[lines.length - 1].trim() === '' || META_LINE.test(lines[lines.length - 1]))) {
+    if (META_LINE.test(lines[lines.length - 1])) { lines.pop(); while (lines.length && lines[lines.length - 1].trim() === '') lines.pop() }
+    else break
+  }
+  return lines.join('\n')
+}
+
 export default function App() {
   const session = loadSession()
   // 새로고침 시 항상 홈(업로드)으로 — 진행 중이던 작업은 홈의 '이어보기' 카드로 복귀 가능
@@ -133,10 +150,12 @@ export default function App() {
     }
     try {
       const fs = loadSettings()
-      const { formatted, tokens } = await postJSON('/api/format', {
+      const res = await postJSON('/api/format', {
         sceneText: scene.raw, guidelines, sceneIndex: scene.id,
         totalScenes: scenesRef.current.length, model: fs.formatModel || fs.model,
       })
+      const tokens = res.tokens
+      const formatted = stripMeta(res.formatted)
       const heading = formatted.split('\n')[0].trim()
       updateScene(scene.id, {
         status: 'formatted', formatted, formatMethod: 'llm',
@@ -159,13 +178,14 @@ export default function App() {
       const idx = scenesRef.current.findIndex(s => s.id === scene.id)
       const prev = idx > 0 ? scenesRef.current[idx - 1] : null
       const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
-      const { translated: rawTranslated, tokens } = await postJSON('/api/translate', {
+      const _tr = await postJSON('/api/translate', {
         formattedText: scene.formatted, smiContext, prevTail,
         smiAuthoritative: smiInfo?.lang === 'ko',  // KO 자막이면 대사는 자막 우선
         characterMemo: characterMemo || null, guidelines,
         sceneIndex: scene.id, totalScenes: scenesRef.current.length,
         model: loadSettings().translateModel || loadSettings().model,
       })
+      const rawTranslated = stripMeta(_tr.translated)
       // SMI 매칭: 번역 완료 후 대사 라인을 자막과 비교·교체
       const { text: translated, matches: smiMatches } = smiEntriesRef.current
         ? matchSmiToTranslation(rawTranslated, smiEntriesRef.current)
@@ -225,13 +245,14 @@ export default function App() {
       const idx = scenesRef.current.findIndex(s => s.id === firstId)
       const prev = idx > 0 ? scenesRef.current[idx - 1] : null
       const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
-      const { translated: raw } = await postJSON('/api/translate', {
+      const _b = await postJSON('/api/translate', {
         formattedText: combined, smiContext, prevTail,
         smiAuthoritative: smiInfo?.lang === 'ko',
         characterMemo: characterMemo || null, guidelines,
         totalScenes: scenesRef.current.length,
         model: loadSettings().translateModel || loadSettings().model,
       })
+      const raw = stripMeta(_b.translated)
       const parts = splitByHeading(raw)
       if (parts.length !== batch.length) { await fallback(); return } // 안전: 개수 안 맞으면 개별로
       batch.forEach((s, i) => {
