@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { T, loadGuidelines, saveGuidelines, loadSettings, saveSettings, DEFAULT_FORMAT_GUIDELINES, DEFAULT_TRANSLATE_GUIDELINES, MODELS } from '../lib/core.js'
+import { APP_VERSION, VERSION_LABEL } from '../lib/version.js'
 
 
 export default function SettingsPanel({ onClose, themeName = 'light', onToggleTheme }) {
@@ -93,6 +94,11 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
             <textarea value={translateText} onChange={e => setTranslateText(e.target.value)} style={taStyle} />
             <ResetBtn onClick={() => { if (window.confirm('번역 지침을 기본값으로 되돌릴까요?')) setTranslateText(DEFAULT_TRANSLATE_GUIDELINES) }} />
           </Collapsible>
+
+          {/* 앱 정보 */}
+          <div style={{ padding: '14px 20px 18px', textAlign: 'center', color: T.fgDim, fontSize: 11 }}>
+            scriptroom convert · v{APP_VERSION} <span style={{ opacity: 0.7 }}>— {VERSION_LABEL}</span>
+          </div>
 
         </div>
 

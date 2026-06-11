@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { T, applyTheme, currentTheme, loadGuidelines, saveHistory, loadSettings, sliceSmi, loadPromptsFromFile, logProcess } from './lib/core.js'
-import { APP_VERSION } from './lib/version.js'
 import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
 import { ruleFormat } from './lib/format-rules.js'
 import { analyzeScenes } from './lib/analyze.js'
@@ -740,7 +739,6 @@ export default function App() {
             <path d="M28.5 1l5 10h-10z" fill={T.fmt} />
           </svg>
           scriptroom <span style={{ color: T.accent }}>convert</span>
-          <span style={{ color: T.fgDim, fontSize: 11, fontWeight: 500, marginLeft: 2 }}>v{APP_VERSION}</span>
         </span>
         <button onClick={() => setShowSettings(true)} style={navBtn}>설정</button>
       </div>
