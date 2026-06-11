@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens, loadGuidelines, loadSettings } from '../lib/core.js'
 import { decodeSubtitle, parseSubtitleLines, subtitleInfo } from '../lib/smi.js'
+import LintPanel from './LintPanel.jsx'
 import { detectIssues, detectFileType, planLLMChunks, estimateTokens, applyAutoFixes, patchText, parseFeedback, classifyFeedback, applyDirectEdits } from '../lib/revise.js'
 
 const SESSION_KEY = 'convert_session'
@@ -278,6 +279,9 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
 
       {tab === 'revise' && (
         <div>
+          {/* 번역본 검수 (코드 기반, 토큰 0) */}
+          <LintPanel />
+
           {/* 리더 수정요청(JSON) → AI 수정 → 오버레이 */}
           <div style={{ marginBottom: 18, padding: 14, borderRadius: 3, border: `1px solid ${T.rule}`, background: T.bgCard }}>
             <div style={{ color: T.fg, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>리더 수정요청 처리 <span style={{ color: T.fgDim, fontWeight: 400 }}>(오류 마크 → AI 수정)</span></div>
