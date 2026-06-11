@@ -60,7 +60,9 @@ function normalize(s) {
   return s.replace(/[\s.,!?~·…'"「」『』【】《》\-_]/g, '').toLowerCase()
 }
 
-// 캐릭터 바이그램 Jaccard 유사도
+// 각본 번역 ↔ 공식 자막 유사도.
+// 둘 다 '번역물'이라 같은 뜻이어도 단어·어순·어미가 달라 글자 자카드는 과소평가됨.
+// → ① 바이그램 오버랩계수(길이패널티 제거)와 ② 토큰 함유율(어순 무관 핵심어 겹침)의 최댓값.
 function similarity(a, b) {
   const na = normalize(a), nb = normalize(b)
   if (!na || !nb || na.length < 2 || nb.length < 2) return 0
@@ -72,7 +74,20 @@ function similarity(a, b) {
   const ba = bigrams(na), bb = bigrams(nb)
   let inter = 0
   ba.forEach(g => { if (bb.has(g)) inter++ })
-  return inter / (ba.size + bb.size - inter)
+  const overlap = inter / Math.min(ba.size, bb.size)   // 자카드 대신 오버랩계수(짧은 자막 불이익 제거)
+
+  // 정확 토큰(2글자+ 내용어) 함유율 — 어순·어미 달라도 핵심어 겹치면 인정 (substring 아님 = 우연 매칭 방지)
+  const tok = s => s.split(/\s+/).map(normalize).filter(t => t.length >= 2)
+  const ta = tok(a), tb = tok(b)
+  let tokenSim = 0
+  if (ta.length && tb.length) {
+    const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta]
+    const longSet = new Set(long)
+    tokenSim = short.filter(t => longSet.has(t)).length / short.length
+  }
+  // 길이 호환성: 진짜 짝은 길이가 비슷함. 짧은 줄이 거대한 자막 풀에서 우연히 겹치는 것 억제.
+  const lenRatio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length)
+  return Math.max(overlap, tokenSim) * Math.min(1, lenRatio * 1.5)
 }
 
 // 번역 텍스트 + SMI 엔트리 → 교체 + 매치 데이터
