@@ -30,6 +30,11 @@ const isHeaderShape = t =>
   /\(?\d{1,2}\/\d{1,2}\/\d{2,4}\)?/.test(t) || /\[\d{2,4}\]\s*\d/.test(t) ||
   /\b(mm\/dd\/yy)\b/i.test(t) || /["”]\s*\d{1,3}[A-Z]?\.\s*$/.test(t)
 const isStandaloneBoiler = t => /^\(?(CONTINUED|MORE)\)?:?$/i.test(t.replace(/\s+/g, ' ').trim())
+// 반복 안 해도 확실한 러닝헤더 (개정번호+날짜, 타이틀+페이지) — LLM이 제각각 번역해도 잡힘
+const isStrongHeader = t =>
+  /\[\d{2,4}\]\s*\d{1,2}\/\d{1,2}\/\d{2,4}/.test(t) ||
+  /\b(rev\.?|revised|draft|초고|수정본|드래프트|개정)\b.*\[\d{2,4}\]/i.test(t) ||
+  /["”]\s*\d{1,3}(-\d{1,3})?[A-Z]?\.\s*$/.test(t)
 const isUntranslated = t => la(t) >= 10 && ko(t) === 0
 // 구조/지시문(샷슬러그·화자큐·타이틀): 전부 대문자/괄호만/따옴표만/POV·OS·VO
 const isStructural = t => !/[a-z]/.test(t) || /^\(.+\)$/.test(t) || /^["'].*["']$/.test(t) || /\b(POV|O\.S\.|V\.O\.)\b/.test(t)
@@ -49,9 +54,9 @@ export function detect(text) {
     const t = l.trim()
     if (!t) { prev = ''; return }
     if (isMeta(t)) out.meta.push(i)
-    else if (isStandaloneBoiler(t) || (isHeaderShape(t) && boilerSig.has(sig(t)))) out.boiler.push(i)
+    else if (isStandaloneBoiler(t) || isStrongHeader(t) || (isHeaderShape(t) && boilerSig.has(sig(t)))) out.boiler.push(i)
     if (t === prev) out.dupe.push(i)
-    if (/^#/.test(t) && /[가-힣\s]\d{1,3}$/.test(t) && !/(19|20)\d{2}$/.test(t)) out.headNum.push(i)
+    if (/^#/.test(t) && /[가-힣\s)\]]\d{1,3}$/.test(t) && !/(19|20)\d{2}$/.test(t)) out.headNum.push(i)
     if (!isMarker(t) && isUntranslated(t)) (isStructural(t) ? out.struct : out.dialog).push(i)
     if (/^[#@]/.test(t) && prev !== '' && prev !== null) out.spacing++
     prev = t
@@ -111,7 +116,7 @@ export function autofix(text) {
   const res = []
   for (let l of lines) {
     let t = l.trim()
-    if (/^#/.test(t) && /[가-힣\s]\d{1,3}$/.test(t) && !/(19|20)\d{2}$/.test(t)) { l = l.replace(/(\d{1,3})\s*$/, '').replace(/\s+$/, ''); t = l.trim() }
+    if (/^#/.test(t) && /[가-힣\s)\]]\d{1,3}$/.test(t) && !/(19|20)\d{2}$/.test(t)) { l = l.replace(/(\d{1,3})\s*$/, '').replace(/\s+$/, ''); t = l.trim() }
     if (t === '') { if (res.length && res[res.length - 1] === '') continue; res.push(''); continue }
     if (/^[#@]/.test(t) && res.length && res[res.length - 1] !== '') res.push('')
     res.push(l.replace(/\s+$/, ''))
