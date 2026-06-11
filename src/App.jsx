@@ -365,9 +365,28 @@ export default function App() {
       setReviewSmiFile(smiFile)
     }
 
-    const { text: rawText, candidates } = await extractText(scriptFile, (cur, total) => {
-      setExtractProgress({ cur, total, label: '' })
-    })
+    // 추출 — 깨진/스캔/iCloud 미다운로드 PDF에서 무한대기 방지 (타임아웃 + 에러 가드)
+    let rawText, candidates
+    try {
+      const result = await Promise.race([
+        extractText(scriptFile, (cur, total) => setExtractProgress({ cur, total, label: '' })),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('TIMEOUT')), 90000)),
+      ])
+      rawText = result.text; candidates = result.candidates
+    } catch (e) {
+      setStep('upload')
+      window.alert(
+        e.message === 'TIMEOUT'
+          ? '파일 읽기가 너무 오래 걸려 중단했어요.\n\niCloud에 있는 파일이면 Finder에서 먼저 완전히 다운로드(☁️ 아이콘)한 뒤 다시 올려주세요. 또는 로컬 폴더(다운로드 등)로 복사해서 올려보세요.'
+          : `파일을 읽을 수 없어요: ${e.message}\n\nPDF가 손상됐거나 iCloud 미다운로드 파일일 수 있어요.`
+      )
+      return
+    }
+    if (!rawText || rawText.replace(/\s/g, '').length < 20) {
+      setStep('upload')
+      window.alert('이 PDF에서 텍스트를 거의 못 읽었어요.\n\n스캔(이미지) PDF이거나 iCloud에 안 받아진 껍데기 파일일 수 있어요. 텍스트가 들어있는 PDF로 다시 시도해 주세요.')
+      return
+    }
 
     // formatted.txt 감지 → 포맷 완료 상태로 바로 로드
     const ext = scriptFile.name.split('.').pop().toLowerCase()
