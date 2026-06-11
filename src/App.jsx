@@ -31,6 +31,7 @@ const META_PATTERNS = [
   /^\s*(sure|certainly|of course)\b.*$/i,
   /^\s*(translator'?s?\s*note|역자\s*주|옮긴이\s*주|주\s*[:：]|참고\s*[:：])/i,        // 역주/참고
   /^\s*(이상입니다|번역을?\s*(완료|마쳤|마칩니다)|도움이\s*되(?:셨|었))/,             // 꼬리말
+  /(포함되지\s*않았|붙여넣어?\s*주시|올려\s*주시|보내\s*주시|번역해\s*드리겠|번역을?\s*시작하겠|제공해\s*주세요|원문\s*텍스트를)/, // 빈 씬 '원문 주세요' 류 거부
 ]
 const isMetaLine = (l) => META_PATTERNS.some(re => re.test(l))
 function stripMeta(text) {
