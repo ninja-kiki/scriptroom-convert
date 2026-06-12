@@ -139,7 +139,7 @@ async function handleTranslate(body) {
         ? `\n\n[공식 한국어 자막 (해당 씬 인근) — 대사는 의미가 통하는 한 이 자막 표현을 그대로 우선 사용. 지문·내레이션은 자막에 없으니 직접 번역]\n${smiContext}`
         : `\n\n[참고 자막 (해당 씬 인근)]\n${smiContext}`)
     : ''
-  const memoSection = characterMemo ? `\n\n[인물 관계 메모]\n${characterMemo}` : ''
+  const memoSection = characterMemo ? `\n\n[인물 말투·관계 가이드 — 씬이 갈려도 각 인물의 말투(반말/존댓말)·호칭을 이 가이드대로 일관되게]\n${characterMemo}` : ''
   const prevSection = prevTail ? `\n\n[직전 장면 끝부분 — 대명사·상황 맥락 참고용. 번역하지 말 것]\n${prevTail}` : ''
   const lang = targetLang || '한국어'
 
@@ -156,6 +156,28 @@ ${formattedText}`
 
   const translated = await runClaude(systemPrompt, userPrompt, model)
   return { translated, tokens: null }
+}
+
+// 인물 말투 사전 — 작품당 1회. 씬마다 따로 번역해도 말투가 일관되게 유지되도록 가이드 생성.
+async function handleCharacterRegister(body) {
+  const { dialogueSample, model } = body
+  if (!dialogueSample) return { register: '' }
+  const systemPrompt = `당신은 영화 각본 번역 디렉터입니다. 아래 대사 샘플(@화자: 대사)을 보고 한국어 번역에 쓸 '인물별 말투 가이드'를 만드세요.
+
+목적: 각본을 씬 단위로 따로 번역해도, 각 인물의 말투(반말/존댓말)와 호칭이 작품 전체에서 일관되게 유지되도록.
+
+각 주요 인물 한 줄:
+- 기본 말투(반말/존댓말). 상대에 따라 다르면 상대별로 명시 (예: A에게 존댓말, 동료에게 반말)
+- 특징적 호칭/말버릇 있으면 짧게
+
+예)
+코브: 사이토·의뢰인에게 존댓말(프로페셔널), 팀원에겐 편한 반말
+마틸다: 레옹에게 반말, 어른들에게도 당돌한 반말
+
+중요: 설명·머리말·번호 없이 '1줄=1인물'. 핵심 인물 12명 이내. 추측이면 자연스러운 기본값으로.`
+  const userPrompt = `대사 샘플:\n${dialogueSample}`
+  const register = await runClaude(systemPrompt, userPrompt, model)
+  return { register: (register || '').trim() }
 }
 
 // 문제 구간만 받아서 수정 (surgical patch)
@@ -270,7 +292,8 @@ const server = createServer(async (req, res) => {
       const data = JSON.parse(body)
       let result
 
-      if (req.url === '/api/format') result = await handleFormat(data)
+      if (req.url === '/api/character-register') result = await handleCharacterRegister(data)
+      else if (req.url === '/api/format') result = await handleFormat(data)
       else if (req.url === '/api/translate') result = await handleTranslate(data)
       else if (req.url === '/api/revise') result = await handleRevise(data)
       else if (req.url === '/api/patch') result = await handlePatch(data)

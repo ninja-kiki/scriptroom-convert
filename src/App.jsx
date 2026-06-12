@@ -18,6 +18,28 @@ function clearSession() { localStorage.removeItem(SESSION_KEY) }
 // 토큰 추정 (서버가 실제 수치를 안 줘서 길이 기반 근사 — 한/영 혼합 ~3자/토큰)
 const estTokens = (s) => Math.round((s || '').length / 3)
 
+// 인물 말투 사전용 대사 샘플 — @화자 + 첫 대사 줄을 작품 전반에서 고르게 뽑아 길이 제한
+function buildDialogueSample(scenes, maxChars = 8000) {
+  const pairs = []
+  for (const sc of scenes || []) {
+    const lines = (sc.formatted || sc.raw || '').split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim()
+      if (!t.startsWith('@')) continue
+      const cue = t.replace(/^@/, '').split('(')[0].trim()
+      let j = i + 1
+      while (j < lines.length && (lines[j].trim() === '' || lines[j].trim().startsWith('('))) j++
+      const dlg = j < lines.length ? lines[j].trim() : ''
+      if (cue && dlg && !dlg.startsWith('@') && !dlg.startsWith('#')) pairs.push(`@${cue}: ${dlg.slice(0, 80)}`)
+    }
+  }
+  if (!pairs.length) return ''
+  const cap = 200
+  let sampled = pairs
+  if (pairs.length > cap) { const step = pairs.length / cap; sampled = Array.from({ length: cap }, (_, k) => pairs[Math.floor(k * step)]) }
+  return sampled.join('\n').slice(0, maxChars)
+}
+
 // LLM이 본문에 흘리는 "내가 뭘 했다" 메타 코멘트 제거.
 // 안전 원칙: ① 키워드가 명확한 줄만 (진짜 본문 [크레딧:]/[자막:]/FADE IN: 등은 보존)
 //           ② 텍스트 양 끝에서만 (중간 본문은 절대 안 건드림)
@@ -499,10 +521,27 @@ export default function App() {
       }, settings.concurrency)
     }
 
+    // 1.5단계: 인물 말투 사전 — 작품당 1회. 씬이 갈려도 반말/존댓말·호칭 일관성 유지.
+    let register = characterMemo || ''
+    if (!isStoppedRef.current && settings.characterRegister !== false) {
+      try {
+        const sample = buildDialogueSample(scenesRef.current)
+        if (sample) {
+          setPhase('register')
+          const r = await postJSON('/api/character-register', {
+            dialogueSample: sample,
+            model: settings.translateModel || settings.model,
+          })
+          if (r.register) register = r.register
+        }
+      } catch (e) { console.warn('말투 사전 생성 실패(번역은 계속):', e.message) }
+    }
+    characterMemoRef.current = register
+
     // 2단계: 번역 (짧은 씬 배칭 → 호출수 절감, 개수 안 맞으면 개별 폴백)
     if (!isStoppedRef.current) {
       setPhase('translating')
-      await translateScenes(transGuidelines, characterMemo, settings)
+      await translateScenes(transGuidelines, register, settings)
     }
 
     isProcessing.current = false

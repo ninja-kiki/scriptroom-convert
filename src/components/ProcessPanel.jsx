@@ -94,7 +94,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
           <h2 style={{ color: T.fg, fontSize: 18, fontWeight: 700 }}>{title}</h2>
           <span style={{ color: T.fgMuted, fontSize: 13 }}>{doneCount}/{total} 씬</span>
-          {phase !== 'done' && !isPaused && <span style={{ color: T.warn, fontSize: 12, fontWeight: 600 }}>{phase === 'formatting' ? '포맷 중' : '번역 중'}</span>}
+          {phase !== 'done' && !isPaused && <span style={{ color: T.warn, fontSize: 12, fontWeight: 600 }}>{phase === 'formatting' ? '포맷 중' : phase === 'register' ? '말투 분석 중' : '번역 중'}</span>}
           {isPaused && <span style={{ color: T.warn, fontSize: 12 }}>일시정지됨</span>}
         </div>
 
