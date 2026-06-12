@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { T, loadSettings } from '../lib/core.js'
+import { T, loadSettings, loadGuidelines } from '../lib/core.js'
 import { detect, autofix, summarize } from '../lib/lint.js'
 
 // 종합 수정 허브 — 번역본 드롭 → 자동 진단 → (무료)코드수정 자동 + (토큰)AI수정 선택 → 한 번에 적용
@@ -11,9 +11,16 @@ export default function LintPanel() {
   async function addFiles(fileList) {
     const next = []
     for (const f of Array.from(fileList || [])) {
-      if (!f.name.endsWith('.txt')) continue
-      const text = await f.text()
-      next.push({ name: f.name, text, sum: summarize(text), det: detect(text), open: items.length === 0, unify: false, instr: '', running: false, prog: null })
+      if (f.name.endsWith('.json')) {
+        // 리더 수정요청 JSON
+        try {
+          const req = JSON.parse(await f.text())
+          if (Array.isArray(req.items)) { next.push({ kind: 'fixreq', name: f.name, req, open: true, running: false, prog: null }); continue }
+        } catch {}
+      } else if (f.name.endsWith('.txt')) {
+        const text = await f.text()
+        next.push({ kind: 'txt', name: f.name, text, sum: summarize(text), det: detect(text), open: items.length === 0, unify: false, instr: '', running: false, prog: null })
+      }
     }
     if (next.length) setItems(prev => [...prev, ...next])
   }
@@ -79,6 +86,29 @@ export default function LintPanel() {
     } finally { upd(idx, { running: false, prog: null }) }
   }
 
+  // ── 리더 수정요청 JSON → AI 교정 → 오버레이 다운로드 ──
+  async function runFixReq(idx) {
+    const it = items[idx]; if (it.running || !it.req?.items?.length) return
+    upd(idx, { running: true, prog: { d: 0, t: it.req.items.length } })
+    const guidelines = loadGuidelines('translate')
+    const model = loadSettings().translateModel || loadSettings().model
+    const edits = {}
+    for (let i = 0; i < it.req.items.length; i++) {
+      const q = it.req.items[i]
+      if (q.ko) {
+        const note = [q.tags?.length ? `[${q.tags.join('·')}]` : '', q.memo || ''].filter(Boolean).join(' ')
+        try {
+          const res = await fetch('/api/fix-feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ko: q.ko, en: q.en, note, guidelines, model }) })
+          if (res.ok) { const { fixed } = await res.json(); if (fixed && fixed !== q.ko) edits[q.blockId] = fixed }
+        } catch {}
+      }
+      upd(idx, { prog: { d: i + 1, t: it.req.items.length } })
+    }
+    download(`${it.req.id || 'overlay'}_수정.json`, JSON.stringify({ id: it.req.id, title: it.req.title, edits }, null, 2))
+    upd(idx, { running: false, prog: null })
+    alert(`${Object.keys(edits).length}개 교정 완료 → 리더에서 '수정 가져오기'로 반영하세요.`)
+  }
+
   const Badge = ({ n, label, color }) => n > 0 && (
     <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: T.chip, color: color || T.fgMuted }}>{label} {n}</span>
   )
@@ -90,8 +120,8 @@ export default function LintPanel() {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <div style={{ color: T.fg, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>번역본 수정 <span style={{ color: T.fgDim, fontWeight: 400 }}>(드롭하면 알아서 진단)</span></div>
-      <div style={{ color: T.fgDim, fontSize: 12, marginBottom: 10 }}>완료된 <code>_translated.txt</code>를 넣으면 결함을 자동 진단해요. <b>코드 수정은 무료·자동</b>, 말투 통일·직접 지시 같은 <b>AI 수정만 선택</b>하면 한 번에 적용.</div>
+      <div style={{ color: T.fg, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>수정 <span style={{ color: T.fgDim, fontWeight: 400 }}>(파일 드롭하면 알아서 판별·진단)</span></div>
+      <div style={{ color: T.fgDim, fontSize: 12, marginBottom: 10 }}><code>_translated.txt</code> = 검수+말투통일+지시 / <code>_수정요청.json</code>(리더) = AI 교정→오버레이. <b>코드 수정은 무료·자동</b>, AI 수정만 선택하면 한 번에 적용.</div>
 
       <div
         onClick={() => ref.current.click()}
@@ -99,11 +129,22 @@ export default function LintPanel() {
         onDragLeave={() => setDrag(false)}
         onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files) }}
         style={{ border: `2px dashed ${drag ? T.accent : T.rule}`, borderRadius: 3, padding: '18px', textAlign: 'center', cursor: 'pointer', background: T.bgCard, marginBottom: 12 }}>
-        <span style={{ color: T.fgMuted, fontSize: 13 }}>번역본 .txt 드롭 (여러 개 가능)</span>
+        <span style={{ color: T.fgMuted, fontSize: 13 }}>.txt 번역본 · .json 수정요청 드롭 (여러 개 가능)</span>
       </div>
-      <input ref={ref} type="file" accept=".txt" multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
+      <input ref={ref} type="file" accept=".txt,.json" multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
 
       {items.map((it, idx) => {
+        // 리더 수정요청 JSON
+        if (it.kind === 'fixreq') return (
+          <div key={idx} style={{ background: T.bgCard, borderRadius: 3, marginBottom: 6, padding: '12px' }}>
+            <div style={{ color: T.fg, fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{it.name} <span style={{ color: T.fgDim, fontWeight: 400 }}>· 리더 수정요청</span></div>
+            <div style={{ color: T.fgMuted, fontSize: 12, marginBottom: 10 }}>{it.req.title || it.req.id} · 마크 {it.req.items.length}건 → AI 교정 후 오버레이(.json) 다운로드. (원본 안 건드림)</div>
+            <button onClick={() => runFixReq(idx)} disabled={it.running}
+              style={{ padding: '8px 16px', borderRadius: 3, border: 'none', background: it.running ? T.chip : T.accent, color: it.running ? T.fgDim : '#fff', fontWeight: 700, fontSize: 13, cursor: it.running ? 'default' : 'pointer' }}>
+              {it.running ? `교정 중 ${it.prog?.d || 0}/${it.prog?.t || 0}` : 'AI 교정 → 오버레이 다운로드'}
+            </button>
+          </div>
+        )
         const s = it.sum, d = it.det
         const codeFixes = s.autofixable
         return (
