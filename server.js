@@ -258,7 +258,7 @@ async function handleDetectHeadings(body) {
 }
 
 async function handleRevise(body) {
-  const { sceneText, guidelines, mode, sceneIndex, totalScenes } = body
+  const { sceneText, guidelines, mode, sceneIndex, totalScenes, model } = body
   if (!sceneText) throw new Error('sceneText required')
 
   const modeLabel = mode === 'translated' ? '번역된 각본' : '포맷된 각본'
@@ -273,7 +273,7 @@ ${guidelines}
 
 ${sceneText}`
 
-  const revised = await runClaude(systemPrompt, userPrompt)
+  const revised = await runClaude(systemPrompt, userPrompt, model)
   return { revised, tokens: null }
 }
 
