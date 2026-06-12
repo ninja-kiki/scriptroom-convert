@@ -44,50 +44,6 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
   const [llmChunks, setLlmChunks] = useState([])
   const [llmProgress, setLlmProgress] = useState(null) // null | { done, total }
   const [reviseRunning, setReviseRunning] = useState(false)
-  // 말투 통일 (번역본만으로) — 대사에서 말투 사전 뽑아 씬별 '말투만' 교정
-  const [unifyRunning, setUnifyRunning] = useState(false)
-  const [unifyProgress, setUnifyProgress] = useState(null)
-  async function runUnifyRegister() {
-    if (!reviseText || unifyRunning) return
-    setUnifyRunning(true); setReviseDone(false)
-    setUnifyProgress({ done: 0, total: 0, phase: '말투 분석 중' })
-    try {
-      const model = loadSettings().translateModel || loadSettings().model
-      // 1) 번역본 대사 → 말투 사전
-      const lines = reviseText.split('\n'); const pairs = []
-      for (let i = 0; i < lines.length; i++) {
-        const t = lines[i].trim(); if (!t.startsWith('@')) continue
-        const cue = t.replace(/^@/, '').split('(')[0].trim()
-        let j = i + 1; while (j < lines.length && (lines[j].trim() === '' || lines[j].trim().startsWith('('))) j++
-        const d = lines[j]?.trim() || ''
-        if (cue && d && !d.startsWith('@') && !d.startsWith('#')) pairs.push(`@${cue}: ${d.slice(0, 80)}`)
-      }
-      const cap = 200, step = pairs.length / cap
-      const sample = (pairs.length > cap ? Array.from({ length: cap }, (_, k) => pairs[Math.floor(k * step)]) : pairs).join('\n').slice(0, 8000)
-      let guide = ''
-      try {
-        const r = await fetch('/api/character-register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dialogueSample: sample, model }) })
-        if (r.ok) guide = (await r.json()).register || ''
-      } catch {}
-      // 2) 씬 단위로 '말투만' 교정
-      const chunks = reviseText.split(/\n(?=# )/).filter(s => s.trim())
-      setUnifyProgress({ done: 0, total: chunks.length, phase: '말투 통일 중' })
-      const guidelines = `아래 '인물 말투 가이드'대로 각 인물의 말투(반말/존댓말)와 호칭만 일관되게 교정하세요.\n\n[인물 말투 가이드]\n${guide}\n\n중요:\n- 의미·단어선택·문장은 최대한 보존. 오직 말투(반말↔존댓말)·호칭만 가이드에 맞게 고침.\n- @인물명·#헤딩·전환·괄호·구조 그대로 유지.`
-      const out = []
-      for (let i = 0; i < chunks.length; i++) {
-        try {
-          const res = await fetch('/api/revise', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sceneText: chunks[i], guidelines, mode: 'translated', sceneIndex: i, totalScenes: chunks.length, model }) })
-          out.push(res.ok ? ((await res.json()).revised || chunks[i]) : chunks[i])
-        } catch { out.push(chunks[i]) }
-        setUnifyProgress({ done: i + 1, total: chunks.length, phase: '말투 통일 중' })
-      }
-      const blob = new Blob([out.join('\n\n')], { type: 'text/plain;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url; a.download = reviseFile.name.replace('.txt', '_말투통일.txt'); a.click()
-      URL.revokeObjectURL(url)
-      setReviseDone(true)
-    } finally { setUnifyRunning(false); setUnifyProgress(null) }
-  }
   // 검수 피드백 파일 (B: _feedback.txt)
   const [feedbackFile, setFeedbackFile] = useState(null)
   const [feedbackItems, setFeedbackItems] = useState(null)
@@ -389,18 +345,6 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             )}
             <input ref={reviseRef} type="file" accept=".txt" hidden onChange={e => handleReviseFileSelect(e.target.files[0])} />
           </div>
-
-          {/* 말투 통일 — 번역본만으로 (formatted 불필요) */}
-          {reviseFile && reviseFileType === 'translated' && (
-            <div style={{ marginBottom: 16, padding: 14, borderRadius: 3, background: T.chip }}>
-              <div style={{ color: T.fg, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>말투 통일 <span style={{ color: T.fgDim, fontWeight: 400 }}>(번역본만으로 · 의미 보존)</span></div>
-              <div style={{ color: T.fgDim, fontSize: 12, marginBottom: 10 }}>대사에서 인물별 말투를 뽑아, 씬이 갈려 흔들린 반말/존댓말·호칭을 일관되게 교정해요. (재번역 아님 — 말투만)</div>
-              <button onClick={runUnifyRegister} disabled={unifyRunning}
-                style={{ padding: '8px 16px', borderRadius: 3, border: 'none', background: unifyRunning ? T.chip : T.accent, color: unifyRunning ? T.fgDim : '#fff', fontSize: 13, fontWeight: 700, cursor: unifyRunning ? 'default' : 'pointer' }}>
-                {unifyRunning ? `${unifyProgress?.phase || ''} ${unifyProgress?.total ? `${unifyProgress.done}/${unifyProgress.total}` : ''}` : '말투 통일 → 다운로드'}
-              </button>
-            </div>
-          )}
 
           {/* 검수 피드백 파일 (선택) */}
           {reviseFile && (
