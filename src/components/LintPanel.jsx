@@ -75,7 +75,8 @@ export default function LintPanel() {
               <Badge n={s.headNum} label="헤딩숫자" />
               <Badge n={s.spacing} label="줄나눔" color={T.warn} />
               <Badge n={s.dialog} label="미번역?" color={T.warn} />
-              {s.autofixable === 0 && s.review === 0 && <span style={{ fontSize: 11, color: T.good }}>✓ 깨끗</span>}
+              <Badge n={s.miscue} label="의심화자?" color={T.warn} />
+              {s.autofixable === 0 && s.review === 0 && s.miscue === 0 && <span style={{ fontSize: 11, color: T.good }}>✓ 깨끗</span>}
               <span style={{ color: T.fgDim, fontSize: 11 }}>{it.open ? '▲' : '▼'}</span>
             </div>
             {it.open && (
@@ -92,7 +93,13 @@ export default function LintPanel() {
                     {d.dialog.length > 20 && <div style={{ color: T.fgDim, fontSize: 11 }}>…외 {d.dialog.length - 20}건</div>}
                   </div>
                 )}
-                {s.autofixable === 0 && d.dialog.length === 0 && <div style={{ color: T.good, fontSize: 12 }}>✓ 특이사항 없음</div>}
+                {d.miscue.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ color: T.warn, fontSize: 12, fontWeight: 600, marginBottom: 4 }}>⚠ 의심 화자 {d.miscue.length} (시간/전환 슬러그가 @로 잘못 태깅됐을 수 있음 — 확인 후 @ 제거)</div>
+                    {d.miscue.slice(0, 20).map(i => <Line key={i} i={i} lines={d.lines} />)}
+                  </div>
+                )}
+                {s.autofixable === 0 && d.dialog.length === 0 && d.miscue.length === 0 && <div style={{ color: T.good, fontSize: 12 }}>✓ 특이사항 없음</div>}
               </div>
             )}
           </div>

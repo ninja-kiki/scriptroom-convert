@@ -39,10 +39,18 @@ const isUntranslated = t => la(t) >= 10 && ko(t) === 0
 // 구조/지시문(샷슬러그·화자큐·타이틀): 전부 대문자/괄호만/따옴표만/POV·OS·VO
 const isStructural = t => !/[a-z]/.test(t) || /^\(.+\)$/.test(t) || /^["'].*["']$/.test(t) || /\b(POV|O\.S\.|V\.O\.)\b/.test(t)
 
+// @ 큐인데 실제 화자가 아닐 가능성 (시간/전환 슬러그가 @로 잘못 태깅, 또는 이름+내용 붙음)
+const suspiciousCue = t =>
+  /^@/.test(t) && (
+    /[-–—]\s*$/.test(t) ||                                                                  // 끝이 -- (슬러그/액션 잘림)
+    /^@\s*(어느덧|이른|늦은|잠시\s*후|연속|그날|다음\s*날|이튿날|[월화수목금토일]요일|새벽|정오|자정|UNDER|BACK TO|INTERCUT|FADE|MONTAGE|INSERT|SERIES|SUPER|TITLE)\b/i.test(t) ||
+    t.replace(/^@/, '').trim().split(/\s+/).length >= 4                                       // @ 뒤 4단어+ = 이름 아니라 문장
+  )
+
 // ── 검출 ────────────────────────────────────────────────
 export function detect(text) {
   const lines = text.split('\n')
-  const out = { meta: [], boiler: [], dupe: [], headNum: [], bilingual: [], dialog: [], struct: [], spacing: 0 }
+  const out = { meta: [], boiler: [], dupe: [], headNum: [], bilingual: [], dialog: [], struct: [], miscue: [], spacing: 0 }
 
   // 반복 러닝헤더 시그니처
   const freq = new Map()
@@ -58,6 +66,7 @@ export function detect(text) {
     if (t === prev) out.dupe.push(i)
     if (/^#/.test(t) && /[가-힣\s)\]]\d{1,3}$/.test(t) && !/(19|20)\d{2}$/.test(t)) out.headNum.push(i)
     if (!isMarker(t) && isUntranslated(t)) (isStructural(t) ? out.struct : out.dialog).push(i)
+    if (suspiciousCue(t)) out.miscue.push(i)
     if (/^[#@]/.test(t) && prev !== '' && prev !== null) out.spacing++
     prev = t
   })
@@ -132,7 +141,7 @@ export function summarize(text) {
   return {
     meta: is.meta.length, boiler: is.boiler.length, dupe: is.dupe.length,
     headNum: is.headNum.length, bilingual: is.bilingual.length,
-    dialog: is.dialog.length, struct: is.struct.length,
+    dialog: is.dialog.length, struct: is.struct.length, miscue: is.miscue.length,
     spacing: is.spacing > is.lines * 0.15 ? is.spacing : 0,
     autofixable: is.meta.length + is.boiler.length + is.dupe.length + is.bilingual.length + is.headNum.length,
     review: is.dialog.length,
