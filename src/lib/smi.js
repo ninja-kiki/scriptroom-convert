@@ -1,10 +1,22 @@
 // SMI 파싱 + 번역-자막 매칭
 
-// 자막 파일 디코딩 (UTF-8 우선, 깨지면 EUC-KR/CP949 폴백)
+// 자막 파일 디코딩. UTF-16(BOM/무BOM) → UTF-8 → EUC-KR/CP949 순.
+// ※ UTF-16을 EUC-KR로 잘못 읽으면 글자마다 널 바이트가 끼어 spawn이 죽음 → 반드시 먼저 감지.
 export async function decodeSubtitle(file) {
   const buf = await file.arrayBuffer()
+  const b = new Uint8Array(buf)
+  // 1) BOM 명시
+  if (b[0] === 0xff && b[1] === 0xfe) return new TextDecoder('utf-16le').decode(buf)
+  if (b[0] === 0xfe && b[1] === 0xff) return new TextDecoder('utf-16be').decode(buf)
+  // 2) UTF-8 시도
   try { return new TextDecoder('utf-8', { fatal: true }).decode(buf) }
   catch {
+    // 3) BOM 없는 UTF-16 추정: 앞부분에 널 바이트가 많으면 (짝수=LE, 홀수=BE)
+    const n = Math.min(b.length, 4000)
+    let evenZero = 0, oddZero = 0, zeros = 0
+    for (let i = 0; i < n; i++) if (b[i] === 0) { zeros++; (i % 2 ? oddZero++ : evenZero++) }
+    if (zeros > n * 0.15) return new TextDecoder(oddZero > evenZero ? 'utf-16le' : 'utf-16be').decode(buf)
+    // 4) EUC-KR/CP949
     try { return new TextDecoder('euc-kr').decode(buf) }
     catch { return new TextDecoder('utf-8').decode(buf) }
   }
@@ -12,7 +24,8 @@ export async function decodeSubtitle(file) {
 
 // SMI / SRT / 평문 → 깨끗한 자막 줄 배열 (타임코드·태그 제거)
 export function parseSubtitleLines(text) {
-  let t = (text || '').replace(/\r/g, '')
+  // 널 바이트·BOM·제어문자 제거 (잘못 디코딩된 자막 방어 — \t \n 만 보존)
+  let t = (text || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFEFF]/g, '').replace(/\r/g, '')
   if (/<SYNC/i.test(t)) {
     // SMI
     t = t.replace(/<SYNC[^>]*>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ')
@@ -121,7 +134,12 @@ export function matchSmiToTranslation(translatedText, smiEntries, threshold = 0.
       if (sim > bestSim) { bestSim = sim; bestEntry = entry }
     }
 
-    if (bestSim >= threshold) {
+    // 길이 기반 임계값 — 짧은 줄일수록 거의 정확해야 교체 (단어 하나 겹침으로 오교체 방지).
+    // 예: "다시요"(3)↔"다시 하겠다고?"는 38%인데, 짧은 줄 기준 0.82 미달 → 교체 안 함.
+    const nlen = normalize(trimmed).length
+    const dynThreshold = nlen <= 4 ? 0.82 : nlen <= 8 ? 0.62 : Math.max(threshold, 0.45)
+
+    if (bestSim >= dynThreshold) {
       matches.push({ lineIdx: idx, original: trimmed, smiText: bestEntry, similarity: bestSim, replaced: true })
       return bestEntry
     } else {
@@ -131,4 +149,32 @@ export function matchSmiToTranslation(translatedText, smiEntries, threshold = 0.
   })
 
   return { text: result.join('\n'), matches }
+}
+
+// 정렬 전용 — 텍스트는 절대 안 바꾸고, 각 대사 줄이 어떤 공식 자막과 얼마나 맞는지 메타만 계산.
+// 리더 3단 비교/검토용. (교체 방식의 재앙을 막기 위해 번역 파이프라인은 이걸 쓴다.)
+export function alignSmi(translatedText, smiEntries) {
+  if (!smiEntries || smiEntries.length === 0) return { matches: [] }
+  const lines = translatedText.split('\n')
+  const matches = []
+  let afterCharCue = false
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('@')) { afterCharCue = true; return }
+    if (trimmed.startsWith('#') || trimmed === '') { afterCharCue = false; return }
+    if (trimmed.startsWith('(')) return
+    if (!/[가-힣]/.test(trimmed)) return
+    if (!afterCharCue) return
+
+    let bestSim = 0, bestEntry = null
+    for (const entry of smiEntries) {
+      const sim = similarity(trimmed, entry)
+      if (sim > bestSim) { bestSim = sim; bestEntry = entry }
+    }
+    const nlen = normalize(trimmed).length
+    const dynThreshold = nlen <= 4 ? 0.82 : nlen <= 8 ? 0.62 : 0.45
+    // aligned=확신 정렬(공식 자막과 같은 뜻으로 확실히 연결). 교체는 안 함.
+    matches.push({ lineIdx: idx, original: trimmed, smiText: bestEntry, similarity: bestSim, aligned: bestSim >= dynThreshold })
+  })
+  return { matches }
 }

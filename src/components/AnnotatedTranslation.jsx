@@ -17,54 +17,37 @@ export default function AnnotatedTranslation({ text, smiMatches, fontSize = 12 }
   const matchByLine = {}
   smiMatches.forEach(m => { matchByLine[m.lineIdx] = m })
   const lines = text.split('\n')
-  const smiCount = smiMatches.filter(m => m.replaced).length
+  const alignedCount = smiMatches.filter(m => m.aligned).length
 
   return (
     <div>
-      {smiCount > 0 && (
+      {alignedCount > 0 && (
         <div style={{ color: T.fgDim, fontSize: 11, marginBottom: 6 }}>
-          자막 적용 {smiCount}줄 <span style={{ color: T.accent }}>──</span> 밑줄 표시
+          공식 자막과 정렬 {alignedCount}줄 <span style={{ color: T.accent }}>┄</span> 점선 — 클릭하면 공식 자막과 비교 (번역은 안 바뀜)
         </div>
       )}
       <pre style={{ ...preStyle(fontSize), whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         {lines.map((line, idx) => {
           const m = matchByLine[idx]
-          if (!m) return <span key={idx}>{line + '\n'}</span>
-          if (m.replaced) {
-            return (
-              <span key={idx} style={{ position: 'relative' }}>
-                <span onClick={() => setTooltip(tooltip?.lineIdx === idx ? null : { lineIdx: idx })}
-                  style={{ textDecoration: 'underline', textDecorationColor: T.accent, textUnderlineOffset: 3, color: T.fg, cursor: 'pointer' }}>
-                  {line}
+          // 확신 정렬된 대사 줄만 표시 (참고용 — 텍스트 교체 없음)
+          if (!m || !m.aligned) return <span key={idx}>{line + '\n'}</span>
+          const diff = (m.smiText || '').trim() !== (m.original || '').trim()
+          return (
+            <span key={idx} style={{ position: 'relative' }}>
+              <span onClick={() => setTooltip(tooltip?.lineIdx === idx ? null : { lineIdx: idx })}
+                style={{ textDecoration: 'underline dotted', textDecorationColor: diff ? T.warn : T.accent, textUnderlineOffset: 3, color: T.fg, cursor: 'pointer' }}>
+                {line}
+              </span>
+              {tooltip?.lineIdx === idx && (
+                <span style={tooltipStyle()}>
+                  <span style={{ color: T.accent }}>이 번역</span> {m.original}<br/>
+                  <span style={{ color: diff ? T.warn : T.fgDim }}>공식 자막</span> <span style={{ color: T.fgMuted }}>{m.smiText}</span><br/>
+                  <span style={{ color: T.fgDim }}>유사도 {Math.round(m.similarity * 100)}%{diff ? ' · 표현 다름(검토)' : ' · 거의 동일'}</span>
                 </span>
-                {tooltip?.lineIdx === idx && (
-                  <span style={tooltipStyle()}>
-                    <span style={{ color: T.accent }}>자막</span> {m.smiText}<br/>
-                    <span style={{ color: T.fgDim }}>AI번역</span> <span style={{ color: T.fgMuted }}>{m.original}</span><br/>
-                    <span style={{ color: T.fgDim }}>유사도</span> <span style={{ color: T.fgMuted }}>{Math.round(m.similarity * 100)}%</span>
-                  </span>
-                )}
-                {'\n'}
-              </span>
-            )
-          } else {
-            return (
-              <span key={idx} style={{ position: 'relative' }}>
-                <span onClick={() => setTooltip(tooltip?.lineIdx === idx ? null : { lineIdx: idx })}
-                  style={{ cursor: 'pointer', color: T.fg }}>{line}</span>
-                {tooltip?.lineIdx === idx && (
-                  <span style={{ ...tooltipStyle(), borderColor: T.rule }}>
-                    <span style={{ color: T.fgDim }}>자막 미적용</span><br/>
-                    {m.smiText
-                      ? <><span style={{ color: T.fgDim }}>최근접 자막</span> <span style={{ color: T.fgMuted }}>{m.smiText}</span><br/><span style={{ color: T.fgDim }}>유사도</span> <span style={{ color: T.fgMuted }}>{Math.round(m.similarity * 100)}% (기준 미달)</span></>
-                      : <span style={{ color: T.fgDim }}>자막에서 유사 대사 없음</span>
-                    }
-                  </span>
-                )}
-                {'\n'}
-              </span>
-            )
-          }
+              )}
+              {'\n'}
+            </span>
+          )
         })}
       </pre>
     </div>

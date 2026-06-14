@@ -23,7 +23,10 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
     .filter(s => s.heading)
 
   return (
-    <div style={{ padding: '24px 20px', maxWidth: 560, margin: '0 auto' }}>
+    <div style={{
+      padding: '24px 20px', maxWidth: 560, margin: '0 auto', boxSizing: 'border-box',
+      height: 'calc(100dvh - 57px)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+    }}>
 
       {/* 요약 헤더 */}
       <div style={{ marginBottom: 20, display: 'flex', alignItems: 'baseline', gap: 10 }}>
@@ -124,9 +127,9 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
         </div>
       )}
 
-      {/* 씬 목록 */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+      {/* 씬 목록 — 남는 세로 공간을 채워 늘어나고, 변환 시작 버튼은 항상 보이게 */}
+      <div style={{ marginBottom: 16, flex: 1, minHeight: 120, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8, flexShrink: 0 }}>
           <span style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase' }}>씬 목록</span>
           {methodLabel && (
             <span style={{ color: T.fgDim, fontSize: 11 }}>
@@ -137,7 +140,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
           )}
         </div>
         <div style={{
-          maxHeight: 280, overflowY: 'auto',
+          flex: 1, minHeight: 0, overflowY: 'auto',
           borderRadius: 3, border: `1px solid ${T.rule}`,
           scrollbarWidth: 'none',
         }}>
@@ -166,6 +169,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
         </div>
       )}
       <button
+        className="sr-press"
         onClick={() => {
           if (hasErrors && !window.confirm('씬 분리 오류가 감지되었습니다. 그래도 변환을 시작할까요?')) return
           onStart('')

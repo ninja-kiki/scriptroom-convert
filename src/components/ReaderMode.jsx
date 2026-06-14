@@ -13,8 +13,21 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
   const contentRef = useRef()
   const jumpRef = useRef()
 
+  const [reviewOnly, setReviewOnly] = useState(false)
   const scene = scenes[sceneIdx]
   const total = scenes.length
+
+  // 검토 대상 = 공식 자막과 정렬됐는데 표현이 다른(검토할 만한) 줄이 있는 씬
+  const hasReview = (s) => (s.smiMatches || []).some(m => m.aligned && (m.smiText || '').trim() !== (m.original || '').trim())
+  const reviewIdxs = scenes.map((s, i) => hasReview(s) ? i : -1).filter(i => i >= 0)
+
+  // 씬 이동 — 검토 모드면 검토 씬만 건너뜀
+  const stepScene = useCallback((dir) => {
+    if (reviewOnly && reviewIdxs.length) {
+      const cands = dir > 0 ? reviewIdxs.filter(i => i > sceneIdx) : reviewIdxs.filter(i => i < sceneIdx).reverse()
+      goScene(cands.length ? cands[0] : reviewIdxs[dir > 0 ? 0 : reviewIdxs.length - 1])
+    } else goScene(sceneIdx + dir)
+  }, [reviewOnly, reviewIdxs, sceneIdx])
 
   // 현재 뷰에서 보여줄 텍스트
   function getContent() {
@@ -63,20 +76,20 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
         const el = contentRef.current
         if (!el) return
         const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
-        if (remaining <= el.clientHeight * 0.2) goScene(sceneIdx + 1) // 바닥 근처면 바로 다음
+        if (remaining <= el.clientHeight * 0.2) stepScene(1) // 바닥 근처면 바로 다음
         else el.scrollBy({ top: 120, behavior: 'smooth' })
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         const el = contentRef.current
         if (!el) return
-        if (el.scrollTop <= 8) goScene(sceneIdx - 1)
+        if (el.scrollTop <= 8) stepScene(-1)
         else el.scrollBy({ top: -120, behavior: 'smooth' })
       } else if (e.key === ' ') {
         e.preventDefault()
         const el = contentRef.current
         if (!el) return
         const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
-        if (remaining <= el.clientHeight * 0.2) goScene(sceneIdx + 1)
+        if (remaining <= el.clientHeight * 0.2) stepScene(1)
         else el.scrollBy({ top: el.clientHeight * 0.8, behavior: 'smooth' })
       } else if (e.key === 'c' || e.key === 'C') {
         setChecked(prev => {
@@ -89,7 +102,7 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [sceneIdx, viewMode, goScene, onClose])
+  }, [sceneIdx, viewMode, goScene, stepScene, onClose])
 
   function handleJump(e) {
     e.preventDefault()
@@ -114,14 +127,23 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
         padding: '10px 20px', borderBottom: `1px solid ${T.rule}`,
         flexShrink: 0,
       }}>
-        {/* 씬 이동 */}
-        <button onClick={() => goScene(sceneIdx - 1)} disabled={sceneIdx === 0}
-          style={navBtn(sceneIdx > 0)}>◀</button>
+        {/* 씬 이동 (검토 모드면 검토 씬만) */}
+        <button onClick={() => stepScene(-1)} disabled={sceneIdx === 0 && !reviewOnly}
+          style={navBtn(sceneIdx > 0 || reviewOnly)}>◀</button>
         <span style={{ color: T.fgMuted, fontSize: 13, minWidth: 80, textAlign: 'center' }}>
           {sceneIdx + 1} / {total}
         </span>
-        <button onClick={() => goScene(sceneIdx + 1)} disabled={sceneIdx === total - 1}
-          style={navBtn(sceneIdx < total - 1)}>▶</button>
+        <button onClick={() => stepScene(1)} disabled={sceneIdx === total - 1 && !reviewOnly}
+          style={navBtn(sceneIdx < total - 1 || reviewOnly)}>▶</button>
+
+        {/* 검토 필터 — 공식 자막과 표현 다른 씬만 */}
+        {reviewIdxs.length > 0 && (
+          <button onClick={() => setReviewOnly(v => !v)} title="공식 자막과 표현이 다른 줄(노랑 점선)이 있는 씬만 ◀▶로 넘기기"
+            style={{ padding: '4px 11px', borderRadius: 3, border: `1px solid ${reviewOnly ? T.warn : T.rule}`,
+              background: reviewOnly ? T.warn + '22' : 'none', color: reviewOnly ? T.warn : T.fgMuted, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            검토 {reviewIdxs.length}
+          </button>
+        )}
 
         {/* 씬 제목 */}
         <span style={{ flex: 1, color: T.fg, fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

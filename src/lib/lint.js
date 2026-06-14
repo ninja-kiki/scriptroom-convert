@@ -47,10 +47,36 @@ const suspiciousCue = t =>
     t.replace(/^@/, '').trim().split(/\s+/).length >= 4                                       // @ 뒤 4단어+ = 이름 아니라 문장
   )
 
+// @큐 대사 블록에 섞여 들어간 지문(액션) 감지.
+// 신호: 3인칭 named 주어(라틴 고유명사 또는 한글 이름) + 주격/소유격 조사 + 현재형 서술 종결(…다).
+// 대사가 이런 형태인 경우는 드물어 비교적 안전. (확정 아님 → '?' 힌트로만)
+const namedSubject = t => /(?:^|[\s(])(?:[A-Z][A-Za-z][A-Za-z-]+|[가-힣]{2,})(?:이|가|은|는|의)(?:\s|$)/.test(t)
+// 평서형 서술 종결(…다 / …다.)이 줄 끝/중간에. 단 과거형(지문은 보통 현재형)은 제외.
+const narration = t => /[가-힣]다(?:[.……)'"]|$)/.test(t) && !/(았|었|였|왔|갔|했|냈|뒀|렸)다(?:[.……)'"]?)$/.test(t.trim())
+// 존댓말·구어체·인용·1·2인칭 = 대사 → 지문 아님 (오탐 차단)
+const speechy = t => /(니다|니까|세요|십시|까요|나요|어요|아요|에요|예요|죠|잖|거야|거든|는데|군요|네요|라고|냐고|달라|구나|는걸|ㄹ게|을게|드려)/.test(t)
+  || /["”'’]\s*$/.test(t)
+  || /(?:^|[\s,])(내가|네가|난|넌|우린|우리(?:가|는)|저는|제가|니가|나는|너는)(?:\s|$)/.test(t)
+const looksAction = t => {
+  const s = t.trim()
+  if (/^\(.*\)$/.test(s)) return false          // 괄호 지시문(인라인) — 분리 대상 아님
+  if (/이다[.……)'"]?$/.test(s)) return false   // 'X이다' copula = 대사 가능성
+  return namedSubject(s) && narration(s) && !speechy(s)
+}
+
 // ── 검출 ────────────────────────────────────────────────
 export function detect(text) {
   const lines = text.split('\n')
-  const out = { meta: [], boiler: [], dupe: [], headNum: [], bilingual: [], dialog: [], struct: [], miscue: [], spacing: 0 }
+  const out = { meta: [], boiler: [], dupe: [], headNum: [], bilingual: [], dialog: [], struct: [], miscue: [], glued: [], spacing: 0 }
+
+  // 대사 블록(@큐로 시작) 안에서, 2번째 줄 이후에 나타나는 액션 묘사 = 지문 섞임 의심
+  for (const b of blocks(lines)) {
+    if (!/^@/.test(b.lines[0].trim())) continue
+    for (let k = 1; k < b.lines.length; k++) {
+      const t = b.lines[k].trim()
+      if (!/^[#@]/.test(t) && looksAction(t)) out.glued.push(b.start + k)
+    }
+  }
 
   // 반복 러닝헤더 시그니처
   const freq = new Map()
@@ -135,13 +161,27 @@ export function autofix(text) {
   return res.join('\n')
 }
 
+// 대사 블록에 붙은 지문을 빈 줄로 분리 (무료·결정적). 내용은 안 건드리고 줄만 띄움.
+export function splitGluedAction(text) {
+  const lines = text.split('\n')
+  const glued = new Set(detect(text).glued)
+  if (glued.size === 0) return text
+  const out = []
+  for (let i = 0; i < lines.length; i++) {
+    // 지문 의심 줄 앞에 빈 줄 보장 → @큐 대사 블록에서 떨어져 나옴
+    if (glued.has(i) && out.length && out[out.length - 1].trim() !== '') out.push('')
+    out.push(lines[i])
+  }
+  return out.join('\n')
+}
+
 // 요약(배지용)
 export function summarize(text) {
   const is = detect(text)
   return {
     meta: is.meta.length, boiler: is.boiler.length, dupe: is.dupe.length,
     headNum: is.headNum.length, bilingual: is.bilingual.length,
-    dialog: is.dialog.length, struct: is.struct.length, miscue: is.miscue.length,
+    dialog: is.dialog.length, struct: is.struct.length, miscue: is.miscue.length, glued: is.glued.length,
     spacing: is.spacing > is.lines * 0.15 ? is.spacing : 0,
     autofixable: is.meta.length + is.boiler.length + is.dupe.length + is.bilingual.length + is.headNum.length,
     review: is.dialog.length,

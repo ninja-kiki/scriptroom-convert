@@ -121,13 +121,19 @@ export default function App() {
   // 시작 시 repo 지침 파일을 localStorage로 시드 (동료 클론 시 공유 적용)
   useEffect(() => { loadPromptsFromFile() }, [])
 
+  // Claude Code 설치 여부 헬스체크 — 없으면 상단 배너로 안내 (콜리그 온보딩)
+  const [claudeMissing, setClaudeMissing] = useState(false)
+  useEffect(() => {
+    fetch('/api/health').then(r => r.ok ? r.json() : null).then(h => { if (h && h.claude === false) setClaudeMissing(true) }).catch(() => {})
+  }, [])
+
   // 테마(라이트/다크) — live binding T 재할당 + 리렌더
   const [themeName, setThemeName] = useState(currentTheme())
   useEffect(() => { applyTheme(themeName) }, [])  // 마운트 시 body 배경 동기화
   const toggleTheme = useCallback(() => {
     setThemeName(prev => { const n = prev === 'dark' ? 'light' : 'dark'; applyTheme(n); return n })
   }, [])
-  const navBtn = { padding: '6px 12px', borderRadius: 3, background: T.chip, border: `1px solid ${T.rule}`, color: T.fgMuted, fontSize: 13, cursor: 'pointer' }
+  const navBtn = { padding: '6px 12px', borderRadius: 3, background: T.chip, border: 'none', color: T.fgMuted, fontSize: 13, cursor: 'pointer' }
 
   // 추출/분석 단계 경과 시간 타이머
   useEffect(() => {
@@ -142,7 +148,10 @@ export default function App() {
   const isPausedRef = useRef(false)
   const isStoppedRef = useRef(false)
   const characterMemoRef = useRef('')  // 이번 작업의 인물 글로서리 (재처리에서도 동일 사용)
+  const [characterMemo, setCharacterMemo] = useState('')  // 표시·편집용 (폴링으로 갱신)
   const diagRef = useRef(null)  // 이번 작업의 처리 진단 (완료 시/수동 리포트 시 기록)
+  const serverJobRef = useRef(null)  // 서버 잡 id (서버가 루프 소유 → 탭 닫아도 계속)
+  const pollRef = useRef(null)       // 진행 폴링 인터벌
   const [isPaused, setIsPaused] = useState(false)
   const [isRateLimited, setIsRateLimited] = useState(false)
   const [readerOpen, setReaderOpen] = useState(false)
@@ -162,7 +171,8 @@ export default function App() {
 
   useEffect(() => {
     function handleBeforeUnload(e) {
-      if (isProcessing.current) { e.preventDefault(); e.returnValue = '' }
+      // 서버 잡은 탭 닫아도 계속 도므로 경고 불필요. 브라우저 루프(수정 등)만 경고.
+      if (isProcessing.current && !serverJobRef.current) { e.preventDefault(); e.returnValue = '' }
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
@@ -488,84 +498,127 @@ export default function App() {
     setStep('review')
   }
 
-  // Step 2: 검토 후 변환 시작
+  // 진행 폴링 — 서버 잡 상태를 주기적으로 읽어 UI 반영. 일은 서버가 하므로
+  // 폴링이 멈춰도(탭 닫힘/최소화) 작업엔 무관. 다시 열면 이어서 폴링.
+  function stopPolling() { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
+  function startPolling(id) {
+    serverJobRef.current = id
+    stopPolling()
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${id}`)
+        if (!res.ok) return
+        const job = await res.json()
+        scenesRef.current = job.scenes
+        setScenes(job.scenes)
+        setPhase(job.phase)
+        if (job.title) setTitle(job.title)
+        if (job.startTime) setStartTime(job.startTime)
+        if (job.characterMemo !== undefined) { characterMemoRef.current = job.characterMemo; setCharacterMemo(job.characterMemo || '') }
+        const paused = job.status === 'paused' || job.status === 'rate_limited'
+        isPausedRef.current = paused
+        setIsPaused(paused)
+        setIsRateLimited(job.status === 'rate_limited')
+        if (job.status === 'done' || job.status === 'stopped' || job.status === 'error') {
+          stopPolling()
+          isProcessing.current = false
+          setPhase('done'); setStep('done')
+        }
+      } catch {}
+    }
+    tick()
+    pollRef.current = setInterval(tick, document.hidden ? 5000 : 1500)
+  }
+
+  // 홈 잡 목록에서 작업 열기 — 서버 잡 모니터로 진입 (백그라운드에서 돌던 작업 재진입)
+  function handleOpenJob(jobId) {
+    isProcessing.current = true
+    isStoppedRef.current = false
+    serverJobRef.current = jobId
+    jobIdRef.current = jobId
+    setStep('processing')
+    startPolling(jobId)  // tick이 scenes/phase/title/step 채움
+  }
+
+  // 말투 가이드(글로서리) 저장
+  async function handleSaveGlossary(memo) {
+    const id = serverJobRef.current
+    if (!id) return
+    characterMemoRef.current = memo; setCharacterMemo(memo)
+    try { await fetch(`/api/jobs/${id}/glossary`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memo }) }) } catch {}
+  }
+
+  // 작품 전체 새 설계로 다시 번역 (keepGlossary: 현 말투 가이드 유지 / false: 새로 생성)
+  async function handleRetranslate(keepGlossary) {
+    const id = serverJobRef.current
+    if (!id) return
+    isProcessing.current = true
+    isStoppedRef.current = false; isPausedRef.current = false
+    setIsPaused(false); setIsRateLimited(false)
+    setStep('processing'); setPhase('formatting')
+    try { await fetch(`/api/jobs/${id}/retranslate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keepGlossary }) }) } catch {}
+    startPolling(id)
+  }
+
+  // 잡 제어 (일시정지/재개/중단) → 서버 엔드포인트
+  async function jobControl(action) {
+    const id = serverJobRef.current
+    if (!id) return null
+    try {
+      const res = await fetch(`/api/jobs/${id}/${action}`, { method: 'POST' })
+      return res.ok ? await res.json() : null
+    } catch { return null }
+  }
+
+  // 백그라운드/포그라운드 전환 시 폴링 주기 조절 (작업은 서버가 계속)
+  useEffect(() => {
+    const onVis = () => { if (pollRef.current && serverJobRef.current) startPolling(serverJobRef.current) }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
+  // Step 2: 검토 후 변환 시작 — 서버에 잡 생성 후 폴링. (루프는 서버가 소유)
   async function handleStart(characterMemo) {
     characterMemoRef.current = characterMemo || ''
-    // 표시는 논리적 씬(reviewScenes), 처리는 긴 씬을 80줄 청크로 분할해서 돌림
+    // 표시·처리 모두 긴 씬을 청크 분할한 결과 기준
     const initialScenes = forceSplitScenes(reviewScenes)
     scenesRef.current = initialScenes
     setScenes(initialScenes)
     const st = Date.now()
     setStartTime(st)
-    saveSession({ title, scenes: initialScenes, startTime: st, smiLines: smiLinesRef.current })
     setStep('processing')
+    setPhase('formatting')
     isProcessing.current = true
     isPausedRef.current = false
     isStoppedRef.current = false
     setIsPaused(false)
-    jobIdRef.current = st
+    setIsRateLimited(false)
 
     const settings = loadSettings()
-    const fmtGuidelines = loadGuidelines('format')
-    const transGuidelines = loadGuidelines('translate')
-
-    const allFormatted = initialScenes.every(s => s.status === 'formatted' && s.formatted)
-
-    // 1단계: 포맷 (규칙 우선 → 대부분 0토큰). formatted.txt 로드면 건너뜀.
-    if (!allFormatted) {
-      setPhase('formatting')
-      await runWithConcurrency(initialScenes, async (s) => {
-        if (isStoppedRef.current) return
-        await waitWhilePaused()
-        if (s.status !== 'formatted') await processFormat(s, fmtGuidelines)
-      }, settings.concurrency)
+    const payload = {
+      title,
+      scenes: initialScenes.map(s => ({
+        id: s.id, raw: s.raw,
+        status: s.status === 'formatted' ? 'formatted' : 'pending',
+        formatted: s.formatted || null, heading: s.heading || null,
+      })),
+      smi: smiLinesRef.current
+        ? { lines: smiLinesRef.current, entries: smiEntriesRef.current, info: smiInfo }
+        : null,
+      settings,
+      guidelines: { format: loadGuidelines('format'), translate: loadGuidelines('translate') },
+      characterMemo: characterMemo || '',
     }
-
-    // 1.5단계: 인물 말투 사전 — 작품당 1회. 씬이 갈려도 반말/존댓말·호칭 일관성 유지.
-    let register = characterMemo || ''
-    if (!isStoppedRef.current && settings.characterRegister !== false) {
-      try {
-        const sample = buildDialogueSample(scenesRef.current)
-        if (sample) {
-          setPhase('register')
-          const r = await postJSON('/api/character-register', {
-            dialogueSample: sample,
-            model: settings.translateModel || settings.model,
-          })
-          if (r.register) register = r.register
-        }
-      } catch (e) { console.warn('말투 사전 생성 실패(번역은 계속):', e.message) }
+    try {
+      const res = await postJSON('/api/jobs', payload)
+      serverJobRef.current = res.jobId
+      jobIdRef.current = res.jobId
+      startPolling(res.jobId)
+    } catch (e) {
+      window.alert('작업 생성 실패: ' + e.message)
+      setStep('review')
+      isProcessing.current = false
     }
-    characterMemoRef.current = register
-
-    // 2단계: 번역 (짧은 씬 배칭 → 호출수 절감, 개수 안 맞으면 개별 폴백)
-    if (!isStoppedRef.current) {
-      setPhase('translating')
-      await translateScenes(transGuidelines, register, settings)
-    }
-
-    isProcessing.current = false
-    isPausedRef.current = false
-    isStoppedRef.current = false
-    setIsPaused(false)
-    setPhase('done')
-    setStep('done')
-
-    const finalScenes = scenesRef.current
-    const { totalIn, totalOut } = finalScenes.reduce((acc, s) => ({
-      totalIn: acc.totalIn + (s.tokens?.format_in || 0) + (s.tokens?.translate_in || 0),
-      totalOut: acc.totalOut + (s.tokens?.format_out || 0) + (s.tokens?.translate_out || 0),
-    }), { totalIn: 0, totalOut: 0 })
-    saveHistory({ id: jobIdRef.current, title, sceneCount: finalScenes.length, sceneData: finalScenes, startTime: st, duration: Date.now() - st })
-
-    // 작업 마무리 시점에만 진단 로그 기록 (의미 있는 완료 기록)
-    logProcess({
-      ...(diagRef.current || {}), event: 'done',
-      doneCount: finalScenes.filter(s => s.status === 'done').length,
-      total: finalScenes.length,
-      errors: finalScenes.filter(s => s.status.startsWith('error')).length,
-      durationMs: Date.now() - st,
-    })
   }
 
   // 수동 문제 리포트 — 모달로 입력
@@ -638,6 +691,17 @@ export default function App() {
   }
 
   async function handleContinue() {
+    // 서버 잡이면 서버에서 재개 (미완 씬부터)
+    if (serverJobRef.current) {
+      isProcessing.current = true
+      isStoppedRef.current = false
+      isPausedRef.current = false
+      setIsPaused(false); setIsRateLimited(false)
+      setStep('processing'); setPhase('translating')
+      await jobControl('resume')
+      startPolling(serverJobRef.current)
+      return
+    }
     // formatting/translating 중 멈춘 씬 리셋 (done은 절대 건드리지 않음)
     scenesRef.current
       .filter(s => s.status === 'formatting' || s.status === 'translating')
@@ -685,6 +749,8 @@ export default function App() {
   }
 
   async function handleRetry(sceneId) {
+    // 서버 잡이면 브라우저 fetch로 재시도하지 말고(=Load failed 원인) 서버 재개로 일임
+    if (serverJobRef.current) { handleContinue(); return }
     const scene = scenesRef.current.find(s => s.id === sceneId)
     if (!scene) return
     isProcessing.current = true
@@ -716,24 +782,34 @@ export default function App() {
     isProcessing.current = false
   }
 
+  // 직전 저장 내용 기억 → 변동 없으면 중복 저장 안 함
+  const lastDownloadRef = useRef({})
   function handleDownload(type) {
     const text = scenesRef.current.filter(s => s[type]).map(s => s[type]).join('\n\n')
+    if (lastDownloadRef.current[type] === text) return 'unchanged'  // 바뀐 게 없음 → 저장 스킵
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url; a.download = `${title}_${type}.txt`; a.click()
     URL.revokeObjectURL(url)
+    lastDownloadRef.current[type] = text
+    return 'saved'
   }
 
   function handlePause() {
     isPausedRef.current = true
     setIsPaused(true)
+    jobControl('pause')
   }
 
   function handleResume() {
     isPausedRef.current = false
     setIsPaused(false)
     setIsRateLimited(false)
+    if (serverJobRef.current) {
+      jobControl('resume')
+      if (!pollRef.current) startPolling(serverJobRef.current)
+    }
   }
 
   function handleStop() {
@@ -741,14 +817,16 @@ export default function App() {
     isPausedRef.current = false
     isProcessing.current = false
     setIsPaused(false)
+    if (serverJobRef.current) jobControl('stop')
+    stopPolling()
     setPhase('done')
     setStep('done')
-    const snap = scenesRef.current
-    saveHistory({ id: jobIdRef.current, title, sceneCount: snap.length, sceneData: snap, startTime, duration: Date.now() - (startTime || Date.now()) })
   }
 
   function handleReset() {
     clearSession()
+    stopPolling()
+    serverJobRef.current = null
     setStep('upload'); setScenes([]); scenesRef.current = []
     setTitle(''); setPhase(''); smiLinesRef.current = null; setStartTime(null)
     setReviewScenes([]); setPdfWarnings([])
@@ -756,10 +834,12 @@ export default function App() {
 
   function handleLogoClick() {
     if (step === 'upload') return
-    if (isProcessing.current) {
+    // 서버 잡은 홈으로 가도 백그라운드에서 계속 — 목록에서 다시 열 수 있음
+    if (isProcessing.current && !serverJobRef.current) {
       if (!window.confirm('작업이 진행 중입니다. 중단하고 홈으로 돌아갈까요?')) return
       isProcessing.current = false
     }
+    stopPolling()
     setStep('upload')
   }
 
@@ -770,22 +850,30 @@ export default function App() {
         padding: '14px 20px', borderBottom: `1px solid ${T.rule}`,
         position: 'sticky', top: 0, background: T.bg, zIndex: 10,
       }}>
-        <span onClick={handleLogoClick}
+        <span onClick={handleLogoClick} className="sr-logo"
           style={{ display: 'flex', alignItems: 'center', gap: 9, fontWeight: 700, fontSize: 15, letterSpacing: '-.3px', cursor: step !== 'upload' ? 'pointer' : 'default' }}>
-          <svg width="34" height="12" viewBox="0 0 34 12" aria-hidden>
-            <rect x="0" y="1" width="10" height="10" fill={T.trans} />
-            <circle cx="17" cy="6" r="5.5" fill={T.warn} />
-            <path d="M28.5 1l5 10h-10z" fill={T.fmt} />
+          <svg width="36" height="13" viewBox="0 0 36 13" aria-hidden>
+            <rect className="trio trio-sq" x="0.5" y="1.5" width="10" height="10" rx="1" fill={T.trans} />
+            <circle className="trio trio-ci" cx="18" cy="6.5" r="5.6" fill={T.warn} />
+            <path className="trio trio-tri" d="M30 1.2l5.3 10.6H24.7z" fill={T.fmt} />
           </svg>
           scriptroom <span style={{ color: T.accent }}>convert</span>
         </span>
-        <button onClick={() => setShowSettings(true)} style={navBtn}>설정</button>
+        <button onClick={() => setShowSettings(true)} className="sr-press" style={navBtn}>설정</button>
       </div>
+
+      {claudeMissing && (
+        <div style={{ background: T.err + '18', borderBottom: `1px solid ${T.err}55`, padding: '10px 20px', color: T.err, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontWeight: 700 }}>⚠ Claude Code가 안 보여요</span>
+          <span style={{ color: T.fgMuted }}>번역이 안 돌아갑니다 — <b>claude.com/claude-code</b> 설치 후 터미널에서 <code>claude</code> 실행해 로그인하세요. (서버 재시작 필요)</span>
+        </div>
+      )}
 
       {step === 'upload' && (
         <UploadStep
           onLoad={handleLoad}
           onRevise={handleStartRevise}
+          onOpenJob={handleOpenJob}
           onRestore={session => {
             setTitle(session.title); setScenes(session.scenes)
             scenesRef.current = session.scenes; setStartTime(session.startTime)
@@ -800,12 +888,19 @@ export default function App() {
         const analyzing = extractProgress.label?.includes('분석')
         // 분석중 단계별 문구 (정직하게 — 길어지면 과장 없이 안내)
         const phases = ['씬 경계 찾는 중', '대사·지문 구분 중', '구조 정리 중']
+        const phaseIdx = analyzing ? Math.min(2, Math.floor(extractElapsed / 10)) : -1
         const mainLabel = analyzing
           ? (extractElapsed >= 30 ? '긴 각본이라 분석이 길어지고 있어요' : (phases[Math.floor(extractElapsed / 10)] || phases[phases.length - 1]))
           : (extractProgress.label || '파일 불러오는 중...')
+        // 단계가 진행될수록 점프가 빨라짐
+        const jumpDur = analyzing ? [2.6, 2.1, 1.7][phaseIdx] : 3
         return (
-          <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: 22, marginBottom: 12, animation: 'spin 1.4s linear infinite', display: 'inline-block' }}>⟳</div>
+          <div style={{ padding: '64px 24px', textAlign: 'center', '--err': T.err, '--warn': T.warn, '--fmt': T.fmt }}>
+            <svg viewBox="0 0 116 46" width="116" height="46" style={{ display: 'block', margin: '0 auto 22px', '--hop': `${jumpDur}s`, overflow: 'visible' }} aria-hidden>
+              <rect className="bh bh-sq" x="6" y="12" width="26" height="26" fill={T.trans} />
+              <circle className="bh bh-ci" cx="58" cy="25" r="14" fill={T.warn} />
+              <polygon className="bh bh-tri" points="86,10 102,38 70,38" fill={T.fmt} />
+            </svg>
             <div style={{ color: T.fg, fontSize: 15, marginBottom: 6 }}>
               {mainLabel}<span style={{ color: T.fgMuted }}>{'.'.repeat((extractElapsed % 3) + 1)}</span>
               {extractElapsed > 0 && <span style={{ color: T.fgMuted, fontWeight: 400 }}>  ·  {extractElapsed}초</span>}
@@ -842,6 +937,8 @@ export default function App() {
         <ProcessPanel
           title={title} scenes={scenes} phase={phase} startTime={startTime}
           isPaused={isPaused} isRateLimited={isRateLimited}
+          characterMemo={characterMemo} isServerJob={!!serverJobRef.current}
+          onSaveGlossary={handleSaveGlossary} onRetranslate={handleRetranslate}
           onPause={handlePause} onResume={handleResume} onStop={handleStop} onContinue={handleContinue}
           onReader={() => { setReaderStartIdx(0); setReaderOpen(true) }}
           onRetry={handleRetry} onReprocess={handleReprocess}
@@ -881,6 +978,52 @@ export default function App() {
         @keyframes slideUp { from { transform: translateY(24px); opacity: .4 } to { transform: translateY(0); opacity: 1 } }
         @keyframes popIn { from { transform: scale(.94); opacity: 0 } to { transform: scale(1); opacity: 1 } }
         @keyframes riseIn { from { transform: translateY(8px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+        @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+
+        /* 트리오 도형 — 정지(홈 심볼 idle 애니메이션 없음). transform 기준점만 설정. */
+        .trio { transform-box: fill-box; transform-origin: 50% 50%; }
+
+        /* 히어로 드롭존 — 호버하면 박스 커지고, 세 도형이 작아지며 하나씩 위로 톡 */
+        .sr-drop { transition: transform .25s ease, box-shadow .25s ease, border-color .15s; }
+        .sr-drop:hover { transform: scale(1.015); box-shadow: 0 8px 28px rgba(0,0,0,.08); }
+        .sr-drop .trio { transition: transform .32s cubic-bezier(.34,1.7,.5,1); }
+        .sr-drop:hover .trio-sq  { transform: translateY(-8px) scale(.78); transition-delay: 0s; }
+        .sr-drop:hover .trio-ci  { transform: translateY(-8px) scale(.78); transition-delay: .08s; }
+        .sr-drop:hover .trio-tri { transform: translateY(-8px) scale(.78); transition-delay: .16s; }
+
+        /* 버튼 — 슬며시 뜨고 눌리는 반응 */
+        .sr-press { transition: transform .14s ease, filter .14s ease, box-shadow .14s ease; }
+        .sr-press:hover  { transform: translateY(-1px); filter: brightness(1.06); }
+        .sr-press:active { transform: translateY(0) scale(.97); filter: brightness(.97); }
+
+        /* 주요 CTA(불러오기 등) — 들리지 않고, 부드러운 글로우 링 + 누름 */
+        .sr-cta { transition: box-shadow .22s ease, transform .12s ease, filter .2s ease; }
+        .sr-cta:hover  { box-shadow: 0 0 0 3px rgba(30,77,140,.16), 0 4px 14px rgba(30,77,140,.22); filter: brightness(1.03); }
+        .sr-cta:active { transform: scale(.985); }
+
+        /* 카드 — 호버 시 살짝 밀림 */
+        .sr-card { transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+        .sr-card:hover { transform: translateX(2px); }
+
+        /* 분석 화면 — 바우하우스 3원색 도형(사각·원·삼각)이 바닥에서 차례로 통통, 색은 3원색 순환 */
+        @keyframes bhHop {
+          0%, 58%, 100% { transform: translateY(0); }
+          73% { transform: translateY(-13px); }
+          86% { transform: translateY(0); }
+        }
+        @keyframes bhHue {
+          0%, 100% { fill: var(--err); }
+          33%      { fill: var(--warn); }
+          66%      { fill: var(--fmt); }
+        }
+        .bh { transform-box: fill-box; transform-origin: 50% 100%;
+          animation: bhHop var(--hop, 2.6s) cubic-bezier(.3,.7,.4,1) infinite, bhHue 4.5s steps(1) infinite; }
+        .bh-ci  { animation-delay: .16s, 1.5s; }
+        .bh-tri { animation-delay: .32s, 3s; }
+        @media (prefers-reduced-motion: reduce) {
+          .bh { animation: none; }
+          .bh-sq { fill: var(--err); } .bh-ci { fill: var(--warn); } .bh-tri { fill: var(--fmt); }
+        }
       `}</style>
     </div>
   )

@@ -2,3 +2,10 @@ node_modules
 dist
 .env.local
 .DS_Store
+
+# 서버 잡 상태 (진행 중 작업 영속)
+jobs/
+
+# 런타임 산출물 (각자 생성)
+glossaries.json
+process-log.jsonl

@@ -69,12 +69,12 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
 
         {isDone && scene.smiMatches?.length > 0 && (() => {
           const total = scene.smiMatches.length
-          const matched = scene.smiMatches.filter(m => m.replaced).length
-          // 조용한 정보로 — 경고(⚠)·색 알람 제거 (각본≠자막인 작품은 낮은 게 정상이라 노이즈)
+          const aligned = scene.smiMatches.filter(m => m.aligned).length
+          // 공식 자막과 확신 정렬된 대사 수 (참고 정보 — 교체 아님)
           return (
-            <span title={`자막과 일치한 대사 ${matched}/${total} (${Math.round((matched / total) * 100)}%)`}
+            <span title={`공식 자막과 정렬된 대사 ${aligned}/${total} (${Math.round((aligned / total) * 100)}%)`}
               style={{ fontSize: 11, color: T.fgDim, whiteSpace: 'nowrap' }}>
-              자막 {matched}/{total}
+              자막정렬 {aligned}/{total}
             </span>
           )
         })()}

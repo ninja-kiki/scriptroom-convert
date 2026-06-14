@@ -10,9 +10,12 @@ function isStrictHeading(t) {
 }
 
 // 헤딩 정규화: 앞뒤 씬번호 제거, # 부여
+const TIME_WORD = 'DAY|NIGHT|MORNING|EVENING|AFTERNOON|DUSK|DAWN|NOON|MIDNIGHT|CONTINUOUS|LATER|MOMENTS LATER|SAME|MAGIC HOUR|SUNSET|SUNRISE'
 function normalizeHeading(t) {
-  const h = t.replace(/^[A-Z]{0,2}\d+\.?\s+/, '').replace(/\s+[A-Z]{0,2}\d+\.?$/, '').trim()
-  return '# ' + h
+  let h = t.replace(/^[A-Z]{0,2}\d+\.?\s+/, '').replace(/\s+[A-Z]{0,2}\d+\.?$/, '').trim()
+  // 시간대에 씬번호가 붙은 경우 제거: "DAY1" / "MORNING2" / "NIGHT 14" → 키워드만
+  h = h.replace(new RegExp(`\\b(${TIME_WORD})\\s*\\d{1,4}\\s*$`, 'i'), '$1')
+  return '# ' + h.trim()
 }
 
 // 인물 큐인가 — 짧은 대문자 줄(헤딩·전환 아님)

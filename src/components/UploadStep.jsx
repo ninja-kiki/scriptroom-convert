@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens, loadGuidelines, loadSettings } from '../lib/core.js'
 import { decodeSubtitle, parseSubtitleLines, subtitleInfo } from '../lib/smi.js'
 import LintPanel from './LintPanel.jsx'
@@ -19,7 +19,17 @@ function titleFromFile(file) {
     .trim()
 }
 
-export default function UploadStep({ onLoad, onRestore, onRevise }) {
+// 서버 잡 상태 → 한글 라벨·색
+const JOB_STATUS = {
+  running: { label: '진행 중', color: T.warn },
+  paused: { label: '일시정지', color: T.fgMuted },
+  rate_limited: { label: '사용량 한도 — 대기', color: T.err },
+  done: { label: '완료', color: T.good },
+  stopped: { label: '중단됨', color: T.fgDim },
+  error: { label: '오류', color: T.err },
+}
+
+export default function UploadStep({ onLoad, onRestore, onRevise, onOpenJob }) {
   const scriptRef = useRef()
   const smiRef = useRef()
   const reviseRef = useRef()
@@ -31,7 +41,32 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
   const [dragOverSmi, setDragOverSmi] = useState(false)
   const [smiWarning, setSmiWarning] = useState(false)
   const [history, setHistory] = useState(() => loadHistory())
+  const [jobs, setJobs] = useState([])  // 서버 잡 목록 (멀티세션)
+  const [showHistory, setShowHistory] = useState(false)  // 레거시 이전기록은 기본 접힘
   const [loading, setLoading] = useState(false)
+
+  // 서버 잡 목록 폴링 — 백그라운드에서 도는 여러 작품의 진행을 홈에서 실시간 표시
+  useEffect(() => {
+    if (tab !== 'convert') return
+    let alive = true
+    const load = async () => {
+      try {
+        const res = await fetch('/api/jobs')
+        if (res.ok && alive) setJobs(await res.json())
+      } catch {}
+    }
+    load()
+    const t = setInterval(load, 2000)
+    return () => { alive = false; clearInterval(t) }
+  }, [tab])
+
+  async function handleDeleteJob(id, e) {
+    e.stopPropagation()
+    const job = jobs.find(j => j.id === id)
+    if (!window.confirm(`"${job?.title}" 작업을 목록에서 삭제할까요?`)) return
+    try { await fetch(`/api/jobs/${id}`, { method: 'DELETE' }) } catch {}
+    setJobs(prev => prev.filter(j => j.id !== id))
+  }
   // 수정 모드
   const [reviseFile, setReviseFile] = useState(null)
   const [dragOverRevise, setDragOverRevise] = useState(false)
@@ -268,7 +303,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
       {/* 탭 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
         {[{ id: 'convert', label: '변환' }, { id: 'revise', label: '수정' }].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
+          <button key={t.id} onClick={() => setTab(t.id)} className="sr-press" style={{
             padding: '7px 18px', borderRadius: 3, border: 'none', cursor: 'pointer',
             background: tab === t.id ? T.accent : T.chip,
             color: tab === t.id ? T.accentFg : T.fgMuted,
@@ -293,12 +328,15 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         onDragOver={e => { e.preventDefault(); setDragOverScript(true) }}
         onDragLeave={() => setDragOverScript(false)}
         onDrop={handleScriptDrop}
+        className={!scriptFile ? 'sr-drop' : undefined}
         style={{
           border: `2px dashed ${dragOverScript ? T.accent : scriptFile ? T.accent + '66' : T.rule}`,
-          borderRadius: 3, padding: scriptFile ? '14px 16px' : '36px 24px',
+          borderRadius: 3, padding: '22px 24px',
+          minHeight: 158, boxSizing: 'border-box',
+          display: 'flex', flexDirection: 'column', justifyContent: 'center',
           textAlign: 'center', cursor: scriptFile ? 'default' : 'pointer',
           background: dragOverScript ? '#EBDFC4' : T.bgCard,
-          transition: 'all .15s', marginBottom: 16,
+          transition: 'transform .25s ease, box-shadow .25s ease, border-color .2s, background .2s', marginBottom: 16,
         }}
       >
         {scriptFile ? (
@@ -343,10 +381,10 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         ) : (
           <>
             {/* 바우하우스 3원색 트리오 — 세 조각이 모여 한 편이 된다는 위트 */}
-            <svg width="92" height="34" viewBox="0 0 92 34" aria-hidden style={{ display: 'block', margin: '0 auto 16px' }}>
-              <rect x="3" y="3" width="28" height="28" fill={T.trans} />
-              <circle cx="46" cy="17" r="15" fill={T.warn} />
-              <path d="M75 2l16 30H59z" fill={T.fmt} />
+            <svg width="94" height="34" viewBox="0 0 94 34" aria-hidden className="sr-logo" style={{ display: 'block', margin: '8px auto 20px', overflow: 'visible' }}>
+              <rect className="trio trio-sq" x="2" y="3" width="28" height="28" rx="2.5" fill={T.trans} />
+              <circle className="trio trio-ci" cx="47" cy="17" r="15" fill={T.warn} />
+              <path className="trio trio-tri" d="M77 2l16 30H61z" fill={T.fmt} />
             </svg>
             <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, letterSpacing: '-.2px', marginBottom: 6 }}>각본 자막을 올리세요</div>
             <div style={{ color: T.fgDim, fontSize: 12.5, lineHeight: 1.5 }}>
@@ -385,6 +423,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         <button
           disabled={loading}
           onClick={handleLoad}
+          className="sr-cta"
           style={{
             width: '100%', padding: '12px', borderRadius: 3, border: 'none',
             background: loading ? T.chip : T.accent,
@@ -397,31 +436,45 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
         </button>
       )}
 
-      {/* 이어하기 + 작업 기록 */}
-      {(currentSession || history.length > 0) && (
+      {/* 작업 — 서버 잡(멀티세션, 백그라운드 진행) + 이전 로컬 기록 */}
+      {(jobs.length > 0 || history.length > 0) && (
         <div>
-          <div style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 8 }}>작업 기록</div>
+          <div style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 8 }}>작업</div>
 
-          {currentSession && (
-            <div onClick={() => onRestore(currentSession)} style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '11px 14px', background: T.bgCard,
-              border: `1px solid ${T.accent}44`, borderRadius: 3,
-              cursor: 'pointer', marginBottom: 6,
-            }}>
-              <span style={{ color: T.accent, fontSize: 15 }}>▶</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: T.accent, fontWeight: 600, fontSize: 14 }}>{currentSession.title}</div>
-                <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
-                  {currentSession.scenes?.filter(s => s.status === 'done').length}/{currentSession.scenes?.length}씬 완료 · 이어보기
+          {jobs.map(j => {
+            const st = JOB_STATUS[j.status] || { label: j.status, color: T.fgMuted }
+            const active = j.status === 'running' || j.status === 'paused' || j.status === 'rate_limited'
+            return (
+              <div key={j.id} onClick={() => onOpenJob(j.id)} className="sr-card" style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '11px 14px', background: T.bgCard,
+                border: `1px solid ${active ? T.accent + '55' : T.rule}`, borderRadius: 3,
+                cursor: 'pointer', marginBottom: 6,
+              }}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: st.color, flexShrink: 0,
+                  animation: j.status === 'running' ? 'pulse 1.2s ease-in-out infinite' : 'none' }} />
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <div style={{ color: T.fg, fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title}</div>
+                  <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
+                    {j.done}/{j.total}씬 · <span style={{ color: st.color, fontWeight: 600 }}>{st.label}</span>
+                    {j.errors > 0 && <span style={{ color: T.err }}> · 오류 {j.errors}</span>}
+                  </div>
                 </div>
+                <button onClick={e => handleDeleteJob(j.id, e)}
+                  style={{ background: 'none', border: 'none', color: T.fgDim, cursor: 'pointer', fontSize: 18, padding: '2px 4px' }}>×</button>
               </div>
-            </div>
+            )
+          })}
+
+          {history.length > 0 && (
+            <button onClick={() => setShowHistory(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer',
+                color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', margin: '16px 0 8px', padding: 0 }}>
+              이전 기록 {history.length} <span style={{ fontSize: 10 }}>{showHistory ? '▲' : '▼'}</span>
+            </button>
           )}
 
-          {history
-            .filter(h => !currentSession || h.title !== currentSession.title) // 위 '이어보기' 카드와 중복 제거
-            .map(h => {
+          {showHistory && history.map(h => {
             // 저장된 doneCount 우선 (완료작은 sceneData를 버리므로 다시 세면 0이 됨)
             const doneCount = h.doneCount ?? (h.sceneData ? h.sceneData.filter(s => s.status === 'done').length : 0)
             const total = h.sceneCount ?? (h.sceneData ? h.sceneData.length : 0)
@@ -429,7 +482,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise }) {
             const canResume = !!h.sceneData && total > 0 && !isComplete
 
             return (
-              <div key={h.id} onClick={canResume ? () => onRestore({ title: h.title, scenes: h.sceneData, startTime: h.startTime, jobId: h.id, smiLines: null }) : undefined} style={{
+              <div key={h.id} className={canResume ? 'sr-card' : undefined} onClick={canResume ? () => onRestore({ title: h.title, scenes: h.sceneData, startTime: h.startTime, jobId: h.id, smiLines: null }) : undefined} style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '10px 14px', background: T.bgCard,
                 border: `1px solid ${canResume ? T.accent + '44' : T.rule}`, borderRadius: 3, marginBottom: 6,

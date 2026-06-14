@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { T, loadGuidelines, saveGuidelines, loadSettings, saveSettings, DEFAULT_FORMAT_GUIDELINES, DEFAULT_TRANSLATE_GUIDELINES, MODELS } from '../lib/core.js'
-import { APP_VERSION, VERSION_LABEL } from '../lib/version.js'
+import { APP_VERSION, VERSION_LABEL, CHANGELOG } from '../lib/version.js'
 
 
 export default function SettingsPanel({ onClose, themeName = 'light', onToggleTheme }) {
@@ -10,6 +10,7 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
   const [formatOpen, setFormatOpen] = useState(false)
   const [translateOpen, setTranslateOpen] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showChangelog, setShowChangelog] = useState(false)
 
   const taStyle = {
     width: '100%', minHeight: 200, resize: 'vertical',
@@ -95,12 +96,40 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
             <ResetBtn onClick={() => { if (window.confirm('번역 지침을 기본값으로 되돌릴까요?')) setTranslateText(DEFAULT_TRANSLATE_GUIDELINES) }} />
           </Collapsible>
 
-          {/* 앱 정보 */}
+          {/* 앱 정보 — 버전 누르면 변경 이력 */}
           <div style={{ padding: '14px 20px 18px', textAlign: 'center', color: T.fgDim, fontSize: 11 }}>
-            scriptroom convert · v{APP_VERSION} <span style={{ opacity: 0.7 }}>— {VERSION_LABEL}</span>
+            scriptroom convert ·{' '}
+            <button onClick={() => setShowChangelog(true)} className="sr-press"
+              style={{ background: 'none', border: 'none', color: T.accent, fontSize: 11, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+              v{APP_VERSION}
+            </button>
           </div>
 
         </div>
+
+        {showChangelog && (
+          <div onClick={() => setShowChangelog(false)}
+            style={{ position: 'absolute', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 10, animation: 'fadeIn .15s ease' }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ width: '100%', maxWidth: 460, maxHeight: '80vh', overflowY: 'auto', background: T.bgCard, borderRadius: 4, border: `1px solid ${T.rule}`, padding: '18px 20px', animation: 'popIn .18s ease' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <span style={{ color: T.fg, fontWeight: 700, fontSize: 16 }}>바뀐 점</span>
+                <button onClick={() => setShowChangelog(false)} style={{ background: 'none', border: 'none', color: T.fgMuted, fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
+              {CHANGELOG.map((v, i) => (
+                <div key={v.version} style={{ marginBottom: i < CHANGELOG.length - 1 ? 18 : 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+                    <span style={{ color: T.accent, fontWeight: 700, fontSize: 14 }}>v{v.version}</span>
+                    <span style={{ color: T.fgMuted, fontSize: 12.5 }}>{v.label}</span>
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, color: T.fgMuted, fontSize: 13, lineHeight: 1.65 }}>
+                    {v.notes.map((n, k) => <li key={k} style={{ marginBottom: 3 }}>{n}</li>)}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ padding: '12px 20px', borderTop: `1px solid ${T.rule}` }}>
           <button onClick={handleSave} style={{
