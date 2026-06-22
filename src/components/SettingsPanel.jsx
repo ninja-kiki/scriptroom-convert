@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { T, loadGuidelines, saveGuidelines, loadSettings, saveSettings, DEFAULT_FORMAT_GUIDELINES, DEFAULT_TRANSLATE_GUIDELINES, MODELS } from '../lib/core.js'
+import { T, loadGuidelines, saveGuidelines, loadSettings, saveSettings, DEFAULT_FORMAT_GUIDELINES, DEFAULT_TRANSLATE_GUIDELINES, MODELS, ACCENTS, accentForVersion } from '../lib/core.js'
 import { APP_VERSION, VERSION_LABEL, CHANGELOG } from '../lib/version.js'
 
 
-export default function SettingsPanel({ onClose, themeName = 'light', onToggleTheme }) {
+export default function SettingsPanel({ onClose, themeName = 'light', onToggleTheme, accentKey = 'auto', onAccent }) {
   const [s, setS] = useState(() => loadSettings())
   const [formatText, setFormatText] = useState(() => loadGuidelines('format'))
   const [translateText, setTranslateText] = useState(() => loadGuidelines('translate'))
@@ -45,7 +45,7 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
 
           {/* 테마 */}
           <div style={{ borderTop: `1px solid ${T.rule}` }}>
-            <Row label="테마" desc="라이트 / 다크" last>
+            <Row label="테마" desc="라이트 / 다크">
               <div style={{ display: 'flex', gap: 6 }}>
                 {[{ id: 'light', label: '라이트' }, { id: 'dark', label: '다크' }].map(t => (
                   <button key={t.id} onClick={() => { if (themeName !== t.id) onToggleTheme?.() }} style={{
@@ -55,6 +55,28 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
                     fontWeight: 700, fontSize: 13, cursor: 'pointer',
                   }}>{t.label}</button>
                 ))}
+              </div>
+            </Row>
+            <Row label="액센트 색상" desc={`자동 = 버전마다 빨·파·노 회전 (현재 v${APP_VERSION}) · 버튼·탭에만 적용`} last>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={() => onAccent?.('auto')} style={{
+                  padding: '7px 12px', borderRadius: 3, border: 'none',
+                  background: accentKey === 'auto' ? T.accent : T.chip,
+                  color: accentKey === 'auto' ? T.accentFg : T.fgMuted,
+                  fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                }}>자동</button>
+                {['red', 'blue', 'yellow'].map(k => {
+                  const on = accentKey === k
+                  const isAutoPick = accentKey === 'auto' && accentForVersion() === k
+                  return (
+                    <button key={k} onClick={() => onAccent?.(k)} title={ACCENTS[k].label} style={{
+                      width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', padding: 0,
+                      background: ACCENTS[k].accent,
+                      border: on ? `2.5px solid ${T.fg}` : isAutoPick ? `2px dashed ${T.fgDim}` : `2px solid transparent`,
+                      boxShadow: `0 0 0 1px ${T.rule}`,
+                    }} />
+                  )
+                })}
               </div>
             </Row>
           </div>

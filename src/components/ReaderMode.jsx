@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { T } from '../lib/core.js'
+import { T, classifyError } from '../lib/core.js'
 import AnnotatedTranslation from './AnnotatedTranslation.jsx'
 
 const VIEWS = ['raw', 'formatted', 'translated']
@@ -204,7 +204,7 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
               {scene.status === 'formatting' && '포맷 중...'}
               {scene.status === 'formatted' && '번역 대기 중'}
               {scene.status === 'translating' && '번역 중...'}
-              {scene.status?.startsWith('error') && `오류: ${scene.error}`}
+              {scene.status?.startsWith('error') && classifyError(scene.error).label}
             </div>
           )}
           {smi

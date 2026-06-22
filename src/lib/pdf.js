@@ -86,6 +86,33 @@ export async function extractTextFromPDF(file, onProgress) {
   return { text: allLines.join('\n'), candidates }
 }
 
+// 씬 헤딩 없이 짧거나 크레딧 신호만 있는 청크(표지·타이틀 페이지)를 걸러냄
+function looksLikeTitlePage(raw) {
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
+  const hasHeading = lines.some(l =>
+    /^(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.)/i.test(l) ||
+    /^(INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i.test(l)
+  )
+  if (hasHeading) return false
+  const hasTitleSignal = lines.some(l =>
+    /^(FADE IN|FADE OUT|written by|screenplay by|an original|based on|a film by)/i.test(l)
+  )
+  return lines.length < 15 || hasTitleSignal
+}
+
+// INT./EXT. 없는 "장소 - 시간대" 슬러그라인 감지 (라따뚜이·픽사식 비표준 헤딩)
+// 예: "FRENCH COUNTRYSIDE - LATE AFTERNOON", "FARMHOUSE - COMPOST PILE - DAY"
+// 시간대 단어로 끝나는 대문자 줄만 → "A TELEVISION SET" 같은 대문자 지문은 안 걸림
+const SLUG_TIME = /\b(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|AFTERNOON|NOON|MIDNIGHT|CONTINUOUS|LATER|EARLIER|MOMENTS|SAME|SUNSET|SUNRISE)\b/
+export function looksLikeSlugline(line) {
+  const s = (line || '').trim()
+  if (s.length < 5 || s.length > 70) return false
+  if (!/\s[-–—]\s/.test(s)) return false                       // "장소 - 시간" 구분자 필수
+  const letters = s.replace(/[^A-Za-z]/g, ''), upper = s.replace(/[^A-Z]/g, '')
+  if (letters.length < 3 || upper.length / letters.length < 0.85) return false  // 거의 전부 대문자
+  return SLUG_TIME.test(s.split(/\s[-–—]\s/).pop())            // 마지막 구획이 시간대
+}
+
 // Split raw PDF text into rough scenes by INT./EXT. headings
 const MAX_SCENE_LINES = 80 // 이 이상이면 강제 분할
 
@@ -108,8 +135,9 @@ export function splitIntoScenes(rawText) {
       /^(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.)/i.test(s) ||
       /^[A-Z]?\d+\.?\s+(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.)/i.test(s) ||
       /^SCENE\s+\d+\s*[-–.]/i.test(s) ||
-      /^(INSERT|INTERCUT WITH|MONTAGE|SERIES OF SHOTS)/i.test(s)
-    // 씬 헤딩 감지: INT./EXT. LOCATION, 씬번호 prefix(19/A19), SCENE N -, INSERT/INTERCUT 등
+      /^(INSERT|INTERCUT WITH|MONTAGE|SERIES OF SHOTS)/i.test(s) ||
+      looksLikeSlugline(s)   // INT./EXT. 없는 "장소 - 시간대" 헤딩 (라따뚜이식)
+    // 씬 헤딩 감지: INT./EXT. LOCATION, 씬번호 prefix(19/A19), SCENE N -, INSERT/INTERCUT, 장소-시간 슬러그
     const isHeading = headMatch(trimmed) || headMatch(deSpeck)
 
     if (isHeading && trimmed.length > 5) {
@@ -130,8 +158,10 @@ export function splitIntoScenes(rawText) {
     return [{ id: 0, raw: rawText }]
   }
 
-  // 논리적 씬(헤딩 기준)만 반환. 80줄 강제분할은 처리 단계(forceSplitScenes)에서.
-  return scenes.map((s, i) => ({ id: i, raw: s.raw }))
+  // 타이틀/표지 페이지 제거: 씬 헤딩이 없고 짧거나 크레딧 신호가 있는 청크
+  const filtered = scenes.filter(s => !looksLikeTitlePage(s.raw))
+  const base = filtered.length > 0 ? filtered : scenes  // 전부 걸리면 원본 유지
+  return base.map((s, i) => ({ id: i, raw: s.raw }))
 }
 
 // 처리 단계용: 긴 논리적 씬을 80줄 청크로 분할 (씬 목록 표시엔 안 씀)
@@ -144,8 +174,9 @@ export function forceSplitScenes(scenes, max = MAX_SCENE_LINES) {
       result.push({ ...sc, id: n++ })
     } else {
       for (let i = 0; i < lines.length; i += max) {
+        // 첫 조각(i===0)은 그 씬 자체 → 번호(#n)를 받음. 이어지는 조각만 forceSplit=이어짐(↳).
         result.push({
-          ...sc, id: n++, raw: lines.slice(i, i + max).join('\n'), forceSplit: true,
+          ...sc, id: n++, raw: lines.slice(i, i + max).join('\n'), forceSplit: i > 0,
           formatted: null, translated: null, tokens: null, error: null, heading: null,
           status: sc.status === undefined ? undefined : 'pending',
         })
@@ -166,6 +197,25 @@ function stripRtf(text) {
 
 function stripXml(text) {
   return text.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, '\n').trim()
+}
+
+// 스캔 PDF → 서버 OCR (pdftoppm + tesseract, 로컬·토큰 0). 텍스트 레이어가 비었을 때만 호출.
+export async function ocrPdfViaServer(file) {
+  const buf = new Uint8Array(await file.arrayBuffer())
+  let bin = ''
+  const chunk = 0x8000
+  for (let i = 0; i < buf.length; i += chunk) bin += String.fromCharCode.apply(null, buf.subarray(i, i + chunk))
+  const pdfBase64 = btoa(bin)
+  const res = await fetch('/api/ocr', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pdfBase64 }),
+  })
+  if (!res.ok) {
+    let msg = 'OCR 실패', code = null
+    try { const j = await res.json(); msg = j.error || msg; code = j.code } catch {}
+    const e = new Error(msg); e.ocrMissing = code === 'OCR_TOOLS_MISSING'; throw e
+  }
+  return (await res.json()).text || ''
 }
 
 export async function extractText(file, onProgress) {

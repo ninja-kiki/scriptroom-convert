@@ -24,7 +24,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
 
   return (
     <div style={{
-      padding: '24px 20px', maxWidth: 560, margin: '0 auto', boxSizing: 'border-box',
+      padding: '24px 20px', maxWidth: 640, margin: '0 auto', boxSizing: 'border-box',
       height: 'calc(100dvh - 57px)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
 

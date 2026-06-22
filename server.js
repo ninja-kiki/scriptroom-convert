@@ -1,11 +1,13 @@
 import { createServer } from 'http'
 import { spawn, execSync } from 'child_process'
-import { readdirSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, unlinkSync } from 'fs'
+import { readdirSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, unlinkSync, mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { ruleFormat } from './src/lib/format-rules.js'
 import { alignSmi } from './src/lib/smi.js'
 import { splitGluedAction } from './src/lib/lint.js'
 import {
-  estTokens, cleanOutput, buildDialogueSample, buildSubtitleSample, buildBatches, splitByHeading,
+  estTokens, cleanOutput, looksLikeRefusal, buildDialogueSample, buildSubtitleSample, buildBatches, splitByHeading,
 } from './src/lib/pipeline.js'
 
 const PORT = 3001
@@ -41,6 +43,60 @@ const LOG_PATH = `${process.cwd()}/process-log.jsonl`
 function handleLog(body) {
   try { appendFileSync(LOG_PATH, JSON.stringify(body) + '\n') } catch {}
   return { ok: true }
+}
+
+// 스캔 PDF OCR 폴백 — pdftoppm(이미지 변환) + tesseract(문자 인식). 둘 다 로컬, 토큰 0.
+// 클라이언트가 텍스트 레이어 0인 PDF를 base64로 보내면 페이지별로 OCR해서 텍스트 반환.
+let OCR_TOOLS = null   // null=미확인, true/false=확인됨
+function ocrToolsReady() {
+  if (OCR_TOOLS !== null) return OCR_TOOLS
+  OCR_TOOLS = ['pdftoppm', 'tesseract'].every(bin => {
+    try { execSync(`${bin} --version`, { stdio: 'ignore' }); return true } catch { return false }
+  })
+  return OCR_TOOLS
+}
+function runOcrPage(buf) {
+  // leptonica가 파일 경로 열기에 버그가 있어 stdin으로 전달 (`cat png | tesseract - stdout`)
+  return new Promise((resolve, reject) => {
+    const t = spawn('tesseract', ['-', 'stdout', '-l', 'eng'])
+    let out = ''
+    t.stdout.on('data', d => out += d)
+    t.on('error', reject)
+    t.on('close', () => resolve(out))
+    t.stdin.on('error', () => {})
+    t.stdin.write(buf); t.stdin.end()
+  })
+}
+async function handleOcr(data, onProgress) {
+  const { pdfBase64 } = data
+  if (!pdfBase64) throw new Error('pdfBase64 required')
+  if (!ocrToolsReady()) {
+    const e = new Error('OCR 도구(pdftoppm·tesseract)가 설치돼 있지 않아요. `brew install poppler tesseract`')
+    e.code = 'OCR_TOOLS_MISSING'; throw e
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'srocr-'))
+  try {
+    const pdfPath = join(dir, 'in.pdf')
+    writeFileSync(pdfPath, Buffer.from(pdfBase64, 'base64'))
+    // 1) 페이지 → PNG (200dpi: 스캔 각본엔 충분, 속도↑)
+    await new Promise((resolve, reject) => {
+      const p = spawn('pdftoppm', ['-r', '200', '-png', pdfPath, join(dir, 'pg')])
+      let err = ''
+      p.stderr.on('data', d => err += d)
+      p.on('error', reject)
+      p.on('close', c => c === 0 ? resolve() : reject(new Error('pdftoppm 실패: ' + err.slice(0, 200))))
+    })
+    // 2) PNG별 OCR (순차)
+    const pngs = readdirSync(dir).filter(f => f.endsWith('.png')).sort()
+    const out = []
+    for (let i = 0; i < pngs.length; i++) {
+      out.push(await runOcrPage(readFileSync(join(dir, pngs[i]))))
+      onProgress?.(i + 1, pngs.length)
+    }
+    return { text: out.join('\n'), pages: pngs.length }
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true }) } catch {}
+  }
 }
 
 // claude 바이너리 경로 탐색
@@ -153,13 +209,16 @@ async function handleFormat(body) {
 지침:
 ${guidelines}
 
-중요: JSON이 아닌 순수 텍스트로만 응답하세요. 설명이나 주석 없이 변환된 각본 텍스트만 출력하세요.`
+중요: JSON이 아닌 순수 텍스트로만 응답하세요. 설명이나 주석 없이 변환된 각본 텍스트만 출력하세요.
+포맷할 실제 각본 내용이 없으면(타이틀·표지·빈 페이지 등) 입력을 그대로 출력하세요. 절대 질문하거나 설명·요청·예시를 덧붙이지 마세요.`
 
   const userPrompt = `다음 각본 텍스트를 포맷하세요${totalScenes ? ` (씬 ${sceneIndex + 1}/${totalScenes})` : ''}:
 
 ${sceneText}`
 
-  const formatted = await runClaude(systemPrompt, userPrompt, model)
+  let formatted = await runClaude(systemPrompt, userPrompt, model)
+  // 빈 씬에서 LLM이 대화체로 답하면 → 저장하지 말고 원문 유지
+  if (looksLikeRefusal(formatted)) formatted = sceneText
   return { formatted, tokens: null }
 }
 
@@ -174,16 +233,24 @@ async function handleTranslate(body) {
 
   const systemPrompt = `당신은 영화 각본 번역가입니다. 포맷된 각본 텍스트를 ${lang}로 번역하세요.
 
+규칙(엄수):
+- 주어진 [번역할 원문]에 있는 내용만 번역. 없는 대사·지문·장면·헤딩 만들지 말 것(유명작이어도 기억으로 다시 쓰지 말 것). 이어쓰기·각색·확장 금지.
+- 입력 줄을 1:1로 번역 — 줄 수·순서·빈 줄 위치를 원문과 똑같이. 줄 합치기·나누기·추가 금지(영문 포맷과 줄 단위로 정렬돼야 함).
+- @인물명·전환지시어 형태 유지. 짧고 거칠어도 각색 말고 그대로.
+
 지침:
 ${guidelines}${memoSection}${prevSection}
 
-중요: JSON이 아닌 순수 텍스트로만 응답하세요. 번역된 각본 텍스트만 출력하세요.`
+순수 텍스트만 출력(JSON·설명·예시 금지). 번역할 내용이 없으면(타이틀·표지·빈 페이지) 입력 그대로.`
 
-  const userPrompt = `다음 포맷된 각본을 번역하세요${totalScenes ? ` (씬 ${sceneIndex + 1}/${totalScenes})` : ''}:
+  const userPrompt = `다음 [번역할 원문]만 번역하세요${totalScenes ? ` (씬 ${sceneIndex + 1}/${totalScenes})` : ''}. 여기 있는 줄만 옮기고, 없는 내용은 만들지 마세요.
 
+[번역할 원문]
 ${formattedText}`
 
-  const translated = await runClaude(systemPrompt, userPrompt, model)
+  let translated = await runClaude(systemPrompt, userPrompt, model)
+  // 빈 씬에서 LLM이 번역 대신 "각본을 붙여넣어 주세요" 류 대화체로 답하면 → 저장하지 말고 원문 유지
+  if (looksLikeRefusal(translated)) translated = formattedText
   return { translated, tokens: null }
 }
 
@@ -193,20 +260,27 @@ async function handleCharacterRegister(body) {
   const { dialogueSample, subtitleSample, model } = body
   if (!dialogueSample) return { register: '' }
   const hasSub = !!(subtitleSample && subtitleSample.trim())
-  const systemPrompt = `당신은 영화 각본 번역 디렉터입니다. 한국어 번역에 쓸 '인물별 말투 가이드'를 만드세요.
+  const systemPrompt = `당신은 영화 각본 번역 디렉터입니다. 한국어 번역에 쓸 '인물 관계·말투 가이드'를 만드세요.
 
-목적: 각본을 씬 단위로 따로 번역해도, 각 인물의 말투(반말/존댓말)와 호칭이 작품 전체에서 일관되게 유지되도록.
+목적: 각본을 씬 단위로 따로 번역해도, 인물들의 관계·거리감·말투(반말/존댓말)·호칭이 작품 전체에서 일관되게 유지되도록. 번역자는 이 가이드만 보고 각 대사의 톤을 정합니다.
 ${hasSub ? `
-중요(근거 우선): 아래에 이 작품의 **공식 한국어 자막** 샘플이 함께 주어집니다. 공식 자막이 각 인물의 말을 어떻게 옮겼는지(반말/존댓말, 호칭, 관계의 거리감)를 **가장 신뢰할 근거**로 삼아 가이드를 만드세요. 영어 대사와 자막을 머릿속에서 대응시켜, 자막의 말투 선택을 따르세요.` : ''}
-각 주요 인물 한 줄:
+중요(근거 우선): 아래에 이 작품의 **공식 한국어 자막** 샘플이 함께 주어집니다. 공식 자막이 인물들의 말을 어떻게 옮겼는지(반말/존댓말, 호칭, 관계의 거리감)를 **가장 신뢰할 근거**로 삼으세요. 단, 자막의 '특정 문장'을 베끼라는 게 아니라, 자막에서 드러나는 **관계와 말투의 패턴**을 읽어 가이드로 추상화하는 것입니다.` : ''}
+다음 두 부분으로 작성:
+
+[관계] — 2~4줄. 핵심 인물 간 관계와 거리감, 권력/친밀도 구도, 이야기상 톤(예: "X와 Y는 연인이나 늘 긴장 관계", "Z는 X의 상사로 시종 거리를 둠"). 말투가 어디서 바뀌는지(친해짐/틀어짐)도 있으면 한 줄.
+
+[인물] — 1줄=1인물. 핵심 인물 12명 이내:
 - 기본 말투(반말/존댓말). 상대에 따라 다르면 상대별로 명시 (예: A에게 존댓말, 동료에게 반말)
 - 특징적 호칭/말버릇 있으면 짧게
-${hasSub ? '\n그리고 마지막에 한 줄로, 공식 자막이 보이는 특징적 의역/말버릇 톤(예: 욕설 순화 정도, 호칭 습관)을 "[톤] ..." 형식으로 적으세요.\n' : ''}
+${hasSub ? '\n그리고 마지막에 "[톤]" 한 줄로, 공식 자막이 보이는 특징적 의역/말버릇 톤(욕설 순화 정도, 호칭 습관 등)을 적으세요.\n' : ''}
 예)
+[관계]
+코브는 팀의 리더로 의뢰인 사이토에게 거리를 두는 프로. 아리아드네는 신참이라 코브에게 배우는 입장.
+[인물]
 코브: 사이토·의뢰인에게 존댓말(프로페셔널), 팀원에겐 편한 반말
-마틸다: 레옹에게 반말, 어른들에게도 당돌한 반말
+아리아드네: 코브에게 존댓말, 또래 팀원에겐 반말
 
-중요: 설명·머리말·번호 없이 '1줄=1인물'. 핵심 인물 12명 이내. 추측이면 자연스러운 기본값으로.`
+중요: 설명·머리말·번호 없이 위 형식 그대로. 추측이면 자연스러운 기본값으로.`
   const userPrompt = hasSub
     ? `[영어 각본 대사 샘플]\n${dialogueSample}\n\n[공식 한국어 자막 샘플 — 말투 근거]\n${subtitleSample}`
     : `대사 샘플:\n${dialogueSample}`
@@ -354,14 +428,20 @@ function jobMeta(job) {
   return {
     id: job.id, title: job.title, phase: job.phase, status: job.status,
     startTime: job.startTime, duration: job.duration || null,
+    activeMs: job.activeMs || 0, runningSince: job._runStart || null,  // 실제 처리 시간(방치 제외)
     total: job.scenes.length, done: doneCount(job),
     errors: job.scenes.filter(s => s.status?.startsWith('error')).length,
   }
 }
 
-function rateLimitJob(job) { job.status = 'rate_limited'; job.paused = true; saveJob(job, true) }
+// 실제 처리 시간(activeMs) 누적 — 일시정지·방치 시간 제외. 상태가 running↔아님 바뀔 때 호출.
+function setRunning(job, on) {
+  if (on) { if (!job._runStart) job._runStart = Date.now() }
+  else if (job._runStart) { job.activeMs = (job.activeMs || 0) + (Date.now() - job._runStart); job._runStart = null }
+}
+function rateLimitJob(job) { setRunning(job, false); job.status = 'rate_limited'; job.paused = true; saveJob(job, true) }
 // 로그인/미설치 등 사람이 고쳐야 하는 문제 → 전 씬 헛돌지 않게 잡 일시정지
-function haltJob(job) { job.paused = true; if (job.status === 'running') job.status = 'paused'; saveJob(job, true) }
+function haltJob(job) { setRunning(job, false); job.paused = true; if (job.status === 'running') job.status = 'paused'; saveJob(job, true) }
 
 // 일시정지 대기 (잡 단위). stop이면 즉시 빠져나감.
 function waitWhilePaused(job) {
@@ -376,8 +456,10 @@ async function formatScene(job, scene) {
   // 규칙 우선 — 깔끔한 씬은 LLM 없이(0토큰). 확신 낮으면 LLM 폴백.
   const rf = ruleFormat(scene.raw)
   if (rf.confidence >= 0.7) {
-    const heading = rf.formatted.split('\n')[0].trim()
-    scene.formatted = rf.formatted
+    // ★ 영어 포맷본에 대사↔지문 빈 줄 분리를 적용 — 번역이 이걸 1:1로 따라오게 (구분+정렬 동시 충족)
+    const ruleFmt = splitGluedAction(rf.formatted)
+    const heading = ruleFmt.split('\n')[0].trim()
+    scene.formatted = ruleFmt
     scene.formatMethod = 'rule'
     scene.heading = heading.startsWith('#') ? heading : null
     scene.tokens = { ...scene.tokens, format_in: 0, format_out: 0 }
@@ -390,7 +472,7 @@ async function formatScene(job, scene) {
       sceneIndex: scene.id, totalScenes: job.scenes.length,
       model: job.settings.formatModel || job.settings.model,
     }))
-    const formatted = cleanOutput(res.formatted)
+    const formatted = splitGluedAction(cleanOutput(res.formatted))  // ★ 대사↔지문 분리 (영어=기준)
     const heading = formatted.split('\n')[0].trim()
     scene.formatted = formatted
     scene.formatMethod = 'llm'
@@ -409,22 +491,40 @@ function alignMeta(job, text) {
   return job.smi?.entries ? alignSmi(text, job.smi.entries).matches : []
 }
 
+// 번역 구조 검증 — 영문 포맷본과 마커·줄 수가 맞는지. 누락·창작·거부·환각을 한 번에 걸러냄.
+// #(헤딩)·@(인물 큐) 줄 수는 지침상 1:1 보존돼야 하고, 비어있지 않은 줄 수도 비슷해야 함.
+function translationStructureOk(formatted, translated) {
+  if (!translated || !translated.trim()) return false
+  const heads = (t) => (t.match(/^#/gm) || []).length
+  const cues = (t) => (t.match(/^@/gm) || []).length
+  const body = (t) => t.split('\n').filter(l => l.trim()).length
+  if (heads(formatted) !== heads(translated)) return false   // 헤딩 수 불일치 = 씬 누락/창작
+  if (cues(formatted) !== cues(translated)) return false      // 인물 큐 수 불일치 = 대사 누락/창작
+  const bf = body(formatted), bt = body(translated)
+  if (bf > 0 && (bt < bf * 0.6 || bt > bf * 1.6)) return false // 줄 수가 크게 벗어남
+  return true
+}
+
 async function translateOne(job, scene) {
   scene.status = 'translating'
   try {
     const idx = job.scenes.findIndex(s => s.id === scene.id)
     const prev = idx > 0 ? job.scenes[idx - 1] : null
     const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
+    // ★ 구조 가드: 안 맞으면 에러 표시만 (자동 재번역 안 함 — 토큰 절약. 재처리는 사용자가 ↻/버튼으로)
     const res = await withSlot(() => handleTranslate({
       formattedText: scene.formatted, prevTail,
       characterMemo: job.characterMemo || null, guidelines: job.guidelines.translate,
       sceneIndex: scene.id, totalScenes: job.scenes.length,
       model: job.settings.translateModel || job.settings.model,
     }))
-    const translated = splitGluedAction(cleanOutput(res.translated))  // 대사 속 지문 자동 분리
+    const translated = cleanOutput(res.translated)  // 줄 1:1 유지 — splitGluedAction 미적용
     scene.translated = translated
     scene.smiMatches = alignMeta(job, translated)  // 정렬은 메타만 (교체 없음)
     scene.tokens = { ...scene.tokens, translate_in: estTokens(scene.formatted), translate_out: estTokens(translated) }
+    if (!translationStructureOk(scene.formatted, translated)) {
+      scene.status = 'error_translate'; scene.error = '구조 불일치: 영문 포맷과 줄·마커 수가 안 맞음 (누락/창작/거부 의심) — 재처리 필요'; return
+    }
     scene.status = 'done'
   } catch (e) {
     if (e.code === 'RATE_LIMIT') rateLimitJob(job)
@@ -451,8 +551,10 @@ async function translateBatch(job, batch) {
     const raw = cleanOutput(res.translated)
     const parts = splitByHeading(raw)
     if (parts.length !== batch.length) { await fallback(); return } // 개수 안 맞으면 개별로
+    // ★ 구조 가드: 한 파트라도 영문과 마커·줄 수가 안 맞으면 개별 경로로 (개별 경로가 재시도+에러 처리)
+    if (batch.some((s, i) => !translationStructureOk(s.formatted, parts[i]))) { await fallback(); return }
     batch.forEach((s, i) => {
-      const translated = splitGluedAction(parts[i])
+      const translated = parts[i]  // ★ 줄 1:1 정렬 유지 — splitGluedAction 미적용
       s.translated = translated; s.smiMatches = alignMeta(job, translated); s.batched = true
       s.tokens = { ...s.tokens, translate_in: estTokens(s.formatted), translate_out: estTokens(parts[i]) }
       s.status = 'done'
@@ -483,7 +585,7 @@ async function runPool(job, items, fn) {
   await Promise.all(workers)
 }
 
-function finishStopped(job) { job.status = 'stopped'; job.paused = false; saveJob(job, true) }
+function finishStopped(job) { setRunning(job, false); job.status = 'stopped'; job.paused = false; saveJob(job, true) }
 
 // 현재 루프가 살아있는 잡 id (메모리 전용, 미영속) — 이중 실행 방지
 const activeRunners = new Set()
@@ -492,6 +594,7 @@ async function runJob(job) {
   if (activeRunners.has(job.id)) return  // 이미 워커가 도는 중이면 중복 실행 안 함
   activeRunners.add(job.id)
   job.status = 'running'; job.paused = false; job.stopped = false
+  setRunning(job, true)
   saveJob(job, true)
   try {
     // 1. 포맷 (미포맷 씬만)
@@ -533,13 +636,14 @@ async function runJob(job) {
     // rate limit/일시정지로 멈춘 상태면 done 처리하지 않음 (이어받기 대기)
     if (job.status === 'rate_limited' || job.paused) { saveJob(job, true); return }
 
-    job.phase = 'done'; job.status = 'done'; job.duration = Date.now() - job.startTime
+    job.phase = 'done'; job.status = 'done'; setRunning(job, false); job.duration = job.activeMs
     saveJob(job, true)
   } catch (e) {
     console.error('runJob error', e)
     job.status = 'error'; job.error = e.message
     saveJob(job, true)
   } finally {
+    setRunning(job, false)   // 어떤 경로로 끝나도 active 시간 마감
     activeRunners.delete(job.id)
   }
 }
@@ -551,7 +655,7 @@ function createJob(body) {
   const id = String(Date.now())
   const job = {
     id, title: title || '제목없음', phase: 'formatting', status: 'running',
-    startTime: Date.now(), duration: null,
+    startTime: Date.now(), duration: null, activeMs: 0,
     settings: settings || {}, guidelines: guidelines || {}, characterMemo: characterMemo || '',
     smi: smi || null,
     scenes: scenes.map(s => ({
@@ -573,10 +677,11 @@ function createJob(body) {
 function controlJob(id, action) {
   const job = jobs.get(id)
   if (!job) throw new Error('job not found')
-  if (action === 'pause') { job.paused = true; if (job.status === 'running') job.status = 'paused' }
+  if (action === 'pause') { setRunning(job, false); job.paused = true; if (job.status === 'running') job.status = 'paused' }
   else if (action === 'resume') {
     job.paused = false; job.stopped = false
     if (job.status === 'paused' || job.status === 'rate_limited') job.status = 'running'
+    setRunning(job, true)   // 재개 시 active 시간 다시 카운트 (블록된 워커는 깨우기만 해서 runJob 재진입 안 함)
     // 워커가 살아있으면(일시정지/한도대기) 깨우기만; 죽었으면(중단/오류) 새 루프 시작
     if (!activeRunners.has(id) && job.scenes.some(s => s.status !== 'done')) runJob(job)
   }
@@ -651,7 +756,7 @@ const server = createServer(async (req, res) => {
   // --- 잡 라우트 (GET/DELETE는 본문 없이 즉시 처리) ---
   const url = req.url
   if (req.method === 'GET' && url === '/api/health') {
-    return sendJSON({ ok: true, claude: !!CLAUDE_BIN })  // claude=false면 화면에서 설치 안내
+    return sendJSON({ ok: true, claude: !!CLAUDE_BIN, ocr: ocrToolsReady() })  // claude=false면 화면에서 설치 안내
   }
   if (req.method === 'GET' && url === '/api/jobs') {
     return sendJSON([...jobs.values()].map(jobMeta).sort((a, b) => b.startTime - a.startTime))
@@ -695,6 +800,7 @@ const server = createServer(async (req, res) => {
       else if (req.url === '/api/save-glossary') result = handleSaveGlossary(data)
       else if (req.url === '/api/log') result = handleLog(data)
       else if (req.url === '/api/fix-feedback') result = await handleFixFeedback(data)
+      else if (req.url === '/api/ocr') result = await handleOcr(data)
       else { res.writeHead(404).end(); return }
 
       res.writeHead(200, { 'Content-Type': 'application/json' })

@@ -5,7 +5,7 @@ import { sliceSmi } from './core.js'
 export const estTokens = (s) => Math.round((s || '').length / 3)
 
 // 인물 말투 사전용 대사 샘플 — @화자 + 첫 대사 줄을 작품 전반에서 고르게 뽑아 길이 제한
-export function buildDialogueSample(scenes, maxChars = 8000) {
+export function buildDialogueSample(scenes, maxChars = 4000) {
   const pairs = []
   for (const sc of scenes || []) {
     const lines = (sc.formatted || sc.raw || '').split('\n')
@@ -20,14 +20,14 @@ export function buildDialogueSample(scenes, maxChars = 8000) {
     }
   }
   if (!pairs.length) return ''
-  const cap = 200
+  const cap = 120
   let sampled = pairs
   if (pairs.length > cap) { const step = pairs.length / cap; sampled = Array.from({ length: cap }, (_, k) => pairs[Math.floor(k * step)]) }
   return sampled.join('\n').slice(0, maxChars)
 }
 
 // 공식 한국어 자막 샘플 — 말투 글로서리의 '근거'용. 자막 줄을 작품 전반에서 고르게 뽑아 길이 제한.
-export function buildSubtitleSample(smiEntries, maxChars = 7000, cap = 160) {
+export function buildSubtitleSample(smiEntries, maxChars = 3500, cap = 100) {
   const lines = (smiEntries || []).filter(l => l && /[가-힣]/.test(l))
   if (!lines.length) return ''
   let sampled = lines
@@ -91,6 +91,17 @@ export function normalizeSpacing(text) {
 
 // LLM 출력 후처리 한 방: 메타 제거 + 줄나눔 정리
 export const cleanOutput = (text) => normalizeSpacing(stripMeta(text))
+
+// 응답 전체가 '번역 거부/대화체'인지 — 빈 씬(타이틀·표지 등)에서 LLM이 "실제 각본을 붙여넣어 주세요" 식으로 답한 경우.
+// 거부 예시 안에 코드펜스로 `# EXT...` 샘플을 넣기도 하므로, 펜스를 먼저 걷어내고 실제 각본 신호(#·@)를 판단한다.
+export function looksLikeRefusal(text) {
+  if (!text) return false
+  const t = text.trim()
+  const noFence = t.replace(/```[\s\S]*?```/g, '')         // 코드펜스(예시) 제거
+  const hasScript = /(^|\n)\s*#/.test(noFence) || /(^|\n)\s*@/.test(noFence)
+  if (hasScript) return false                              // 펜스 밖에 진짜 헤딩/큐가 있으면 정상 번역
+  return /(붙여넣어?\s*주|올려\s*주|보내\s*주|제공해\s*주|번역해\s*드리|번역을?\s*시작하겠|번역하겠습니다|실제\s*(각본|씬|스크립트|내용)|텍스트를?\s*(주|입력|붙여|제공)|paste|provide[^\n]*(script|text)|no (screenplay|script) content)/i.test(noFence)
+}
 
 // 자막 컨텍스트: 씬 길이에 비례해 가변 슬라이싱 (짧은 씬은 적게 → 토큰 절감)
 export function getSmiContext(smiLines, scene, totalScenes) {

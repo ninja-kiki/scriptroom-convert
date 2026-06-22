@@ -1,20 +1,39 @@
 // Theme tokens — scriptroom 바우하우스 결(따뜻한 종이톤 + 3원색), 라이트/다크 분리
 // 색 의미: 파랑=포맷/구조(fmt) · 빨강=번역 KO(trans) · 노랑=주의(warn) · 초록=완료(good)
+import { APP_VERSION } from './version.js'
+
+// 액센트 = 액션/크롬 색만(버튼·탭·로고). 버전마다 빨→파→노 회전(색=버전 세대), 설정에서 고정 선택 가능.
+// ★ 상태 의미가 있는 곳(진행바·완료·오류)에는 절대 쓰지 말 것 — 거긴 good/warn/err/fmt 고정색.
+export const ACCENTS = {
+  red:    { accent: '#C0392B', accentFg: '#FFFFFF', label: '빨강' },
+  blue:   { accent: '#1E4D8C', accentFg: '#FFFFFF', label: '파랑' },
+  yellow: { accent: '#D9A400', accentFg: '#1A1A1A', label: '노랑' },
+}
+const ACCENT_CYCLE = ['red', 'blue', 'yellow']   // minor % 3 → 0.6=빨 0.7=파 0.8=노 0.9=빨…
+export function accentForVersion(v = APP_VERSION) {
+  const minor = parseInt(String(v).split('.')[1] || '0', 10) || 0
+  return ACCENT_CYCLE[minor % 3]
+}
+const ACCENT_KEY = 'convert_accent'   // 'auto' | 'red' | 'blue' | 'yellow'
+export function currentAccentSetting() { try { return localStorage.getItem(ACCENT_KEY) || 'auto' } catch { return 'auto' } }
+export function currentAccentKey() { const s = currentAccentSetting(); return s === 'auto' ? accentForVersion() : s }
+function resolveAccent() { return ACCENTS[currentAccentKey()] || ACCENTS.blue }
+
 export const THEMES = {
   // 바우하우스 3원색은 scriptroom과 동일한 고정값: 빨강 #C0392B / 파랑 #1E4D8C / 노랑 #D9A400
   light: {
-    bg: '#E9E2D2', bgCard: '#F1EADA', bgInput: '#FFFFFF',
-    fg: '#1A1A1A', fgMuted: '#3A352C', fgDim: '#7A7163',
-    rule: 'rgba(0,0,0,0.16)',
+    bg: '#F4F4F3', bgCard: '#FFFFFF', bgInput: '#FFFFFF', bgMuted: '#E7E7E4',
+    fg: '#1A1A1A', fgMuted: '#3D3D3D', fgDim: '#888888',
+    rule: 'rgba(0,0,0,0.11)',
     accent: '#1E4D8C', accentFg: '#FFFFFF',
     good: '#3F8F61', warn: '#D9A400', err: '#C0392B',
-    fmt: '#1E4D8C',    // 포맷/구조 = 파랑
-    trans: '#C0392B',  // 번역(KO) = 빨강
+    fmt: '#1E4D8C',
+    trans: '#C0392B',
     chip: 'rgba(0,0,0,0.06)',
     name: 'light',
   },
   dark: {
-    bg: '#17150F', bgCard: '#221F17', bgInput: '#1B1812',
+    bg: '#17150F', bgCard: '#221F17', bgInput: '#1B1812', bgMuted: '#13110C',
     fg: '#EDE7D8', fgMuted: '#B6AF9D', fgDim: '#7E7666',
     rule: 'rgba(255,255,255,0.14)',
     accent: '#1E4D8C', accentFg: '#FFFFFF',
@@ -26,16 +45,39 @@ export const THEMES = {
   },
 }
 
+// 오류 메시지를 사람이 읽는 한국어 '종류'로 분류 — 화면 곳곳에서 공용
+export function classifyError(msg) {
+  const m = (msg || '').toLowerCase()
+  if (!msg) return { key: 'unknown', label: '알 수 없는 오류', hint: '잠시 후 다시 시도해 보세요' }
+  if (/설치되어 있지 않|claude_not_found|claude code.*설치|cli를 찾을/.test(m)) return { key: 'noclaude', label: 'Claude Code가 설치돼 있지 않아요', hint: 'claude.com/claude-code 에서 설치하세요' }
+  if (/로그인이? 필요|\bauth\b|not logged|please.*login|unauthorized|invalid api key|credentials/.test(m)) return { key: 'auth', label: 'Claude 로그인이 필요해요', hint: '터미널에서 claude 실행 → 로그인 후 재개하세요' }
+  if (/load failed|failed to fetch|networkerror|network error|err_|econnreset|socket hang/.test(m)) return { key: 'network', label: '네트워크가 끊겼어요', hint: '서버가 바빠 요청이 끊긴 것 — 재시도하면 이어서 처리해요' }
+  if (/econnrefused|server.*not|서버.*없|fetch.*refused/.test(m)) return { key: 'server', label: '변환 서버에 연결할 수 없어요', hint: '앱(서버)이 켜져 있는지 확인하세요' }
+  if (/null byte/.test(m)) return { key: 'nullbyte', label: '자막 인코딩 오류 (널 바이트)', hint: '자막을 다시 올려 변환하면 해결돼요' }
+  if (/rate.?limit|usage limit|quota|too many/.test(m)) return { key: 'rate', label: 'Claude 사용량 한도에 걸렸어요', hint: '한도가 풀린 뒤 재개하세요' }
+  if (/timeout|timed out|etimedout/.test(m)) return { key: 'timeout', label: '시간이 초과됐어요', hint: '다시 시도하세요' }
+  if (/json|parse|unexpected token/.test(m)) return { key: 'parse', label: 'AI 응답을 읽지 못했어요', hint: '해당 씬을 다시 시도하세요' }
+  if (/too large|payload|413|maximum/.test(m)) return { key: 'toolarge', label: '내용이 너무 길어요', hint: '씬을 나눠 다시 시도하세요' }
+  if (/exit code|spawn|enoent/.test(m)) return { key: 'proc', label: 'Claude 실행에 문제가 생겼어요', hint: '다시 시도하세요' }
+  return { key: 'other', label: '처리 중 오류가 났어요', hint: '다시 시도하세요', raw: msg }
+}
+
 const THEME_KEY = 'convert_theme'
 export function currentTheme() { try { return localStorage.getItem(THEME_KEY) || 'light' } catch { return 'light' } }
 
-// live binding — 테마 전환 시 재할당하면 `import { T }` 한 모든 컴포넌트에 반영됨(리렌더 시)
-export let T = THEMES[currentTheme()] || THEMES.light
+// live binding — 테마/액센트 전환 시 재할당하면 `import { T }` 한 모든 컴포넌트에 반영됨(리렌더 시)
+const withAccent = (base) => ({ ...base, ...resolveAccent() })   // 베이스 테마에 현재 액센트 덮기
+export let T = withAccent(THEMES[currentTheme()] || THEMES.light)
 export function applyTheme(name) {
-  T = THEMES[name] || THEMES.light
+  T = withAccent(THEMES[name] || THEMES.light)
   try { localStorage.setItem(THEME_KEY, name) } catch {}
   try { document.body.style.background = T.bg; document.body.style.color = T.fg } catch {}
   return T
+}
+// 액센트 선택 저장 후 테마 재적용(T 재할당 → 리렌더 시 전체 반영)
+export function applyAccent(key) {
+  try { localStorage.setItem(ACCENT_KEY, key) } catch {}
+  return applyTheme(currentTheme())
 }
 
 export const DEFAULT_FORMAT_GUIDELINES = `PDF 텍스트 추출. 페이지번호/헤더/푸터/타이틀페이지 제거. 내용 추가·요약 금지, 원문 언어 유지, 마커만 추가.
@@ -48,7 +90,8 @@ export const DEFAULT_FORMAT_GUIDELINES = `PDF 텍스트 추출. 페이지번호/
 - 비표준 헤딩은 장소맥락으로 INT./EXT. 추론해 #로 정규화("LOCKER ROOM--… - DAY"→"# INT. LOCKER ROOM - DAY"), 점생략형(EXT/INT.)도 표준화
 - 페이지번호/단독 숫자줄 제거
 - 전환지시어(CUT TO:/FADE IN:/FADE OUT:/SMASH CUT TO: 등) 그대로
-- 각 씬은 헤딩 포함 완결 단위. 대사 뒤 지문 이어지면 빈 줄 1개 삽입`
+- 각 씬은 헤딩 포함 완결 단위. 대사 뒤 지문 이어지면 빈 줄 1개 삽입
+- ★줄바꿈 정규화(번역본과 줄 맞춤): 한 대사·지문이 PDF 단 너비 때문에 여러 줄로 끊겨 있으면 한 줄(한 문장/문단 단위)로 합친다. 빈 줄은 문단 경계(지문↔대사, 대사↔지문)에만. 문단 중간의 줄바꿈은 남기지 말 것 — 번역본은 문장 단위로 리플로우되므로 포맷도 같은 줄 구조여야 정렬된다`
 
 export const DEFAULT_TRANSLATE_GUIDELINES = `구조·마커 유지(@인물명·전환지시어 형태 그대로). 직역 금지, 장면 맥락 번역. 욕설 질감 살린 자연스러운 구어체.
 
@@ -132,6 +175,20 @@ export async function loadPromptsFromFile() {
     if (p.format) localStorage.setItem('convert_guidelines_format', p.format)
     if (p.translate) localStorage.setItem('convert_guidelines_translate', p.translate)
   } catch {}
+}
+
+// 번역 구조 검증 — 영문 포맷본과 마커(#·@)·줄 수가 1:1인지. 누락·창작·거부·환각을 한 번에 걸러냄.
+// (server.js translationStructureOk와 동일 로직 — 프론트 공용)
+export function translationStructureOk(formatted, translated) {
+  if (!translated || !translated.trim()) return false
+  const heads = (t) => (t.match(/^#/gm) || []).length
+  const cues = (t) => (t.match(/^@/gm) || []).length
+  const body = (t) => t.split('\n').filter(l => l.trim()).length
+  if (heads(formatted) !== heads(translated)) return false
+  if (cues(formatted) !== cues(translated)) return false
+  const bf = body(formatted), bt = body(translated)
+  if (bf > 0 && (bt < bf * 0.6 || bt > bf * 1.6)) return false
+  return true
 }
 
 // SMI 씬별 슬라이스: 전체 줄에서 씬 위치 비율에 맞는 구간만 추출

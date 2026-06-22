@@ -2,15 +2,25 @@
 // 확신 낮으면 호출측이 LLM 포맷으로 폴백.
 
 // 진짜 씬 헤딩(키워드 명시)만. ※ "짧은 대문자 줄"은 인물 큐일 수 있으니 헤딩으로 보지 않음.
+// INT./EXT. 없는 "장소 - 시간대" 슬러그라인도 헤딩으로 인정 (라따뚜이식). 시간대로 끝나는
+// 대문자 줄만 → 인물 큐("DARBY")나 대문자 지문은 안 걸림 ( " - 시간" 패턴이 핵심 ).
+function isSluglineHeading(t) {
+  const s = (t || '').trim()
+  if (s.length < 5 || s.length > 70 || !/\s[-–—]\s/.test(s)) return false
+  const letters = s.replace(/[^A-Za-z]/g, ''), upper = s.replace(/[^A-Z]/g, '')
+  if (letters.length < 3 || upper.length / letters.length < 0.85) return false
+  return new RegExp(`\\b(${TIME_WORD})\\b`, 'i').test(s.split(/\s[-–—]\s/).pop())
+}
 function isStrictHeading(t) {
   return (
     /(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.)/i.test(t) ||
-    /^([A-Z]{0,2}\d+\.?\s+)?(SCENE\s+\d+|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)\b/i.test(t)
+    /^([A-Z]{0,2}\d+\.?\s+)?(SCENE\s+\d+|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)\b/i.test(t) ||
+    isSluglineHeading(t)
   )
 }
 
 // 헤딩 정규화: 앞뒤 씬번호 제거, # 부여
-const TIME_WORD = 'DAY|NIGHT|MORNING|EVENING|AFTERNOON|DUSK|DAWN|NOON|MIDNIGHT|CONTINUOUS|LATER|MOMENTS LATER|SAME|MAGIC HOUR|SUNSET|SUNRISE'
+const TIME_WORD = 'DAY|NIGHT|MORNING|EVENING|AFTERNOON|DUSK|DAWN|NOON|MIDNIGHT|CONTINUOUS|LATER|EARLIER|MOMENTS|SAME|MAGIC HOUR|SUNSET|SUNRISE'
 function normalizeHeading(t) {
   let h = t.replace(/^[A-Z]{0,2}\d+\.?\s+/, '').replace(/\s+[A-Z]{0,2}\d+\.?$/, '').trim()
   // 시간대에 씬번호가 붙은 경우 제거: "DAY1" / "MORNING2" / "NIGHT 14" → 키워드만
@@ -26,6 +36,12 @@ function isCharCue(line) {
   if (core.length < 2 || core.length > 28) return false
   if (isStrictHeading(t)) return false
   if (/^(CUT|FADE|DISSOLVE|SMASH|MATCH|TITLE|OMITTED)\b/i.test(core)) return false
+  // 가짜 큐 배제: 문장부호 끝(지문·외침), 관사-묘사, 5단어+(묘사), 카메라/장소 라벨
+  if (/[.,!?;]$/.test(core)) return false
+  if (/^(A|AN)\s/i.test(core)) return false   // "A MAN'S VOICE" 류
+  if (core.split(/\s+/).length > 4) return false
+  if (/^(ON|IN|AT|TO|FROM|OVER|INSERT|CU|POV|ANGLE|CLOSE|WIDE|BACK|REVERSE|MONTAGE|INTERCUT|SERIES|MEANWHILE|VARIOUS|LATER|CONTINUOUS|MUSIC|CHYRON|SUPER|CREDIT|ACROSS|THROUGH|OTHER SIDE)\b/i.test(core)) return false
+  if (/\b(STAGE|TV|ROOM|COUNTER|CURTAIN|TURNBUCKLE|HALLWAY|LOBBY)\b/i.test(core) && !/^(MISTER|MISS|MRS|DOCTOR|DR|OFFICER|DETECTIVE)/i.test(core)) return false
   const letters = core.replace(/[^A-Za-z]/g, '')
   if (letters.length < 2) return false
   const upper = core.replace(/[^A-Z]/g, '')

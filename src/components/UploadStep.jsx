@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import { T, loadHistory, deleteHistory, fmtDuration, fmtTokens, loadGuidelines, loadSettings } from '../lib/core.js'
 import { decodeSubtitle, parseSubtitleLines, subtitleInfo } from '../lib/smi.js'
 import LintPanel from './LintPanel.jsx'
+import ShapeField from './ShapeField.jsx'
 import { detectIssues, detectFileType, planLLMChunks, estimateTokens, applyAutoFixes, patchText, parseFeedback, classifyFeedback, applyDirectEdits } from '../lib/revise.js'
 
 const SESSION_KEY = 'convert_session'
@@ -22,10 +23,10 @@ function titleFromFile(file) {
 // 서버 잡 상태 → 한글 라벨·색
 const JOB_STATUS = {
   running: { label: '진행 중', color: T.warn },
-  paused: { label: '일시정지', color: T.fgMuted },
+  paused: { label: '일시정지 · 이어하기 가능', color: T.fgMuted },
   rate_limited: { label: '사용량 한도 — 대기', color: T.err },
   done: { label: '완료', color: T.good },
-  stopped: { label: '중단됨', color: T.fgDim },
+  stopped: { label: '중단됨 · 이어하기 가능', color: T.fgDim },
   error: { label: '오류', color: T.err },
 }
 
@@ -298,7 +299,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise, onOpenJob }) {
   }
 
   return (
-    <div style={{ padding: '28px 20px', maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ padding: '28px 20px', maxWidth: 640, margin: '0 auto' }}>
 
       {/* 탭 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
@@ -330,12 +331,14 @@ export default function UploadStep({ onLoad, onRestore, onRevise, onOpenJob }) {
         onDrop={handleScriptDrop}
         className={!scriptFile ? 'sr-drop' : undefined}
         style={{
-          border: `2px dashed ${dragOverScript ? T.accent : scriptFile ? T.accent + '66' : T.rule}`,
+          position: 'relative', overflow: 'hidden',
+          border: 'none',
           borderRadius: 3, padding: '22px 24px',
-          minHeight: 158, boxSizing: 'border-box',
+          minHeight: scriptFile ? 158 : 300, boxSizing: 'border-box',
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
           textAlign: 'center', cursor: scriptFile ? 'default' : 'pointer',
-          background: dragOverScript ? '#EBDFC4' : T.bgCard,
+          background: dragOverScript ? T.accent + '22' : T.bgCard,
+          boxShadow: dragOverScript ? `inset 0 0 0 2px ${T.accent}` : 'none',
           transition: 'transform .25s ease, box-shadow .25s ease, border-color .2s, background .2s', marginBottom: 16,
         }}
       >
@@ -380,17 +383,15 @@ export default function UploadStep({ onLoad, onRestore, onRevise, onOpenJob }) {
           </div>
         ) : (
           <>
-            {/* 바우하우스 3원색 트리오 — 세 조각이 모여 한 편이 된다는 위트 */}
-            <svg width="94" height="34" viewBox="0 0 94 34" aria-hidden className="sr-logo" style={{ display: 'block', margin: '8px auto 20px', overflow: 'visible' }}>
-              <rect className="trio trio-sq" x="2" y="3" width="28" height="28" rx="2.5" fill={T.trans} />
-              <circle className="trio trio-ci" cx="47" cy="17" r="15" fill={T.warn} />
-              <path className="trio trio-tri" d="M77 2l16 30H61z" fill={T.fmt} />
-            </svg>
-            <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, letterSpacing: '-.2px', marginBottom: 6 }}>각본 자막을 올리세요</div>
-            <div style={{ color: T.fgDim, fontSize: 12.5, lineHeight: 1.5 }}>
-              <span style={{ color: T.fgMuted, fontWeight: 600 }}>각본</span> PDF · TXT · RTF · FDX · Fountain
-              <span style={{ margin: '0 7px', color: T.rule }}>|</span>
-              <span style={{ color: T.fgMuted, fontWeight: 600 }}>자막</span> SMI · SRT <span style={{ color: T.fgDim }}>(선택)</span>
+            {/* 바우하우스 도형들이 흩뿌려진 인터랙티브 배경 — 마우스가 들어오면 피해 달아남 */}
+            <ShapeField size={58} />
+            <div style={{ position: 'relative', zIndex: 1, pointerEvents: 'none' }}>
+              <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, letterSpacing: '-.2px', marginBottom: 6 }}>각본 자막을 올리세요</div>
+              <div style={{ color: T.fgDim, fontSize: 12.5, lineHeight: 1.5 }}>
+                <span style={{ color: T.fgMuted, fontWeight: 600 }}>각본</span> PDF · TXT · RTF · FDX · Fountain
+                <span style={{ margin: '0 7px', color: T.rule }}>|</span>
+                <span style={{ color: T.fgMuted, fontWeight: 600 }}>자막</span> SMI · SRT <span style={{ color: T.fgDim }}>(선택)</span>
+              </div>
             </div>
           </>
         )}
@@ -437,27 +438,40 @@ export default function UploadStep({ onLoad, onRestore, onRevise, onOpenJob }) {
       )}
 
       {/* 작업 — 서버 잡(멀티세션, 백그라운드 진행) + 이전 로컬 기록 */}
-      {(jobs.length > 0 || history.length > 0) && (
+      {(() => {
+      // 작업(서버 jobs)에 이미 있는 건 이전기록에서 숨김 — 중복 제거
+      const jobKeys = new Set(jobs.flatMap(j => [j.id, j.title]))
+      const visibleHistory = history.filter(h => !jobKeys.has(h.id) && !jobKeys.has(h.title))
+      return (jobs.length > 0 || visibleHistory.length > 0) && (
         <div>
-          <div style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 8 }}>작업</div>
+          {jobs.length > 0 && <div style={{ color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 8 }}>작업</div>}
 
           {jobs.map(j => {
             const st = JOB_STATUS[j.status] || { label: j.status, color: T.fgMuted }
-            const active = j.status === 'running' || j.status === 'paused' || j.status === 'rate_limited'
+            // 완료됐는데 오류가 남아있으면 진짜 완료가 아님 — '미완료(오류)'로 취급
+            const incomplete = j.status === 'done' && j.errors > 0
+            const trulyDone = j.status === 'done' && !incomplete
+            const resumable = j.status === 'paused' || j.status === 'stopped' || incomplete
             return (
               <div key={j.id} onClick={() => onOpenJob(j.id)} className="sr-card" style={{
                 display: 'flex', alignItems: 'center', gap: 10,
-                padding: '11px 14px', background: T.bgCard,
-                border: `1px solid ${active ? T.accent + '55' : T.rule}`, borderRadius: 3,
+                padding: '11px 14px', background: (j.status === 'running' || j.status === 'paused' || trulyDone) ? T.bgCard : T.bgMuted,
+                borderRadius: 3,
                 cursor: 'pointer', marginBottom: 6,
               }}>
-                <span style={{ width: 8, height: 8, borderRadius: 999, background: st.color, flexShrink: 0,
-                  animation: j.status === 'running' ? 'pulse 1.2s ease-in-out infinite' : 'none' }} />
+                {j.status === 'running'
+                  ? <svg width="14" height="14" viewBox="0 0 14 14" style={{ flexShrink: 0, margin: '0 3px' }}><polygon points="2,1 13,7 2,13" fill={T.warn} /></svg>
+                  : (j.status === 'paused' || j.status === 'stopped')
+                    ? <svg width="14" height="14" viewBox="0 0 14 14" style={{ flexShrink: 0, margin: '0 3px' }}><rect x="1" y="1" width="12" height="12" rx="1" fill={T.fgDim} /></svg>
+                    : resumable
+                      ? <svg width="14" height="14" viewBox="0 0 14 14" style={{ flexShrink: 0, margin: '0 3px' }}><polygon points="2,1 13,7 2,13" fill={incomplete ? T.err : T.accent} /></svg>
+                      : <span style={{ width: 14, height: 14, borderRadius: 999, background: st.color, flexShrink: 0, display: 'inline-block', margin: '0 3px' }} />}
                 <div style={{ flex: 1, overflow: 'hidden' }}>
                   <div style={{ color: T.fg, fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title}</div>
                   <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
-                    {j.done}/{j.total}씬 · <span style={{ color: st.color, fontWeight: 600 }}>{st.label}</span>
-                    {j.errors > 0 && <span style={{ color: T.err }}> · 오류 {j.errors}</span>}
+                    {j.done}/{j.total}씬 · {incomplete
+                      ? <span style={{ color: T.err, fontWeight: 600 }}>오류 {j.errors} · 미완료</span>
+                      : <><span style={{ color: st.color, fontWeight: 600 }}>{st.label}</span>{j.errors > 0 && <span style={{ color: T.err }}> · 오류 {j.errors}</span>}</>}
                   </div>
                 </div>
                 <button onClick={e => handleDeleteJob(j.id, e)}
@@ -466,29 +480,32 @@ export default function UploadStep({ onLoad, onRestore, onRevise, onOpenJob }) {
             )
           })}
 
-          {history.length > 0 && (
+          {visibleHistory.length > 0 && (
             <button onClick={() => setShowHistory(v => !v)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer',
                 color: T.fgDim, fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', margin: '16px 0 8px', padding: 0 }}>
-              이전 기록 {history.length} <span style={{ fontSize: 10 }}>{showHistory ? '▲' : '▼'}</span>
+              이전 기록 {visibleHistory.length} <span style={{ fontSize: 10 }}>{showHistory ? '▲' : '▼'}</span>
             </button>
           )}
 
-          {showHistory && history.map(h => {
+          {showHistory && visibleHistory.map(h => {
             // 저장된 doneCount 우선 (완료작은 sceneData를 버리므로 다시 세면 0이 됨)
             const doneCount = h.doneCount ?? (h.sceneData ? h.sceneData.filter(s => s.status === 'done').length : 0)
             const total = h.sceneCount ?? (h.sceneData ? h.sceneData.length : 0)
             const isComplete = total > 0 && doneCount >= total
             const canResume = !!h.sceneData && total > 0 && !isComplete
 
+            const icon = canResume
+              ? <span style={{ color: T.accent, fontSize: 16, flexShrink: 0, width: 20, textAlign: 'center' }}>▶</span>
+              : <span style={{ width: 14, height: 14, borderRadius: 999, background: isComplete ? T.good : T.fgDim, flexShrink: 0, display: 'inline-block', margin: '0 3px' }} />
             return (
               <div key={h.id} className={canResume ? 'sr-card' : undefined} onClick={canResume ? () => onRestore({ title: h.title, scenes: h.sceneData, startTime: h.startTime, jobId: h.id, smiLines: null }) : undefined} style={{
                 display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px', background: T.bgCard,
-                border: `1px solid ${canResume ? T.accent + '44' : T.rule}`, borderRadius: 3, marginBottom: 6,
+                padding: '10px 14px', background: isComplete ? T.bgCard : T.bgMuted,
+                borderRadius: 3, marginBottom: 6,
                 cursor: canResume ? 'pointer' : 'default',
               }}>
-                {canResume && <span style={{ color: T.accent, fontSize: 15 }}>▶</span>}
+                {icon}
                 <div style={{ flex: 1 }}>
                   <div style={{ color: canResume ? T.accent : T.fg, fontWeight: 500, fontSize: 14 }}>{h.title}</div>
                   <div style={{ color: T.fgMuted, fontSize: 12, marginTop: 2 }}>
@@ -503,7 +520,7 @@ export default function UploadStep({ onLoad, onRestore, onRevise, onOpenJob }) {
             )
           })}
         </div>
-      )}
+      ) })()}
       </div>
       )}
     </div>

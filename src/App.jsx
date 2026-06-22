@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { T, applyTheme, currentTheme, loadGuidelines, saveHistory, loadSettings, sliceSmi, loadPromptsFromFile, logProcess } from './lib/core.js'
-import { extractText, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
+import { T, applyTheme, currentTheme, applyAccent, currentAccentSetting, loadGuidelines, saveHistory, loadSettings, loadPromptsFromFile, logProcess, translationStructureOk } from './lib/core.js'
+import { extractText, ocrPdfViaServer, splitIntoScenes, splitByHeadingIndices, parseSMI, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
 import { ruleFormat } from './lib/format-rules.js'
+import { splitGluedAction } from './lib/lint.js'
 import { analyzeScenes } from './lib/analyze.js'
-import { parseSMIEntries, matchSmiToTranslation, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
+import { parseSMIEntries, alignSmi, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
 import { detectFileType } from './lib/revise.js'
 import UploadStep from './components/UploadStep.jsx'
 import ReviewStep from './components/ReviewStep.jsx'
@@ -19,7 +20,7 @@ function clearSession() { localStorage.removeItem(SESSION_KEY) }
 const estTokens = (s) => Math.round((s || '').length / 3)
 
 // 인물 말투 사전용 대사 샘플 — @화자 + 첫 대사 줄을 작품 전반에서 고르게 뽑아 길이 제한
-function buildDialogueSample(scenes, maxChars = 8000) {
+function buildDialogueSample(scenes, maxChars = 4000) {
   const pairs = []
   for (const sc of scenes || []) {
     const lines = (sc.formatted || sc.raw || '').split('\n')
@@ -34,7 +35,7 @@ function buildDialogueSample(scenes, maxChars = 8000) {
     }
   }
   if (!pairs.length) return ''
-  const cap = 200
+  const cap = 120
   let sampled = pairs
   if (pairs.length > cap) { const step = pairs.length / cap; sampled = Array.from({ length: cap }, (_, k) => pairs[Math.floor(k * step)]) }
   return sampled.join('\n').slice(0, maxChars)
@@ -109,6 +110,7 @@ export default function App() {
   const [pdfWarnings, setPdfWarnings] = useState([])
   const [phase, setPhase] = useState(session ? 'done' : '')
   const [startTime, setStartTime] = useState(session?.startTime || null)
+  const [timeInfo, setTimeInfo] = useState({ activeMs: 0, runningSince: null })  // 실제 처리 시간(방치 제외)
   const [showSettings, setShowSettings] = useState(false)
   const [extractProgress, setExtractProgress] = useState({ cur: 0, total: 0, label: '' })
   const smiLinesRef = useRef(session?.smiLines || null)
@@ -133,6 +135,8 @@ export default function App() {
   const toggleTheme = useCallback(() => {
     setThemeName(prev => { const n = prev === 'dark' ? 'light' : 'dark'; applyTheme(n); return n })
   }, [])
+  const [accentKey, setAccentKey] = useState(currentAccentSetting())
+  const changeAccent = useCallback((key) => { applyAccent(key); setAccentKey(key) }, [])
   const navBtn = { padding: '6px 12px', borderRadius: 3, background: T.chip, border: 'none', color: T.fgMuted, fontSize: 13, cursor: 'pointer' }
 
   // 추출/분석 단계 경과 시간 타이머
@@ -178,14 +182,6 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  // 자막 컨텍스트: 씬 길이에 비례해 가변 슬라이싱 (짧은 씬은 적게 → 토큰 절감)
-  function getSmiContext(scene, totalScenes) {
-    if (!smiLinesRef.current) return null
-    const lines = scene.raw.split('\n').filter(Boolean).length
-    const win = Math.min(120, Math.max(25, Math.round(lines * 1.4)))
-    return sliceSmi(smiLinesRef.current, scene.id, totalScenes, win)
-  }
-
   // API 호출 + 자동 재시도(지수 백오프). RATE_LIMIT은 재시도 안 하고 즉시 throw.
   async function postJSON(url, payload, retries = 2) {
     let lastErr
@@ -212,9 +208,11 @@ export default function App() {
     // 규칙 우선 — 깔끔한 씬은 LLM 없이(0토큰). 확신 낮으면 LLM 폴백.
     const rf = ruleFormat(scene.raw)
     if (rf.confidence >= 0.7) {
-      const heading = rf.formatted.split('\n')[0].trim()
+      // ★ 영어 포맷본에 대사↔지문 빈 줄 분리 적용 — 번역이 1:1로 따라오게 (서버와 동일)
+      const ruleFmt = splitGluedAction(rf.formatted)
+      const heading = ruleFmt.split('\n')[0].trim()
       updateScene(scene.id, {
-        status: 'formatted', formatted: rf.formatted, formatMethod: 'rule',
+        status: 'formatted', formatted: ruleFmt, formatMethod: 'rule',
         heading: heading.startsWith('#') ? heading : null,
         tokens: { format_in: 0, format_out: 0 },
       })
@@ -227,7 +225,7 @@ export default function App() {
         totalScenes: scenesRef.current.length, model: fs.formatModel || fs.model,
       })
       const tokens = res.tokens
-      const formatted = cleanOutput(res.formatted)
+      const formatted = splitGluedAction(cleanOutput(res.formatted))  // ★ 대사↔지문 분리 (영어=기준)
       const heading = formatted.split('\n')[0].trim()
       updateScene(scene.id, {
         status: 'formatted', formatted, formatMethod: 'llm',
@@ -245,26 +243,28 @@ export default function App() {
   async function processTranslate(scene, guidelines, characterMemo) {
     updateScene(scene.id, { status: 'translating' })
     try {
-      const smiContext = getSmiContext(scene, scenesRef.current.length)
       // 직전 씬 끝부분 — 대명사·상황 맥락 (처리 순서 무관하게 raw 사용)
       const idx = scenesRef.current.findIndex(s => s.id === scene.id)
       const prev = idx > 0 ? scenesRef.current[idx - 1] : null
       const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
+      // ★ 구조 가드: 안 맞으면 에러 표시만 (자동 재번역 안 함 — 토큰 절약)
+      // 자막은 번역에 직접 안 들어감 — 작품 1회 말투·관계 가이드(characterMemo)로만 반영.
       const _tr = await postJSON('/api/translate', {
-        formattedText: scene.formatted, smiContext, prevTail,
-        smiAuthoritative: smiInfo?.lang === 'ko',  // KO 자막이면 대사는 자막 우선
+        formattedText: scene.formatted, prevTail,
         characterMemo: characterMemo || null, guidelines,
         sceneIndex: scene.id, totalScenes: scenesRef.current.length,
         model: loadSettings().translateModel || loadSettings().model,
       })
       const rawTranslated = cleanOutput(_tr.translated)
-      // SMI 매칭: 번역 완료 후 대사 라인을 자막과 비교·교체
-      const { text: translated, matches: smiMatches } = smiEntriesRef.current
-        ? matchSmiToTranslation(rawTranslated, smiEntriesRef.current)
-        : { text: rawTranslated, matches: [] }
+      // 자막 교체 안 함 — 정렬 메타(검토용 노랑 표시)만 계산
+      const smiMatches = smiEntriesRef.current ? alignSmi(rawTranslated, smiEntriesRef.current).matches : []
+      if (!translationStructureOk(scene.formatted, rawTranslated)) {
+        updateScene(scene.id, { status: 'error_translate', error: '구조 불일치: 영문 포맷과 줄·마커 수가 안 맞음 (누락/창작/거부 의심) — 재처리 필요' })
+        return false
+      }
       updateScene(scene.id, {
-        status: 'done', translated, smiMatches,
-        tokens: { ...scene.tokens, translate_in: estTokens(scene.formatted) + estTokens(smiContext || ''), translate_out: estTokens(rawTranslated) },
+        status: 'done', translated: rawTranslated, smiMatches,
+        tokens: { ...scene.tokens, translate_in: estTokens(scene.formatted), translate_out: estTokens(rawTranslated) },
       })
       return true
     } catch (e) {
@@ -310,16 +310,11 @@ export default function App() {
     try {
       const combined = batch.map(s => s.formatted).join('\n\n')
       const firstId = batch[0].id
-      const totalLines = batch.reduce((a, s) => a + s.raw.split('\n').filter(Boolean).length, 0)
-      const smiContext = smiLinesRef.current
-        ? sliceSmi(smiLinesRef.current, firstId, scenesRef.current.length, Math.min(160, Math.max(40, Math.round(totalLines * 1.4))))
-        : null
       const idx = scenesRef.current.findIndex(s => s.id === firstId)
       const prev = idx > 0 ? scenesRef.current[idx - 1] : null
       const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
       const _b = await postJSON('/api/translate', {
-        formattedText: combined, smiContext, prevTail,
-        smiAuthoritative: smiInfo?.lang === 'ko',
+        formattedText: combined, prevTail,
         characterMemo: characterMemo || null, guidelines,
         totalScenes: scenesRef.current.length,
         model: loadSettings().translateModel || loadSettings().model,
@@ -328,10 +323,9 @@ export default function App() {
       const parts = splitByHeading(raw)
       if (parts.length !== batch.length) { await fallback(); return } // 안전: 개수 안 맞으면 개별로
       batch.forEach((s, i) => {
-        const { text, matches } = smiEntriesRef.current
-          ? matchSmiToTranslation(parts[i], smiEntriesRef.current)
-          : { text: parts[i], matches: [] }
-        updateScene(s.id, { status: 'done', translated: text, smiMatches: matches, batched: true,
+        // 자막 교체 안 함 — 정렬 메타(검토용)만
+        const matches = smiEntriesRef.current ? alignSmi(parts[i], smiEntriesRef.current).matches : []
+        updateScene(s.id, { status: 'done', translated: parts[i], smiMatches: matches, batched: true,
           tokens: { ...s.tokens, translate_in: estTokens(s.formatted), translate_out: estTokens(parts[i]) } })
       })
     } catch (e) {
@@ -414,9 +408,30 @@ export default function App() {
       return
     }
     if (!rawText || rawText.replace(/\s/g, '').length < 20) {
-      setStep('upload')
-      window.alert('이 PDF에서 텍스트를 거의 못 읽었어요.\n\n스캔(이미지) PDF이거나 iCloud에 안 받아진 껍데기 파일일 수 있어요. 텍스트가 들어있는 PDF로 다시 시도해 주세요.')
-      return
+      const ext = scriptFile.name.split('.').pop().toLowerCase()
+      if (ext === 'pdf') {
+        // 텍스트 레이어가 비었음 = 스캔(이미지) PDF → 서버에서 OCR (몇 분 걸릴 수 있어 90초 race 밖에서)
+        try {
+          setExtractProgress({ cur: 0, total: 0, label: '스캔 PDF — OCR로 글자 읽는 중 (1~2분 걸릴 수 있어요)' })
+          rawText = await ocrPdfViaServer(scriptFile)
+          candidates = []
+        } catch (e) {
+          setStep('upload')
+          window.alert(e.ocrMissing
+            ? '스캔(이미지) PDF예요. 자동 OCR 도구가 없어 글자를 읽지 못했어요.\n\n터미널에서 다음을 설치한 뒤 다시 시도해 주세요:\nbrew install poppler tesseract'
+            : `스캔 PDF OCR에 실패했어요: ${e.message}`)
+          return
+        }
+        if (!rawText || rawText.replace(/\s/g, '').length < 20) {
+          setStep('upload')
+          window.alert('OCR했지만 글자를 거의 못 읽었어요.\n\n스캔 화질이 낮거나 손글씨일 수 있어요.')
+          return
+        }
+      } else {
+        setStep('upload')
+        window.alert('이 파일에서 텍스트를 거의 못 읽었어요.\n\niCloud에 안 받아진 껍데기 파일일 수 있어요. 텍스트가 들어있는 파일로 다시 시도해 주세요.')
+        return
+      }
     }
 
     // formatted.txt 감지 → 포맷 완료 상태로 바로 로드
@@ -514,6 +529,7 @@ export default function App() {
         setPhase(job.phase)
         if (job.title) setTitle(job.title)
         if (job.startTime) setStartTime(job.startTime)
+        setTimeInfo({ activeMs: job.activeMs || 0, runningSince: job._runStart || null })
         if (job.characterMemo !== undefined) { characterMemoRef.current = job.characterMemo; setCharacterMemo(job.characterMemo || '') }
         const paused = job.status === 'paused' || job.status === 'rate_limited'
         isPausedRef.current = paused
@@ -782,6 +798,23 @@ export default function App() {
     isProcessing.current = false
   }
 
+  // 구조 깨진(영문↔번역 마커·줄 수 불일치) 완료 씬을 찾아 한 번에 재번역.
+  // 포맷은 그대로 두고 번역만 다시 — processTranslate에 가드가 있어 통과 못 하면 error_translate로 뜸.
+  async function handleReprocessBroken() {
+    const broken = scenesRef.current.filter(s =>
+      s.status === 'done' && s.formatted && s.translated && !translationStructureOk(s.formatted, s.translated))
+    if (!broken.length) { alert('구조가 깨진 씬이 없어요.'); return }
+    if (!window.confirm(`구조가 깨진 ${broken.length}개 씬을 다시 번역할까요? (포맷은 그대로, 번역만 다시 — 토큰 사용)`)) return
+    isProcessing.current = true
+    isStoppedRef.current = false
+    for (const s of broken) {
+      if (isStoppedRef.current) break
+      const cur = scenesRef.current.find(x => x.id === s.id)
+      if (cur) await processTranslate(cur, loadGuidelines('translate'), characterMemoRef.current)
+    }
+    isProcessing.current = false
+  }
+
   // 직전 저장 내용 기억 → 변동 없으면 중복 저장 안 함
   const lastDownloadRef = useRef({})
   function handleDownload(type) {
@@ -833,7 +866,8 @@ export default function App() {
   }
 
   function handleLogoClick() {
-    if (step === 'upload') return
+    // 이미 홈이면 새로고침으로 깔끔히 초기화
+    if (step === 'upload') { window.location.reload(); return }
     // 서버 잡은 홈으로 가도 백그라운드에서 계속 — 목록에서 다시 열 수 있음
     if (isProcessing.current && !serverJobRef.current) {
       if (!window.confirm('작업이 진행 중입니다. 중단하고 홈으로 돌아갈까요?')) return
@@ -846,20 +880,24 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: T.bg, color: T.fg }}>
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 20px', borderBottom: `1px solid ${T.rule}`,
+        padding: '14px 0', borderBottom: `1px solid ${T.rule}`,
         position: 'sticky', top: 0, background: T.bg, zIndex: 10,
       }}>
-        <span onClick={handleLogoClick} className="sr-logo"
-          style={{ display: 'flex', alignItems: 'center', gap: 9, fontWeight: 700, fontSize: 15, letterSpacing: '-.3px', cursor: step !== 'upload' ? 'pointer' : 'default' }}>
+       <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        maxWidth: 640, margin: '0 auto', padding: '0 20px', boxSizing: 'border-box',
+       }}>
+        <span onClick={handleLogoClick} className="sr-logo" title="홈으로"
+          style={{ display: 'flex', alignItems: 'center', gap: 9, fontWeight: 700, fontSize: 15, letterSpacing: '-.3px', cursor: 'pointer' }}>
           <svg width="36" height="13" viewBox="0 0 36 13" aria-hidden>
-            <rect className="trio trio-sq" x="0.5" y="1.5" width="10" height="10" rx="1" fill={T.trans} />
+            <rect className="trio trio-sq" x="0.5" y="1.5" width="10" height="10" fill={T.trans} />
             <circle className="trio trio-ci" cx="18" cy="6.5" r="5.6" fill={T.warn} />
             <path className="trio trio-tri" d="M30 1.2l5.3 10.6H24.7z" fill={T.fmt} />
           </svg>
-          scriptroom <span style={{ color: T.accent }}>convert</span>
+          <span>scriptroom<span style={{ color: T.accent }}>convert</span></span>
         </span>
         <button onClick={() => setShowSettings(true)} className="sr-press" style={navBtn}>설정</button>
+       </div>
       </div>
 
       {claudeMissing && (
@@ -935,13 +973,13 @@ export default function App() {
 
       {(step === 'processing' || step === 'done') && (
         <ProcessPanel
-          title={title} scenes={scenes} phase={phase} startTime={startTime}
+          title={title} scenes={scenes} phase={phase} startTime={startTime} timeInfo={timeInfo}
           isPaused={isPaused} isRateLimited={isRateLimited}
           characterMemo={characterMemo} isServerJob={!!serverJobRef.current}
           onSaveGlossary={handleSaveGlossary} onRetranslate={handleRetranslate}
           onPause={handlePause} onResume={handleResume} onStop={handleStop} onContinue={handleContinue}
           onReader={() => { setReaderStartIdx(0); setReaderOpen(true) }}
-          onRetry={handleRetry} onReprocess={handleReprocess}
+          onRetry={handleRetry} onReprocess={handleReprocess} onReprocessBroken={handleReprocessBroken}
           onDownload={handleDownload} onReset={handleReset} onReport={handleReport}
         />
       )}
@@ -969,7 +1007,7 @@ export default function App() {
         </div>
       )}
 
-      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} themeName={themeName} onToggleTheme={toggleTheme} />}
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} themeName={themeName} onToggleTheme={toggleTheme} accentKey={accentKey} onAccent={changeAccent} />}
       {readerOpen && <ReaderMode scenes={scenes} initialIndex={readerStartIdx} onClose={() => setReaderOpen(false)} />}
 
       <style>{`
@@ -983,13 +1021,9 @@ export default function App() {
         /* 트리오 도형 — 정지(홈 심볼 idle 애니메이션 없음). transform 기준점만 설정. */
         .trio { transform-box: fill-box; transform-origin: 50% 50%; }
 
-        /* 히어로 드롭존 — 호버하면 박스 커지고, 세 도형이 작아지며 하나씩 위로 톡 */
-        .sr-drop { transition: transform .25s ease, box-shadow .25s ease, border-color .15s; }
-        .sr-drop:hover { transform: scale(1.015); box-shadow: 0 8px 28px rgba(0,0,0,.08); }
-        .sr-drop .trio { transition: transform .32s cubic-bezier(.34,1.7,.5,1); }
-        .sr-drop:hover .trio-sq  { transform: translateY(-8px) scale(.78); transition-delay: 0s; }
-        .sr-drop:hover .trio-ci  { transform: translateY(-8px) scale(.78); transition-delay: .08s; }
-        .sr-drop:hover .trio-tri { transform: translateY(-8px) scale(.78); transition-delay: .16s; }
+        /* 드롭존 — 호버 시 은은한 그림자 (도형은 ShapeField가 마우스 반발로 반응) */
+        .sr-drop { transition: box-shadow .25s ease, border-color .15s; }
+        .sr-drop:hover { box-shadow: 0 6px 22px rgba(0,0,0,.06); }
 
         /* 버튼 — 슬며시 뜨고 눌리는 반응 */
         .sr-press { transition: transform .14s ease, filter .14s ease, box-shadow .14s ease; }

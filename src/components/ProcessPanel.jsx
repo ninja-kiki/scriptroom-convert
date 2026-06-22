@@ -1,27 +1,22 @@
-import { useState, useEffect } from 'react'
-import { T, fmtDuration, fmtTokens, loadSettings } from '../lib/core.js'
+import { useState, useEffect, useRef } from 'react'
+import { T, fmtDuration, fmtTokens, loadSettings, classifyError, translationStructureOk } from '../lib/core.js'
 import SceneCard from './SceneCard.jsx'
 
-// 오류 메시지를 사람이 읽는 '종류'로 분류
-function classifyError(msg) {
-  const m = (msg || '').toLowerCase()
-  if (!msg) return { key: 'unknown', label: '알 수 없는 오류', hint: '재시도해 보세요' }
-  if (/설치되어 있지 않|claude_not_found|claude code.*설치|cli를 찾을/.test(m)) return { key: 'noclaude', label: 'Claude Code 미설치', hint: 'claude.com/claude-code 에서 설치하세요' }
-  if (/로그인이? 필요|\bauth\b|not logged|please.*login|unauthorized|invalid api key|credentials/.test(m)) return { key: 'auth', label: 'Claude 로그인 필요', hint: '터미널에서 `claude` 실행 → 로그인 후 재개하세요' }
-  if (/load failed|failed to fetch|networkerror|network error|err_/.test(m)) return { key: 'network', label: '네트워크 끊김 (Load failed)', hint: '서버가 바빠 브라우저 요청이 끊긴 것 — 재시도하면 서버가 이어서 처리해요' }
-  if (/null byte/.test(m)) return { key: 'nullbyte', label: '자막 인코딩 오류 (널 바이트)', hint: '자막을 다시 올려 변환하면 해결돼요' }
-  if (/rate.?limit|usage limit|quota|too many/.test(m)) return { key: 'rate', label: 'Claude 사용량 한도', hint: '한도가 풀린 뒤 재개하세요' }
-  if (/timeout|timed out|etimedout/.test(m)) return { key: 'timeout', label: '시간 초과', hint: '재시도하세요' }
-  if (/exit code|spawn|enoent/.test(m)) return { key: 'proc', label: 'claude 프로세스 오류', hint: '재시도하세요' }
-  return { key: 'other:' + m.slice(0, 24), label: msg.slice(0, 44), hint: '' }
-}
-
-export default function ProcessPanel({ title, scenes, phase, startTime, isPaused, isRateLimited, characterMemo, isServerJob, onSaveGlossary, onRetranslate, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onDownload, onReset, onReader, onReport }) {
+export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo, isPaused, isRateLimited, characterMemo, isServerJob, onSaveGlossary, onRetranslate, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onReprocessBroken, onDownload, onReset, onReader, onReport }) {
+  // 실제 처리 시간(방치·일시정지 제외). 서버 잡은 timeInfo, 없으면 startTime 폴백.
+  const elapsedMs = timeInfo?.activeMs != null
+    ? timeInfo.activeMs + (timeInfo.runningSince ? Date.now() - timeInfo.runningSince : 0)
+    : (startTime ? Date.now() - startTime : 0)
   const [expandedId, setExpandedId] = useState(null)
+  const [readerView, setReaderView] = useState('translated')  // 펼친 카드의 뷰: raw|formatted|translated (←→로 토글)
   const [filter, setFilter] = useState('all')  // all | warn | error
+  const errorSummaryRef = useRef()
+  const navGuardRef = useRef(null)  // 스크롤 경계에서 방향키 한 번 씹기 — { id, dir }로 무장 상태 기록
   const [glossOpen, setGlossOpen] = useState(false)
   const [glossDraft, setGlossDraft] = useState(null)  // null=폴링값 따라감, 문자열=편집중
-  const [dlMsg, setDlMsg] = useState({ type: null, msg: '' })  // 저장 버튼 일시 피드백
+  // 저장 표시: 타입별로 '저장 당시 씬 수'를 기록 → 현재 수와 같으면 "저장됨" 유지, 새 씬 생기면 사라짐
+  const [savedAt, setSavedAt] = useState({})
+  const [reprocessingBroken, setReprocessingBroken] = useState(false)  // 구조 깨진 씬 재번역 진행 중
 
   // 테마(live T) 따라가도록 컴포넌트 안에서 정의
   const ctrlBtn = {
@@ -91,7 +86,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
   }
   const smiPct = smiAttempts > 0 ? Math.round((smiMatched / smiAttempts) * 100) : null
   // 정렬률은 '검토 참고' 지표 — 낮아도 정상(각본≠영화 자막)이라 빨강 경보 안 씀
-  const smiColor = smiPct == null ? T.fgMuted : smiPct >= 50 ? T.accent : T.fgMuted
+  const smiColor = smiPct == null ? T.fgMuted : smiPct >= 50 ? T.good : T.fgMuted
 
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0
   const isDone = doneCount === total && total > 0
@@ -104,6 +99,51 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
     const t = setInterval(() => setTick(n => n + 1), 1000)
     return () => clearInterval(t)
   }, [isDone, phase])
+
+  // 인라인 리더 키보드 조작 — 펼친 카드에서 ←→ 뷰(포맷↔번역) 토글, ↑↓ 씬 카드 이동, Esc 닫기
+  useEffect(() => {
+    if (expandedId == null) return
+    const visible = scenes.filter(matchFilter)
+    const idx = visible.findIndex(s => s.id === expandedId)
+    if (idx < 0) return
+    const cur = visible[idx]
+    const views = ['raw', cur.formatted && 'formatted', cur.translated && 'translated'].filter(Boolean)
+    const onKey = (e) => {
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault()
+        const vi = Math.max(0, views.indexOf(readerView))
+        const ni = e.key === 'ArrowRight' ? Math.min(views.length - 1, vi + 1) : Math.max(0, vi - 1)
+        setReaderView(views[ni])
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        const down = e.key === 'ArrowDown'
+        // 1) 먼저 펼친 박스 안에서 스크롤 — 끝에 닿으면 그때 씬 이동
+        const box = document.querySelector(`[data-scene-id="${expandedId}"] [data-scene-scroll]`)
+        if (box) {
+          const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4
+          const atTop = box.scrollTop <= 0
+          if (down && !atBottom) { box.scrollBy({ top: box.clientHeight * 0.85, behavior: 'smooth' }); navGuardRef.current = null; return }
+          if (!down && !atTop) { box.scrollBy({ top: -box.clientHeight * 0.85, behavior: 'smooth' }); navGuardRef.current = null; return }
+        }
+        // 2) 경계 도달 — 첫 방향키는 한 번 씹고(무장), 같은 경계에서 또 누르면 씬 이동
+        const dir = down ? 'down' : 'up'
+        const g = navGuardRef.current
+        if (!g || g.id !== expandedId || g.dir !== dir) { navGuardRef.current = { id: expandedId, dir }; return }
+        navGuardRef.current = null
+        const ni = down ? idx + 1 : idx - 1
+        if (ni < 0 || ni >= visible.length) return
+        const nextId = visible[ni].id
+        setExpandedId(nextId)
+        setTimeout(() => document.querySelector(`[data-scene-id="${nextId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
+      } else if (e.key === 'Escape') {
+        setExpandedId(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [expandedId, readerView, scenes, filter])
 
   return (
     <div style={{ padding: '24px 16px', maxWidth: 640, margin: '0 auto' }}>
@@ -132,43 +172,98 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         {/* Progress bar */}
         <div style={{ height: 6, background: T.rule, borderRadius: 3, marginBottom: 10, overflow: 'hidden' }}>
           <div style={{ height: '100%', borderRadius: 3, width: `${pct}%`,
-            background: errCount > 0 ? T.err : isDone ? T.accent : T.warn, transition: 'width .3s' }} />
+            background: errCount > 0 ? T.err : isDone ? T.good : T.warn, transition: 'width .3s' }} />
         </div>
 
         {/* Stat badges */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <Badge>{pct}%</Badge>
-          {startTime && <Badge>{fmtDuration(Date.now() - startTime)}</Badge>}
+          {startTime && <Badge>{fmtDuration(elapsedMs)}</Badge>}
           {totalTokens > 0 && <Badge title="LLM 입출력 추정치 (규칙·자막 직결분 제외)">~{fmtTokens(totalTokens)} 토큰</Badge>}
           {ruleFmtCount > 0 && <Badge title="규칙으로 포맷 — LLM 안 씀(0토큰)">규칙포맷 {ruleFmtCount}씬</Badge>}
           {smiPct != null && <Badge color={smiColor} title={`공식 자막과 정렬된 대사 ${smiMatched}/${smiAttempts} (검토 참고 — 낮아도 정상)`}>자막정렬 {smiPct}%</Badge>}
-          {errCount > 0 && <Badge color={T.err}>오류 {errCount}</Badge>}
+          {errCount > 0 && <Badge color={T.err} onClick={() => { setFilter('error'); errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} style={{ cursor: 'pointer' }}>오류 {errCount}</Badge>}
         </div>
       </div>
 
-      {/* Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {phase !== 'done' && !isPaused && (
-          <button className="sr-press" onClick={onPause} style={ctrlBtn} title="잠깐 멈춤 — 재개하면 그 자리에서 이어서 계속">일시정지</button>
-        )}
-        {phase !== 'done' && isPaused && (
-          <button className="sr-press" onClick={onResume} style={tintBtn(T.good)}>재개</button>
-        )}
-        {phase !== 'done' && (
-          <button className="sr-press" onClick={() => { if (window.confirm('작업을 중단할까요? 진행된 씬은 유지됩니다.')) onStop() }} style={tintBtn(T.err)} title="작업 종료 — 진행된 씬은 보존, 다시 하려면 '이어하기'">중단</button>
-        )}
-        {hasIncomplete && (
-          <button className="sr-press" onClick={onContinue} style={tintBtn(T.accent)}>이어하기</button>
-        )}
-        {doneCount > 0 && (
-          <button className="sr-press" onClick={onReader} style={tintBtn(T.accent)}
-            title="완료된 씬을 화살표로 넘기며 읽기 (변환 중에도 가능)">리더 모드</button>
-        )}
-        {onReport && (
-          <button className="sr-press" onClick={onReport} title="이 작업의 처리 정보를 로그에 기록 (문제 추적용)"
-            style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 12, cursor: 'pointer', marginLeft: 'auto', textDecoration: 'underline' }}>문제 리포트</button>
-        )}
-      </div>
+      {/* Controls + 추출 (한 줄) */}
+      {(() => {
+        const settings = loadSettings()
+        const fmtCount = scenes.filter(s => s.formatted).length
+        const transCount = scenes.filter(s => s.translated).length
+        const fmtDone = fmtCount > 0 && fmtCount === scenes.length
+        const transDone = transCount > 0 && transCount === scenes.length
+        const curCount = (type) => type === 'formatted' ? fmtCount : type === 'translated' ? transCount : fmtCount + transCount
+        const save = (type) => {
+          onDownload(type)  // 'saved' | 'unchanged' — 어느 쪽이든 디스크 내용은 최신
+          setSavedAt(s => ({ ...s, [type]: curCount(type) }))
+        }
+        // 저장 후 그 타입의 씬 수가 그대로면 "저장됨" 계속 표시 (새 씬 생기면 자동 해제)
+        const isSaved = (type) => savedAt[type] != null && savedAt[type] === curCount(type)
+        const SavedTag = () => <span style={{ color: T.good, fontSize: 11, fontWeight: 600 }}>✓ 저장됨</span>
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            {phase !== 'done' && !isPaused && (
+              <button className="sr-press" onClick={onPause} style={ctrlBtn} title="잠깐 멈춤 — 재개하면 그 자리에서 이어서 계속">일시정지</button>
+            )}
+            {phase !== 'done' && isPaused && (
+              <button className="sr-press" onClick={onResume} style={tintBtn(T.good)}>재개</button>
+            )}
+            {/* 중단 — 일시정지한 뒤에만 활성 (평소엔 재개 가능한 일시정지가 더 나은 선택) */}
+            {phase !== 'done' && isPaused && (
+              <button className="sr-press" onClick={() => { if (window.confirm('이 작업을 끝낼까요? 진행분은 보존되고, 나중에 이어하기로 다시 시작할 수 있어요.')) onStop() }} style={tintBtn(T.err)} title="작업 종료 — 진행분 보존, 이어하기로 재개 가능">중단</button>
+            )}
+            {hasIncomplete && (
+              <button className="sr-press" onClick={onContinue} style={tintBtn(T.accent)}>이어하기</button>
+            )}
+            {/* 추출 — 완료되면 단계 색(포맷=파랑/번역=빨강), 저장하면 ✓ 저장됨 유지 */}
+            {fmtCount > 0 && (
+              <button className="sr-press" onClick={() => save('formatted')} style={fmtDone ? tintBtn(T.fmt) : ctrlBtn}>
+                {`formatted.txt${!isDone ? ` (${fmtCount})` : ''}`}{isSaved('formatted') && <> · <SavedTag /></>}
+              </button>
+            )}
+            {transCount > 0 && (
+              <button className="sr-press" onClick={() => save('translated')} style={transDone ? tintBtn(T.trans) : ctrlBtn}>
+                {`translated.txt${!isDone ? ` (${transCount})` : ''}`}{isSaved('translated') && <> · <SavedTag /></>}
+              </button>
+            )}
+            {settings.downloadMerged && fmtCount > 0 && transCount > 0 && (
+              <button className="sr-press" onClick={() => save('merged')} style={fmtDone && transDone ? tintBtn(T.accent) : ctrlBtn}>
+                merged.txt{isSaved('merged') && <> · <SavedTag /></>}
+              </button>
+            )}
+            {doneCount > 0 && (
+              <button className="sr-press" onClick={onReader} style={tintBtn(T.accent)}
+                title="완료된 씬을 화살표로 넘기며 읽기 (변환 중에도 가능)">리더 모드</button>
+            )}
+            {/* 구조 검수 — 영문↔번역 마커·줄 수 안 맞는 완료 씬만 골라 한 번에 재번역 */}
+            {(() => {
+              const broken = scenes.filter(s => s.status === 'done' && s.formatted && s.translated && !translationStructureOk(s.formatted, s.translated))
+              const translating = scenes.some(s => s.status === 'translating')
+              if (!onReprocessBroken) return null
+              if (reprocessingBroken || translating) {
+                return (
+                  <button disabled style={{ ...tintBtn(T.warn), cursor: 'default', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Spinner /> 재번역 중 · 남은 {broken.length}씬
+                  </button>
+                )
+              }
+              if (!broken.length) return null
+              return (
+                <button className="sr-press" style={tintBtn(T.err)}
+                  onClick={async () => { setReprocessingBroken(true); try { await onReprocessBroken() } finally { setReprocessingBroken(false) } }}
+                  title="영문 포맷과 줄·마커 수가 안 맞는 씬(누락/창작/거부 의심)만 골라 번역만 다시 돌립니다. 이어하기 누를 필요 없이 바로 돌아갑니다.">
+                  구조 깨진 {broken.length}씬 재번역
+                </button>
+              )
+            })()}
+            {onReport && (
+              <button className="sr-press" onClick={onReport} title="이 작업의 처리 정보를 로그에 기록 (문제 추적용)"
+                style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 12, cursor: 'pointer', marginLeft: 'auto', textDecoration: 'underline' }}>문제 리포트</button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* 말투 가이드 (자막 근거) — 보기·편집·다시 번역 */}
       {isServerJob && (characterMemo || phase === 'done' || phase === 'translating') && (
@@ -199,7 +294,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
 
       {/* 오류·경고 모아보기 — 종류별 개수 + 해당 씬 */}
       {(errorGroups.length > 0 || lowSmiIds.length > 0) && (
-        <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: T.chip, animation: 'riseIn .2s ease' }}>
+        <div ref={errorSummaryRef} style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: T.chip, animation: 'riseIn .2s ease' }}>
           <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, color: T.fg }}>오류·경고 요약</div>
           <div style={{ padding: '0 14px 10px' }}>
             {errorGroups.map(g => (
@@ -236,11 +331,11 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
         const clean = failed.length === 0
         return (
           <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: T.chip, animation: 'riseIn .2s ease' }}>
-            <div style={{ padding: '11px 14px', color: clean ? T.accent : T.err, fontWeight: 700, fontSize: 14 }}>
+            <div style={{ padding: '11px 14px', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
               {clean ? '변환 완료 ✓' : `변환 완료 — 실패 ${failed.length}개 확인 필요`}
             </div>
             <div style={{ padding: '10px 14px', fontSize: 13, color: T.fgMuted, lineHeight: 1.8 }}>
-              <div><span style={{ color: T.accent }}>· 씬 {doneCount}/{total} 완료</span>{startTime ? ` · ${fmtDuration(Date.now() - startTime)} 소요` : ''}</div>
+              <div><span style={{ color: T.good }}>· 씬 {doneCount}/{total} 완료</span>{startTime ? ` · ${fmtDuration(elapsedMs)} 소요` : ''}</div>
               {ruleFmtCount > 0 && <div style={{ color: T.fgMuted }}>· 규칙포맷 {ruleFmtCount}씬 (LLM 없이 처리 — 토큰 절약)</div>}
               {totalTokens > 0 && <div>· LLM 사용 ~{fmtTokens(totalTokens)} 토큰 (추정)</div>}
               {smiPct != null && <div style={{ color: T.fgMuted }}>· 공식 자막 정렬 {smiPct}% (검토 참고 — 각본·영화 자막 차이로 낮은 건 정상)</div>}
@@ -261,40 +356,8 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
                   </div>
                 )
               )}
-              {clean && lowSmi.length === 0 && <div style={{ color: T.accent }}>· 특이사항 없음</div>}
+              {clean && lowSmi.length === 0 && <div style={{ color: T.good }}>· 특이사항 없음</div>}
             </div>
-          </div>
-        )
-      })()}
-
-      {/* Download buttons */}
-      {scenes.length > 0 && (() => {
-        const settings = loadSettings()
-        const fmtCount = scenes.filter(s => s.formatted).length
-        const transCount = scenes.filter(s => s.translated).length
-        const save = (type) => {
-          const r = onDownload(type)  // 'saved' | 'unchanged'
-          setDlMsg({ type, msg: r === 'unchanged' ? '변동 없음 (이미 저장됨)' : '저장됨 ✓' })
-          setTimeout(() => setDlMsg(m => m.type === type ? { type: null, msg: '' } : m), 2000)
-        }
-        const dlLabel = (type, base) => dlMsg.type === type ? dlMsg.msg : base
-        return (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-            {fmtCount > 0 && (
-              <button className="sr-press" onClick={() => save('formatted')} style={dlBtn}>
-                {dlLabel('formatted', `formatted.txt ${!isDone ? `(${fmtCount}씬)` : ''}`)}
-              </button>
-            )}
-            {transCount > 0 && (
-              <button className="sr-press" onClick={() => save('translated')} style={dlBtn}>
-                {dlLabel('translated', `translated.txt ${!isDone ? `(${transCount}씬)` : ''}`)}
-              </button>
-            )}
-            {settings.downloadMerged && fmtCount > 0 && transCount > 0 && (
-              <button className="sr-press" onClick={() => save('merged')} style={dlBtn}>
-                {dlLabel('merged', 'merged.txt')}
-              </button>
-            )}
           </div>
         )
       })()}
@@ -335,6 +398,8 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
             onReprocess={onReprocess}
             expanded={expandedId === scene.id}
             onToggle={() => setExpandedId(expandedId === scene.id ? null : scene.id)}
+            viewMode={readerView}
+            onViewChange={setReaderView}
           />
         ))}
         {filter !== 'all' && !scenes.some(matchFilter) && (
@@ -353,14 +418,17 @@ export default function ProcessPanel({ title, scenes, phase, startTime, isPaused
   )
 }
 
-function Badge({ children, color, title }) {
+function Badge({ children, color, title, onClick, style }) {
   const c = color || T.fgMuted
-  // 중립 회색 칩 + 색 글씨 (색 틴트 박스 금지)
   return (
-    <span title={title} style={{
+    <span title={title} onClick={onClick} style={{ ...style,
       fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
       background: T.chip, color: c, whiteSpace: 'nowrap',
     }}>{children}</span>
   )
+}
+
+function Spinner() {
+  return <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', lineHeight: 1 }}>⟳</span>
 }
 

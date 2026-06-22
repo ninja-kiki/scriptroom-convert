@@ -2,11 +2,29 @@ import { useRef, useState } from 'react'
 import { T, loadSettings, loadGuidelines } from '../lib/core.js'
 import { detect, autofix, summarize, splitGluedAction } from '../lib/lint.js'
 
+// 각본 파일 아이콘 (종이 문서 모양)
+const DocIcon = ({ ext, active }) => (
+  <svg width="32" height="40" viewBox="0 0 32 40" style={{ display: 'block' }}>
+    <path d="M0 2 Q0 0 2 0 H21 L32 11 V38 Q32 40 30 40 H2 Q0 40 0 38 Z" fill={active ? '#FFFFFF' : '#C0C0C0'} />
+    <path d="M21 0 L21 11 H32" fill="none" stroke={active ? '#DDDDDD' : '#AAAAAA'} strokeWidth="1" />
+    <text x="16" y="29" textAnchor="middle" fontSize="7" fontWeight="700" fill={active ? '#444' : '#999'} fontFamily="monospace">{ext.toUpperCase()}</text>
+  </svg>
+)
+
+// unused legacy (kept for potential reuse)
+const exBox = (c) => ({
+  flex: 1, minWidth: 0, margin: 0, padding: '6px 9px', background: T.bgInput,
+  border: `1px solid ${T.rule}`, borderLeft: `2px solid ${c}`, borderRadius: 3,
+  fontFamily: 'monospace', fontSize: 10.5, lineHeight: 1.55, color: T.fgMuted,
+  whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden',
+})
+
 // 종합 수정 허브 — 번역본 드롭 → 자동 진단 → (무료)코드수정 자동 + (토큰)AI수정 선택 → 한 번에 적용
 export default function LintPanel() {
   const ref = useRef()
-  const [items, setItems] = useState([])   // [{name, text, sum, det, open, unify, instr, running, prog}]
+  const [items, setItems] = useState([])
   const [drag, setDrag] = useState(false)
+  const [hoverNote, setHoverNote] = useState(null)
 
   async function addFiles(fileList) {
     const next = []
@@ -121,30 +139,112 @@ export default function LintPanel() {
   )
 
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>번역본 다듬기</div>
-      <div style={{ color: T.fgMuted, fontSize: 13, lineHeight: 1.6, marginBottom: 14 }}>
-        완성된 번역본을 올리면 <b>자잘한 오류를 자동으로 찾아 무료로 고쳐</b> 줍니다.
-        <span style={{ color: T.fgDim }}> (LLM 메타 코멘트·반복 머리말·중복 줄·줄나눔·대사에 붙은 지문) — 결과는 <code>_수정.txt</code>로 저장돼요.</span>
-      </div>
+    <div style={{ marginBottom: 32 }}>
+      {/* 드롭존 — 4:3 비율, 파일 아이콘 */}
+      {(() => {
+        const loadedByExt = {}
+        for (const it of items) {
+          const ext = it.name.split('.').pop().toLowerCase()
+          if (!loadedByExt[ext]) loadedByExt[ext] = []
+          loadedByExt[ext].push(it)
+        }
+        return (
+          <div
+            onClick={() => ref.current.click()}
+            onDragOver={e => { e.preventDefault(); setDrag(true) }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files) }}
+            style={{ border: `2px dashed ${drag ? T.accent : T.rule}`, boxSizing: 'border-box', borderRadius: 4, aspectRatio: '4/3', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, cursor: 'pointer', background: drag ? T.accent + '22' : T.bgCard, marginBottom: 12, transition: 'background .15s, border-color .15s' }}>
+            <div style={{ display: 'flex', gap: 28, alignItems: 'flex-end' }}>
+              {['txt', 'json', 'pdf'].map(ext => {
+                const loaded = loadedByExt[ext] || []
+                const active = loaded.length > 0
+                return (
+                  <div key={ext} style={{ textAlign: 'center', opacity: active ? 1 : 0.3, transition: 'opacity .2s' }}>
+                    <DocIcon ext={ext} active={active} />
+                    <div style={{ fontSize: 9, color: active ? T.fg : T.fgDim, marginTop: 5, maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {active ? (loaded.length > 1 ? `${loaded.length}개` : loaded[0].name.replace(/\.[^.]+$/, '')) : ext.toUpperCase()}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ color: T.fgDim, fontSize: 12 }}>
+              {items.length > 0 ? '+ 더 추가하기' : '끌어다 놓거나 클릭'}
+            </div>
+          </div>
+        )
+      })()}
+      <input ref={ref} type="file" accept=".txt,.json,.pdf" multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
 
-      <div
-        onClick={() => ref.current.click()}
-        onDragOver={e => { e.preventDefault(); setDrag(true) }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files) }}
-        style={{ border: `2px dashed ${drag ? T.accent : T.rule}`, borderRadius: 4, padding: '28px 18px', textAlign: 'center', cursor: 'pointer', background: drag ? '#EBDFC4' : T.bgCard, marginBottom: 6, transition: 'background .15s' }}>
-        <div style={{ color: T.fg, fontSize: 14, fontWeight: 600, marginBottom: 4 }}>번역본 <code style={{ color: T.accent }}>.txt</code> 를 여기에 끌어다 놓으세요</div>
-        <div style={{ color: T.fgDim, fontSize: 12 }}>여러 개 한꺼번에 가능 · 리더에서 내보낸 수정요청 <code>.json</code> 도 받아요</div>
-      </div>
-      <input ref={ref} type="file" accept=".txt,.json" multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
-      {items.length === 0 && (
-        <div style={{ color: T.fgDim, fontSize: 12, lineHeight: 1.7, marginTop: 10, paddingLeft: 2 }}>
-          <b style={{ color: T.fgMuted }}>이럴 때 쓰세요</b><br />
-          · 변환이 끝난 번역본에서 자잘한 오류를 한 번에 정리하고 싶을 때<br />
-          · 인물 말투(반말/존댓말)를 통일하고 싶을 때 <span style={{ color: T.fgDim }}>(AI 수정·선택)</span>
-        </div>
-      )}
+      {items.length === 0 && (() => {
+        const FnSpan = ({ n, children }) => (
+          <span
+            onMouseEnter={() => setHoverNote(n)}
+            onMouseLeave={() => setHoverNote(null)}
+            style={{ textDecoration: 'underline', textDecorationStyle: 'solid', background: hoverNote === n ? T.chip : 'transparent', borderRadius: 2, cursor: 'default' }}
+          >{children}<sup style={{ fontSize: 7, marginLeft: 1, fontFamily: 'sans-serif' }}>{n}</sup></span>
+        )
+        const notes = [
+          { n: 1, label: 'AI 군말 제거' },
+          { n: 2, label: '씬 번호 끝 숫자 정리' },
+          { n: 3, label: '영어+한국어 중복 정리' },
+          { n: 4, label: '대사 속 지문 분리' },
+          { n: 5, label: '겹친 줄 제거' },
+        ]
+        return (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              {/* 이전 */}
+              <div style={{ flex: 1, minWidth: 0, background: '#fff', borderRadius: 3, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+                <div style={{ background: T.accent, color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 8px', letterSpacing: '0.08em' }}>이전</div>
+                <pre style={{ margin: 0, padding: '14px 12px', fontFamily: "'Courier New', Courier, monospace", fontSize: 10.5, lineHeight: 1.7, color: '#1A1A1A', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {'# 내부. 바 - 밤 '}
+                  <FnSpan n={2}>{'47'}</FnSpan>
+                  {'\n\n'}
+                  <FnSpan n={1}>{'물론이죠! 다음은 번역입니다:'}</FnSpan>
+                  {'\n마일스가 바 스툴에 앉는다.\n\n@MILES\n한 잔만 더요. '}
+                  <FnSpan n={3}>{'One more, please.'}</FnSpan>
+                  {'\n\n@MILES\n오늘은 여기까지. '}
+                  <FnSpan n={4}>{'그가 잔을 비운다.'}</FnSpan>
+                  {'\n\n@BARTENDER\n외상은 안 돼요.\n'}
+                  <FnSpan n={5}>{'외상은 안 돼요.'}</FnSpan>
+                </pre>
+              </div>
+              <div style={{ color: T.fgDim, fontSize: 18, alignSelf: 'center', flexShrink: 0 }}>→</div>
+              {/* 이후 */}
+              <div style={{ flex: 1, minWidth: 0, background: '#fff', borderRadius: 3, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+                <div style={{ background: T.accent, color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 8px', letterSpacing: '0.08em' }}>이후</div>
+                <pre style={{ margin: 0, padding: '14px 12px', fontFamily: "'Courier New', Courier, monospace", fontSize: 10.5, lineHeight: 1.7, color: '#1A1A1A', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{`# 내부. 바 - 밤
+
+마일스가 바 스툴에 앉는다.
+
+@MILES
+한 잔만 더요.
+
+@MILES
+오늘은 여기까지.
+
+그가 잔을 비운다.
+
+@BARTENDER
+외상은 안 돼요.`}</pre>
+              </div>
+            </div>
+            {/* 각주 */}
+            <div style={{ marginTop: 14, marginBottom: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {notes.map(({ n, label }) => (
+                <span key={n}
+                  onMouseEnter={() => setHoverNote(n)}
+                  onMouseLeave={() => setHoverNote(null)}
+                  style={{ fontSize: 11, color: T.fgDim, background: hoverNote === n ? T.chip : 'transparent', padding: '2px 6px', borderRadius: 3, cursor: 'default', transition: 'background .1s' }}>
+                  <sup style={{ fontSize: 8, fontFamily: 'sans-serif' }}>{n}</sup> {label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       {items.map((it, idx) => {
         // 리더 수정요청 JSON
@@ -172,7 +272,7 @@ export default function LintPanel() {
         const reviewCount = d.dialog.length + d.miscue.length
         const clean = autoList.length === 0 && s.glued === 0 && reviewCount === 0
         return (
-          <div key={idx} style={{ background: T.bgCard, borderRadius: 4, marginBottom: 8, overflow: 'hidden', border: `1px solid ${T.rule}` }}>
+          <div key={idx} style={{ background: T.bgCard, borderRadius: 4, marginBottom: 8, overflow: 'hidden' }}>
             <div onClick={() => upd(idx, { open: !it.open })}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', cursor: 'pointer' }}>
               <span style={{ color: T.fg, fontSize: 14, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>

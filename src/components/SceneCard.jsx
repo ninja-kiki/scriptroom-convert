@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { T } from '../lib/core.js'
+import { T, classifyError } from '../lib/core.js'
 import AnnotatedTranslation from './AnnotatedTranslation.jsx'
 
 const STATUS_LABEL = {
@@ -12,14 +12,14 @@ const STATUS_LABEL = {
   error_translate: '번역 실패',
 }
 
-export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expanded, onToggle }) {
-  // 상태색: 완료=파랑(accent) · 진행중=노랑(warn) · 문제=빨강(err) · 그 외=중립
+export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expanded, onToggle, viewMode, onViewChange }) {
+  // 상태색(고정 의미 — 액센트 회전과 무관): 완료=초록(good) · 진행중=노랑(warn) · 문제=빨강(err) · 그 외=중립
   const STATUS_COLOR = {
     pending: T.fgDim,
     formatting: T.warn,
     formatted: T.fgMuted,
     translating: T.warn,
-    done: T.accent,
+    done: T.good,
     error_format: T.err,
     error_translate: T.err,
   }
@@ -37,7 +37,7 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
     : 0
 
   return (
-    <div style={{
+    <div data-scene-id={scene.id} style={{
       background: T.bgCard, borderRadius: 3,
       marginBottom: 5, overflow: 'hidden',
     }}>
@@ -92,18 +92,18 @@ export default function SceneCard({ scene, sceneNo, onRetry, onReprocess, expand
 
       {expanded && (
         <div style={{ borderTop: `1px solid ${T.rule}`, padding: 14 }}>
-          <SceneDetail scene={scene} />
+          <SceneDetail scene={scene} viewMode={viewMode} onViewChange={onViewChange} />
         </div>
       )}
     </div>
   )
 }
 
-function SceneDetail({ scene }) {
+function SceneDetail({ scene, viewMode, onViewChange }) {
   // 테마(live T) 반영 — 모듈 레벨이 아니라 렌더 시점에 정의
   const preStyle = {
     fontFamily: 'monospace', fontSize: 12, color: T.fg,
-    maxHeight: 320, overflowY: 'auto', lineHeight: 1.7, margin: 0,
+    lineHeight: 1.7, margin: 0,
   }
   const tabs = [
     { key: 'raw', label: '원문', text: scene.raw },
@@ -111,8 +111,13 @@ function SceneDetail({ scene }) {
     scene.translated && { key: 'translated', label: '번역', text: scene.translated },
   ].filter(Boolean)
 
-  const [tab, setTab] = useState(tabs[tabs.length - 1]?.key || 'raw')
-  const current = tabs.find(t => t.key === tab) || tabs[0]
+  // viewMode가 외부에서 제어되면(인라인 리더 ←→) 그걸 쓰고, 없는 뷰면 가용한 것 중 최선으로 폴백
+  const [localTab, setLocalTab] = useState(tabs[tabs.length - 1]?.key || 'raw')
+  const controlled = viewMode != null
+  const wanted = controlled ? viewMode : localTab
+  const current = tabs.find(t => t.key === wanted) || tabs[tabs.length - 1] || tabs[0]
+  const setTab = (k) => { if (controlled) onViewChange?.(k); else setLocalTab(k) }
+  const tab = current?.key
 
   return (
     <div>
@@ -126,14 +131,25 @@ function SceneDetail({ scene }) {
               fontSize: 12, cursor: 'pointer',
             }}>{t.label}</button>
         ))}
+        <span style={{ marginLeft: 'auto', alignSelf: 'center', color: T.fgDim, fontSize: 10.5 }}>←→ 포맷·번역 · ↑↓ 스크롤/씬 이동</span>
       </div>
-      {tab === 'translated'
-        ? <AnnotatedTranslation text={scene.translated || ''} smiMatches={scene.smiMatches} />
-        : <pre style={{ ...preStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{current?.text || ''}</pre>
-      }
-      {scene.error && (
-        <div style={{ color: T.err, fontSize: 12, marginTop: 8 }}>{scene.error}</div>
-      )}
+      {/* 고정 높이 스크롤 박스 — 포맷·번역 모두 같은 크기로 열려 방향키 읽기에 일관됨 */}
+      <div data-scene-scroll style={{ height: 300, overflowY: 'auto' }}>
+        {tab === 'translated'
+          ? <AnnotatedTranslation text={scene.translated || ''} smiMatches={scene.smiMatches} />
+          : <pre style={{ ...preStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{current?.text || ''}</pre>
+        }
+      </div>
+      {scene.error && (() => {
+        const e = classifyError(scene.error)
+        return (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ color: T.err, fontSize: 12.5, fontWeight: 600 }}>{e.label}</div>
+            {e.hint && <div style={{ color: T.fgMuted, fontSize: 11.5, marginTop: 2 }}>{e.hint}</div>}
+            {e.raw && <div style={{ color: T.fgDim, fontSize: 10.5, marginTop: 3, fontFamily: 'monospace', wordBreak: 'break-word' }}>{e.raw.slice(0, 120)}</div>}
+          </div>
+        )
+      })()}
     </div>
   )
 }
