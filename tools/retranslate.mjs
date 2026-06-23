@@ -11,6 +11,8 @@ const MODEL = 'claude-opus-4-8'
 const work = process.argv[2]
 const GUIDE_ONLY = process.argv.includes('--guide')
 const WRITE = process.argv.includes('--write')
+const instrIdx = process.argv.indexOf('--instruction')
+const INSTRUCTION = instrIdx >= 0 ? (process.argv[instrIdx + 1] || '') : ''   // 사용자 수정 지시 (읽다 발견한 오류 등)
 if (!work) { console.error('사용: node tools/retranslate.mjs <작품폴더> --guide|--write'); process.exit(1) }
 
 const dir = join(CONTENT, work)
@@ -93,7 +95,8 @@ async function post(path, body) {
 try { const h = await (await fetch(`${SERVER}/api/health`)).json(); if (!h.ok || !h.claude) { console.error('서버/Claude 준비 안 됨'); process.exit(1) } }
 catch { console.error(`서버(${SERVER}) 연결 실패`); process.exit(1) }
 
-const guidelines = (await post('/api/load-prompts', {})).translate || ''
+let guidelines = (await post('/api/load-prompts', {})).translate || ''
+if (INSTRUCTION) guidelines += `\n\n[사용자 수정 지시 — 최우선 반영]\n${INSTRUCTION}`
 const dialogueSample = buildDialogueSample(enText)
 const subSample = subFile ? subtitleSample(readFileSync(join(dir, subFile), 'utf8')) : ''
 console.log(`작품: ${work} · 자막: ${subFile || '없음'} · 대사샘플 ${dialogueSample.length}자 · 자막샘플 ${subSample.length}자`)

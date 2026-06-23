@@ -1,6 +1,6 @@
 import { createServer } from 'http'
 import { spawn, execSync } from 'child_process'
-import { readdirSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, unlinkSync, mkdtempSync, rmSync } from 'fs'
+import { readdirSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, unlinkSync, mkdtempSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { ruleFormat } from './src/lib/format-rules.js'
@@ -13,6 +13,35 @@ import {
 const PORT = 3001
 const PROMPTS_PATH = `${process.cwd()}/prompts.json`
 const PROFILES_PATH = `${process.cwd()}/profiles.json`
+const CONTENT_DIR = '/Users/hojun/Projects/scriptroom/content'   // 기존 작품 재변환(개선) 대상
+
+// 기존 작품 재변환 — reprocess.mjs(PDF재추출→청소→진단→재번역)를 자식 프로세스로. 한 번에 하나.
+let reproc = { running: false, work: null, log: [], done: false, error: null, startedAt: null }
+function handleWorks() {
+  let works = []
+  try {
+    works = readdirSync(CONTENT_DIR).filter(w => {
+      try { return statSync(join(CONTENT_DIR, w)).isDirectory() && readdirSync(join(CONTENT_DIR, w)).some(f => /_formatted\.txt$/.test(f)) } catch { return false }
+    }).sort()
+  } catch {}
+  return { works }
+}
+function handleReprocess(body) {
+  if (reproc.running) throw new Error('이미 재변환이 진행 중입니다')
+  const { work, translateOnly, instruction } = body || {}
+  if (!work) throw new Error('work required')
+  const args = ['tools/reprocess.mjs', work]
+  if (translateOnly) args.push('--translate-only')
+  if (instruction && instruction.trim()) args.push('--instruction', instruction.trim())
+  reproc = { running: true, work, log: [], done: false, error: null, startedAt: Date.now() }
+  const child = spawn('node', args, { cwd: process.cwd() })
+  const push = (d) => { reproc.log.push(...d.toString().split('\n').filter(Boolean)); if (reproc.log.length > 400) reproc.log = reproc.log.slice(-400) }
+  child.stdout.on('data', push); child.stderr.on('data', push)
+  child.on('close', (code) => { reproc.running = false; reproc.done = true; if (code !== 0) reproc.error = `종료 코드 ${code}` })
+  child.on('error', (e) => { reproc.running = false; reproc.done = true; reproc.error = e.message })
+  return { ok: true, work }
+}
+function handleReprocessStatus() { return reproc }
 
 // 진단(profile) → 처방 조립. profiles.json의 조각을 골라 번역 지침에 덧붙일 한 덩어리로.
 function loadProfiles() { try { return JSON.parse(readFileSync(PROFILES_PATH, 'utf8')) } catch { return {} } }
@@ -821,6 +850,8 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && url === '/api/jobs') {
     return sendJSON([...jobs.values()].map(jobMeta).sort((a, b) => b.startTime - a.startTime))
   }
+  if (req.method === 'GET' && url === '/api/works') return sendJSON(handleWorks())
+  if (req.method === 'GET' && url === '/api/reprocess-status') return sendJSON(handleReprocessStatus())
   if (req.method === 'GET' && url.startsWith('/api/jobs/')) {
     const id = url.slice('/api/jobs/'.length)
     const job = jobs.get(id)
@@ -850,6 +881,7 @@ const server = createServer(async (req, res) => {
       else if (mCtrl) result = controlJob(mCtrl[1], mCtrl[2])
       else if (req.url === '/api/character-register') result = await handleCharacterRegister(data)
       else if (req.url === '/api/diagnose') result = await handleDiagnose(data)
+      else if (req.url === '/api/reprocess') result = handleReprocess(data)
       else if (req.url === '/api/format') result = await handleFormat(data)
       else if (req.url === '/api/translate') result = await handleTranslate(data)
       else if (req.url === '/api/revise') result = await handleRevise(data)

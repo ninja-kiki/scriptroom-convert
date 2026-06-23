@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { T, loadSettings, loadGuidelines } from '../lib/core.js'
 import { detect, autofix, summarize, splitGluedAction } from '../lib/lint.js'
 
@@ -140,6 +140,9 @@ export default function LintPanel() {
 
   return (
     <div style={{ marginBottom: 32 }}>
+      {/* 기존 작품 개선 — PDF 재추출(템포)→진단→재번역을 서버 잡으로 */}
+      <ReprocessSection />
+
       {/* 드롭존 — 4:3 비율, 파일 아이콘 */}
       {(() => {
         const loadedByExt = {}
@@ -336,6 +339,76 @@ export default function LintPanel() {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// 기존 작품 개선 — 서버 잡(reprocess.mjs)로 PDF 재추출(템포)→진단→재번역. 최상위 컴포넌트(상태 안정).
+function ReprocessSection() {
+  const [works, setWorks] = useState([])
+  const [work, setWork] = useState('')
+  const [instr, setInstr] = useState('')
+  const [mode, setMode] = useState('full')   // 'full'(PDF재추출+진단+재번역) | 'translate'(재번역만)
+  const [st, setSt] = useState(null)
+  const [open, setOpen] = useState(false)
+  useEffect(() => { fetch('/api/works').then(r => r.json()).then(d => setWorks(d.works || [])).catch(() => {}) }, [])
+  useEffect(() => {
+    if (!st?.running) return
+    const t = setInterval(async () => { try { setSt(await (await fetch('/api/reprocess-status')).json()) } catch {} }, 1500)
+    return () => clearInterval(t)
+  }, [st?.running])
+  async function start() {
+    if (!work || st?.running) return
+    try {
+      const r = await fetch('/api/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work, translateOnly: mode === 'translate', instruction: instr.trim() }) })
+      if (!r.ok) { alert('시작 실패: ' + (await r.text())); return }
+      setSt({ running: true, work, log: [], done: false })
+    } catch (e) { alert('시작 실패: ' + e.message) }
+  }
+  const busy = st?.running
+  return (
+    <div style={{ border: `1px solid ${T.rule}`, borderRadius: 6, marginBottom: 16, overflow: 'hidden' }}>
+      <div onClick={() => setOpen(v => !v)} className="sr-press" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', cursor: 'pointer' }}>
+        <span style={{ color: T.fg, fontSize: 14, fontWeight: 700, flex: 1 }}>기존 작품 개선 <span style={{ color: T.fgDim, fontWeight: 400, fontSize: 12 }}>· PDF에서 다시 뽑아 진단·재번역</span></span>
+        {busy && <span style={{ fontSize: 12, color: T.accent }}>진행 중…</span>}
+        <span style={{ color: T.fgDim, fontSize: 12 }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{ borderTop: `1px solid ${T.rule}`, padding: 14 }}>
+          <select value={work} onChange={e => setWork(e.target.value)} disabled={busy}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13, marginBottom: 8 }}>
+            <option value="">작품 선택…</option>
+            {works.map(w => <option key={w} value={w}>{w}</option>)}
+          </select>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {[{ id: 'full', label: '전체(PDF 재추출)' }, { id: 'translate', label: '재번역만' }].map(m => (
+              <button key={m.id} onClick={() => setMode(m.id)} disabled={busy} style={{
+                padding: '6px 12px', borderRadius: 3, border: 'none', cursor: busy ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 600,
+                background: mode === m.id ? T.accent : T.chip, color: mode === m.id ? T.accentFg : T.fgMuted,
+              }}>{m.label}</button>
+            ))}
+          </div>
+          <input value={instr} onChange={e => setInstr(e.target.value)} disabled={busy} placeholder="(선택) 수정 지시 — 예: 욕설 더 순화 / ○○ 호칭 통일"
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13, marginBottom: 10 }} />
+          <button className="sr-press" onClick={start} disabled={!work || busy}
+            style={{ width: '100%', padding: '11px', borderRadius: 3, border: 'none', background: (!work || busy) ? T.chip : T.accent, color: (!work || busy) ? T.fgDim : T.accentFg, fontWeight: 700, fontSize: 14, cursor: (!work || busy) ? 'default' : 'pointer' }}>
+            {busy ? '재변환 중…' : '진단 · 재변환'}
+          </button>
+          {st && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: st.error ? T.err : st.done ? T.good : T.fgMuted, fontWeight: 600, marginBottom: 4 }}>
+                {st.error ? `오류: ${st.error}` : st.done ? `✓ 완료 — ${st.work} (리더 반영은 배포 한 번)` : `${st.work} 처리 중…`}
+              </div>
+              <pre style={{ margin: 0, maxHeight: 180, overflowY: 'auto', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, padding: 10, fontSize: 11, lineHeight: 1.5, color: T.fgMuted, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {(st.log || []).slice(-14).join('\n') || '시작 중…'}
+              </pre>
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: T.fgDim, marginTop: 8, lineHeight: 1.5 }}>
+            전체 = PDF에서 지문 템포 살려 다시 뽑고 진단→재번역 · 재번역만 = 기존 포맷 유지. 끝나면 리더 반영엔 배포(sync) 한 번 필요.
+          </div>
+        </div>
+      )}
     </div>
   )
 }
