@@ -308,20 +308,24 @@ function ReprocessSection() {
             <option value="">작품 선택…</option>
             {works.map(w => <option key={w} value={w}>{w}</option>)}
           </select>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            {[{ id: 'full', label: '전체(PDF 재추출)' }, { id: 'translate', label: '재번역만' }].map(m => (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
+            {[{ id: 'full', label: 'PDF부터 다시' }, { id: 'translate', label: '번역만 다시' }].map(m => (
               <button key={m.id} onClick={() => setMode(m.id)} disabled={busy} style={{
-                padding: '6px 12px', borderRadius: 3, border: 'none', cursor: busy ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 600,
+                flex: 1, padding: '7px 12px', borderRadius: 3, border: 'none', cursor: busy ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 600,
                 background: mode === m.id ? T.accent : T.chip, color: mode === m.id ? T.accentFg : T.fgMuted,
               }}>{m.label}</button>
             ))}
           </div>
+          <div style={{ fontSize: 11.5, color: T.fgDim, marginBottom: 10 }}>
+            {mode === 'full' ? '원본 PDF에서 줄나눔(템포)까지 새로 뽑아요 — 가장 깨끗 (추천)' : '지금 영문 구조는 그대로 두고 번역만 다시 — 빠름'}
+          </div>
           <input value={instr} onChange={e => setInstr(e.target.value)} disabled={busy} placeholder="(선택) 수정 지시 — 예: 욕설 더 순화 / ○○ 호칭 통일"
             style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13, marginBottom: 10 }} />
           <button className="sr-press" onClick={start} disabled={!work || busy}
-            style={{ width: '100%', padding: '11px', borderRadius: 3, border: 'none', background: (!work || busy) ? T.chip : T.accent, color: (!work || busy) ? T.fgDim : T.accentFg, fontWeight: 700, fontSize: 14, cursor: (!work || busy) ? 'default' : 'pointer' }}>
-            {busy ? '재변환 중…' : '진단 · 재변환'}
+            style={{ width: '100%', padding: '12px', borderRadius: 4, border: 'none', background: (!work || busy) ? T.chip : T.accent, color: (!work || busy) ? T.fgDim : T.accentFg, fontWeight: 700, fontSize: 14.5, cursor: (!work || busy) ? 'default' : 'pointer', boxShadow: (!work || busy) ? 'none' : `0 3px 12px ${T.accent}55` }}>
+            {busy ? '개선 중…' : '개선하기'}
           </button>
+          {!busy && <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center', marginTop: 6 }}>진단한 뒤 자동으로 다시 번역해요</div>}
           {st && (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 12, color: st.error ? T.err : st.done ? T.good : T.fgMuted, fontWeight: 600, marginBottom: 4 }}>
@@ -333,7 +337,7 @@ function ReprocessSection() {
             </div>
           )}
           <div style={{ fontSize: 11, color: T.fgDim, marginTop: 8, lineHeight: 1.5 }}>
-            전체 = PDF에서 지문 템포 살려 다시 뽑고 진단→재번역 · 재번역만 = 기존 포맷 유지. 끝나면 리더 반영엔 배포(sync) 한 번 필요.
+            끝나면 리더에 반영하려면 배포(sync) 한 번 필요.
           </div>
         </div>
       )}
