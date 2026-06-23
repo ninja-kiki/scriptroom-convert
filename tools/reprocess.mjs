@@ -11,6 +11,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const CONTENT = '/Users/hojun/Projects/scriptroom/content'
 const work = process.argv[2]
 const TRANSLATE_ONLY = process.argv.includes('--translate-only')
+const DIAGNOSE_ONLY = process.argv.includes('--diagnose-only')   // 진단까지만(게이트 1단계)
 const ii = process.argv.indexOf('--instruction')
 const INSTRUCTION = ii >= 0 ? (process.argv[ii + 1] || '') : ''
 if (!work) { console.error('사용: node tools/reprocess.mjs <작품> [--translate-only] [--instruction "..."]'); process.exit(1) }
@@ -42,6 +43,12 @@ if (!TRANSLATE_ONLY && pdf && fmt) {
   console.log('[1-2/3] PDF 없음 — 기존 formatted로 진행')
 }
 
-console.log('[3/3] 진단 + 재번역')
-run(`node tools/retranslate.mjs ${q(work)} --write${INSTRUCTION ? ` --instruction ${q(INSTRUCTION)}` : ''}`)
-console.log('[reprocess] ✓ 완료')
+if (DIAGNOSE_ONLY) {
+  console.log('[3/3] 진단(번역 대기)')
+  run(`node tools/retranslate.mjs ${q(work)} --diagnose-only`)
+  console.log('[reprocess] 진단 완료 — 번역 시작 대기')
+} else {
+  console.log('[3/3] 진단 + 재번역')
+  run(`node tools/retranslate.mjs ${q(work)} --write${INSTRUCTION ? ` --instruction ${q(INSTRUCTION)}` : ''}`)
+  console.log('[reprocess] ✓ 완료')
+}

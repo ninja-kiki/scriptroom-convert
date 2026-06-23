@@ -288,11 +288,16 @@ function ReprocessSection() {
   async function start() {
     if (!work || st?.running) return
     try {
-      const r = await fetch('/api/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work, translateOnly: mode === 'translate', instruction: instr.trim() }) })
+      const autoGo = !!loadSettings().reprocAutoGo
+      const r = await fetch('/api/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work, translateOnly: mode === 'translate', instruction: instr.trim(), autoGo }) })
       if (!r.ok) { alert('시작 실패: ' + (await r.text())); return }
-      setSt({ running: true, work, log: [], done: false })
+      setSt({ running: true, work, log: [], done: false, phase: 'diagnosing' })
     } catch (e) { alert('시작 실패: ' + e.message) }
   }
+  async function go() {
+    try { await fetch('/api/reprocess-go', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); setSt(s => ({ ...s, phase: 'translating' })) } catch (e) { alert(e.message) }
+  }
+  const awaiting = st?.phase === 'awaiting_go'
   const busy = st?.running
   return (
     <div style={{ border: `1px solid ${T.rule}`, borderRadius: 6, marginBottom: 16, overflow: 'hidden' }}>
@@ -325,11 +330,30 @@ function ReprocessSection() {
             style={{ width: '100%', padding: '12px', borderRadius: 4, border: 'none', background: (!work || busy) ? T.chip : T.accent, color: (!work || busy) ? T.fgDim : T.accentFg, fontWeight: 700, fontSize: 14.5, cursor: (!work || busy) ? 'default' : 'pointer', boxShadow: (!work || busy) ? 'none' : `0 3px 12px ${T.accent}55` }}>
             {busy ? '개선 중…' : '개선하기'}
           </button>
-          {!busy && <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center', marginTop: 6 }}>진단한 뒤 자동으로 다시 번역해요</div>}
-          {st && (
+          {!busy && !st && <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center', marginTop: 6 }}>먼저 진단하고, 예상 시간 보여준 뒤 시작해요</div>}
+
+          {/* 진단 후 대기 — 프로파일 + 예상시간 보여주고 GO 받기 */}
+          {awaiting && st.profile && (
+            <div style={{ marginTop: 14, border: `1px solid ${T.accent}55`, borderRadius: 6, padding: 12, background: T.accent + '0d' }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                {[st.profile.weight === 'dialogue' ? '대사형' : st.profile.weight === 'description' ? '지문형' : '혼합',
+                  st.profile.latitude === 'tight' ? '충실' : st.profile.latitude === 'loose' ? '여유' : '균형',
+                  ...(st.profile.flags || [])].map((t, i) => (
+                  <span key={i} style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: T.chip, color: T.fg }}>{t}</span>
+                ))}
+              </div>
+              {st.profile.relations && <div style={{ fontSize: 12, color: T.fgMuted, lineHeight: 1.5, marginBottom: 10 }}>{st.profile.relations}</div>}
+              <button className="sr-press" onClick={go}
+                style={{ width: '100%', padding: '13px', borderRadius: 4, border: 'none', background: T.accent, color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: `0 3px 12px ${T.accent}66` }}>
+                ▶ 번역 시작 <span style={{ fontWeight: 400, fontSize: 13 }}>· {st.sceneCount}씬 · 약 {st.estMin}분</span>
+              </button>
+            </div>
+          )}
+
+          {st && !awaiting && (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 12, color: st.error ? T.err : st.done ? T.good : T.fgMuted, fontWeight: 600, marginBottom: 4 }}>
-                {st.error ? `오류: ${st.error}` : st.done ? `✓ 완료 — ${st.work} (리더 반영은 배포 한 번)` : `${st.work} 처리 중…`}
+                {st.error ? `오류: ${st.error}` : st.done ? `✓ 완료 — ${st.work} (리더 반영은 배포 한 번)` : st.phase === 'diagnosing' ? `${st.work} 진단 중…` : `${st.work} 번역 중…`}
               </div>
               <pre style={{ margin: 0, maxHeight: 180, overflowY: 'auto', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, padding: 10, fontSize: 11, lineHeight: 1.5, color: T.fgMuted, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {(st.log || []).slice(-14).join('\n') || '시작 중…'}

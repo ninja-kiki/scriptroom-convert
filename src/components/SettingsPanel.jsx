@@ -102,8 +102,11 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
             <Row label="번역 모델" desc="품질 중요하면 Sonnet 이상">
               <ModelPicker value={s.translateModel || s.model} onChange={m => patch({ translateModel: m })} />
             </Row>
-            <Row label="짧은 씬 배칭" desc="짧은 씬 여러 개를 한 번에 — 호출수·비용 절감" last>
+            <Row label="짧은 씬 배칭" desc="짧은 씬 여러 개를 한 번에 — 호출수·비용 절감">
               <Toggle on={s.batchShort !== false} onClick={() => patch({ batchShort: s.batchShort === false })} />
+            </Row>
+            <Row label="진단 후 자동 번역" desc="작품 개선 시 진단 끝나면 묻지 않고 바로 번역 (끄면 예상시간 보고 직접 시작)" last>
+              <Toggle on={!!s.reprocAutoGo} onClick={() => patch({ reprocAutoGo: !s.reprocAutoGo })} />
             </Row>
           </div>
 

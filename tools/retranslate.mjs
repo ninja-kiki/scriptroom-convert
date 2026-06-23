@@ -13,6 +13,10 @@ const GUIDE_ONLY = process.argv.includes('--guide')
 const WRITE = process.argv.includes('--write')
 const instrIdx = process.argv.indexOf('--instruction')
 const INSTRUCTION = instrIdx >= 0 ? (process.argv[instrIdx + 1] || '') : ''   // 사용자 수정 지시 (읽다 발견한 오류 등)
+const DIAGNOSE_ONLY = process.argv.includes('--diagnose-only')   // 진단만 하고 프로파일 저장 후 종료(게이트 1단계)
+const pjIdx = process.argv.indexOf('--profile-json')
+const PROFILE_JSON = pjIdx >= 0 ? (process.argv[pjIdx + 1] || '') : ''        // 진단 건너뛰고 이 프로파일로 번역(게이트 2단계)
+const PROFILE_OUT = '/tmp/reproc_profile.json'
 if (!work) { console.error('사용: node tools/retranslate.mjs <작품폴더> --guide|--write'); process.exit(1) }
 
 const dir = join(CONTENT, work)
@@ -105,19 +109,30 @@ console.log(`작품: ${work} · 자막: ${subFile || '없음'} · 대사샘플 $
 const metrics = quickMetrics(enText)
 const headSample = enText.replace(/\r/g, '').split('\n').filter(l => l.trim()).slice(0, 40).join('\n').slice(0, 2000)
 let profile = null
-try {
-  console.log('\n=== 작품 진단 중... ===')
-  const dg = await post('/api/diagnose', { headSample, dialogueSample, subtitleSample: subSample, metrics, model: MODEL })
-  profile = dg.profile
-} catch (e) { console.warn('진단 실패(처방 없이 진행):', e.message) }
+if (PROFILE_JSON) {   // 게이트 2단계: 1단계에서 만든 프로파일 재사용 (진단 호출 생략)
+  try { profile = JSON.parse(readFileSync(PROFILE_JSON, 'utf8')); console.log('[진단] 저장된 프로파일 재사용') } catch (e) { console.warn('프로파일 로드 실패:', e.message) }
+} else {
+  try {
+    console.log('\n=== 작품 진단 중... ===')
+    const dg = await post('/api/diagnose', { headSample, dialogueSample, subtitleSample: subSample, metrics, model: MODEL })
+    profile = dg.profile
+  } catch (e) { console.warn('진단 실패(처방 없이 진행):', e.message) }
+}
 const register = profile?.toneGuide || ''   // 말투 가이드 = 진단의 toneGuide (예전 character-register 통합)
 if (profile) {
   console.log(`[진단] 무게=${profile.weight} · 자유도=${profile.latitude} · 플래그=[${(profile.flags || []).join(', ')}]`)
   if (profile.relations) console.log(`  관계: ${profile.relations}`)
   if (profile.notes) console.log(`  특이: ${profile.notes}`)
   console.log(`  말투가이드:\n${(register || '(없음)').split('\n').map(l => '    ' + l).join('\n')}`)
-  console.log(`  → 진단 처방 + 말투가이드가 번역에 주입됩니다.\n`)
-} else { console.log('[진단] 프로파일 없음 — 표준 지침으로 진행\n') }
+} else { console.log('[진단] 프로파일 없음 — 표준 지침으로 진행') }
+
+// 게이트 1단계: 진단만 하고 프로파일 저장 + 씬 수 출력 후 종료 (서버가 받아 '번역 시작' 대기)
+if (DIAGNOSE_ONLY) {
+  try { writeFileSync(PROFILE_OUT, JSON.stringify(profile || {}, null, 0)) } catch {}
+  console.log(`__SCENES__ ${splitScenes(enText).length}`)
+  console.log('[진단 완료] 번역 대기')
+  process.exit(0)
+}
 
 if (GUIDE_ONLY) { console.log('(--guide 모드 — 번역 안 함)'); process.exit(0) }
 if (!WRITE) { console.log('(--write 없음 — 번역 안 함)'); process.exit(0) }
