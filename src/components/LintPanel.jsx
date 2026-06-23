@@ -140,10 +140,7 @@ export default function LintPanel() {
 
   return (
     <div style={{ marginBottom: 32 }}>
-      {/* 기존 작품 개선 — PDF 재추출(템포)→진단→재번역을 서버 잡으로 */}
-      <ReprocessSection />
-
-      {/* 드롭존 — 4:3 비율, 파일 아이콘 */}
+      {/* 드롭존 — 4:3 비율, 파일 아이콘 (주 입력) */}
       {(() => {
         const loadedByExt = {}
         for (const it of items) {
@@ -192,6 +189,9 @@ export default function LintPanel() {
           </div>
         </div>
       )}
+
+      {/* 보조 입구 — 내 폴더에 변환해둔 작품에서 바로 고르기(나만 사용 가능한 단축) */}
+      <ReprocessSection />
 
       {items.map((it, idx) => {
         // 리더 수정요청 JSON
@@ -296,12 +296,15 @@ function ReprocessSection() {
   async function go() {
     try { await fetch('/api/reprocess-go', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); setSt(s => ({ ...s, phase: 'translating' })) } catch (e) { alert(e.message) }
   }
+  async function stop() {
+    try { await fetch('/api/reprocess-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); setSt(s => ({ ...(s || {}), running: false, done: true, phase: 'stopped' })) } catch (e) { alert(e.message) }
+  }
   const awaiting = st?.phase === 'awaiting_go'
   const busy = st?.running
   return (
     <div style={{ border: `1px solid ${T.rule}`, borderRadius: 6, marginBottom: 16, overflow: 'hidden' }}>
       <div onClick={() => setOpen(v => !v)} className="sr-press" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', cursor: 'pointer' }}>
-        <span style={{ color: T.fg, fontSize: 14, fontWeight: 700, flex: 1 }}>기존 작품 개선 <span style={{ color: T.fgDim, fontWeight: 400, fontSize: 12 }}>· PDF에서 다시 뽑아 진단·재번역</span></span>
+        <span style={{ color: T.fgMuted, fontSize: 13, fontWeight: 600, flex: 1 }}>또는 변환해둔 작품 고르기 <span style={{ color: T.fgDim, fontWeight: 400, fontSize: 11.5 }}>· 내 폴더 단축</span></span>
         {busy && <span style={{ fontSize: 12, color: T.accent }}>진행 중…</span>}
         <span style={{ color: T.fgDim, fontSize: 12 }}>{open ? '▲' : '▼'}</span>
       </div>
@@ -321,26 +324,36 @@ function ReprocessSection() {
           {!busy && !st && <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center', marginTop: 6 }}>먼저 진단하고, 예상 시간 보여준 뒤 시작해요</div>}
 
           {/* 진단 후 대기 — 프로파일 + 예상시간 보여주고 GO 받기 */}
-          {awaiting && st.profile && (
+          {awaiting && st.profile && (() => {
+            const imps = st.profile.improvements?.length ? st.profile.improvements : null
+            return (
             <div style={{ marginTop: 14, border: `1px solid ${T.accent}55`, borderRadius: 6, padding: 14, background: T.accent + '0d' }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: T.fg, marginBottom: 8 }}>이렇게 좋아져요</div>
-              {(st.profile.improvements?.length ? st.profile.improvements : ['번역을 다시 다듬어요']).map((t, i) => (
-                <div key={i} style={{ fontSize: 13, color: T.fgMuted, padding: '2px 0', display: 'flex', gap: 7 }}>
-                  <span style={{ color: T.accent }}>✦</span><span>{t}</span>
-                </div>
-              ))}
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: T.fg, marginBottom: 8 }}>{imps ? '이렇게 좋아져요' : '딱히 손볼 큰 문제는 없어요'}</div>
+              {imps
+                ? imps.map((t, i) => (
+                    <div key={i} style={{ fontSize: 13, color: T.fgMuted, padding: '2px 0', display: 'flex', gap: 7 }}>
+                      <span style={{ color: T.accent }}>✦</span><span>{t}</span>
+                    </div>
+                  ))
+                : <div style={{ fontSize: 13, color: T.fgMuted }}>그래도 새 처방으로 다시 번역하면 조금 더 다듬어질 수 있어요.</div>}
               <button className="sr-press" onClick={go}
                 style={{ width: '100%', marginTop: 12, padding: '13px', borderRadius: 4, border: 'none', background: T.accent, color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: `0 3px 12px ${T.accent}66` }}>
-                이대로 고치기 <span style={{ fontWeight: 400, fontSize: 13 }}>· 약 {st.estMin}분</span>
+                {imps ? '이대로 고치기' : '그래도 다시 번역하기'} <span style={{ fontWeight: 400, fontSize: 13 }}>· 약 {st.estMin}분</span>
               </button>
               <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center', marginTop: 6 }}>{st.sceneCount}씬 다시 번역해요</div>
             </div>
-          )}
+            )
+          })()}
 
           {st && !awaiting && (
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12, color: st.error ? T.err : st.done ? T.good : T.fgMuted, fontWeight: 600, marginBottom: 4 }}>
-                {st.error ? `오류: ${st.error}` : st.done ? `✓ 완료 — ${st.work} (리더 반영은 배포 한 번)` : st.phase === 'diagnosing' ? `${st.work} 진단 중…` : `${st.work} 번역 중…`}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div style={{ fontSize: 12, color: st.error ? T.err : st.done ? (st.phase === 'stopped' ? T.fgMuted : T.good) : T.fgMuted, fontWeight: 600, flex: 1 }}>
+                  {st.error ? `오류: ${st.error}` : st.phase === 'stopped' ? '중단됨' : st.done ? `✓ 완료 — ${st.work} (리더 반영은 배포 한 번)` : st.phase === 'diagnosing' ? `${st.work} 진단 중…` : `${st.work} 번역 중…`}
+                </div>
+                {st.running && (
+                  <button onClick={stop} style={{ padding: '5px 12px', borderRadius: 3, border: `1px solid ${T.err}`, background: 'none', color: T.err, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>중단</button>
+                )}
               </div>
               <pre style={{ margin: 0, maxHeight: 180, overflowY: 'auto', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, padding: 10, fontSize: 11, lineHeight: 1.5, color: T.fgMuted, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {(st.log || []).slice(-14).join('\n') || '시작 중…'}

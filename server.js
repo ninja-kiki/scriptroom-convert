@@ -34,21 +34,33 @@ function reprocStartTranslate() {
   const args = ['tools/retranslate.mjs', reproc.work, '--write', '--profile-json', REPROC_PROFILE]
   if (reproc.instruction) args.push('--instruction', reproc.instruction)
   const child = spawn('node', args, { cwd: process.cwd() })
+  reproc.child = child
   child.stdout.on('data', reprocPush); child.stderr.on('data', reprocPush)
-  child.on('close', (code) => { reproc.running = false; reproc.done = true; reproc.phase = 'done'; if (code !== 0) reproc.error = `종료 코드 ${code}` })
-  child.on('error', (e) => { reproc.running = false; reproc.done = true; reproc.error = e.message })
+  child.on('close', (code) => { reproc.child = null; if (reproc.stopped) return; reproc.running = false; reproc.done = true; reproc.phase = 'done'; if (code !== 0) reproc.error = `종료 코드 ${code}` })
+  child.on('error', (e) => { reproc.child = null; reproc.running = false; reproc.done = true; reproc.error = e.message })
+}
+function handleReprocessStop() {
+  if (!reproc.running) throw new Error('진행 중인 작업이 없습니다')
+  reproc.stopped = true
+  try { reproc.child?.kill('SIGKILL') } catch {}
+  reproc.child = null; reproc.running = false; reproc.done = true; reproc.phase = 'stopped'; reproc.error = null
+  reproc.log.push('■ 사용자가 중단함')
+  return { ok: true }
 }
 function handleReprocess(body) {
   if (reproc.running) throw new Error('이미 재변환이 진행 중입니다')
   const { work, translateOnly, instruction, autoGo } = body || {}
   if (!work) throw new Error('work required')
   // 1단계: 진단까지만 (PDF 재추출+청소+진단). 끝나면 autoGo면 바로 번역, 아니면 'awaiting_go'로 대기.
-  reproc = { running: true, work, instruction: (instruction || '').trim(), phase: 'diagnosing', log: [], done: false, error: null, profile: null, sceneCount: 0, estMin: 0, autoGo: !!autoGo, startedAt: Date.now() }
+  reproc = { running: true, work, instruction: (instruction || '').trim(), phase: 'diagnosing', log: [], done: false, error: null, profile: null, sceneCount: 0, estMin: 0, autoGo: !!autoGo, stopped: false, child: null, startedAt: Date.now() }
   const args = ['tools/reprocess.mjs', work, '--diagnose-only']
   if (translateOnly) args.push('--translate-only')
   const child = spawn('node', args, { cwd: process.cwd() })
+  reproc.child = child
   child.stdout.on('data', reprocPush); child.stderr.on('data', reprocPush)
   child.on('close', (code) => {
+    reproc.child = null
+    if (reproc.stopped) return
     if (code !== 0) { reproc.running = false; reproc.done = true; reproc.error = `진단 실패(코드 ${code})`; return }
     try { reproc.profile = JSON.parse(readFileSync(REPROC_PROFILE, 'utf8')) } catch {}
     const m = reproc.log.join('\n').match(/__SCENES__\s+(\d+)/)
@@ -65,7 +77,7 @@ function handleReprocessGo() {
   reprocStartTranslate()
   return { ok: true }
 }
-function handleReprocessStatus() { return reproc }
+function handleReprocessStatus() { const { child, ...rest } = reproc; return rest }
 
 // 진단(profile) → 처방 조립. profiles.json의 조각을 골라 번역 지침에 덧붙일 한 덩어리로.
 function loadProfiles() { try { return JSON.parse(readFileSync(PROFILES_PATH, 'utf8')) } catch { return {} } }
@@ -908,6 +920,7 @@ const server = createServer(async (req, res) => {
       else if (req.url === '/api/diagnose') result = await handleDiagnose(data)
       else if (req.url === '/api/reprocess') result = handleReprocess(data)
       else if (req.url === '/api/reprocess-go') result = handleReprocessGo(data)
+      else if (req.url === '/api/reprocess-stop') result = handleReprocessStop(data)
       else if (req.url === '/api/format') result = await handleFormat(data)
       else if (req.url === '/api/translate') result = await handleTranslate(data)
       else if (req.url === '/api/revise') result = await handleRevise(data)
