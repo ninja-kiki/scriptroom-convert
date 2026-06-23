@@ -276,7 +276,6 @@ function ReprocessSection() {
   const [works, setWorks] = useState([])
   const [work, setWork] = useState('')
   const [instr, setInstr] = useState('')
-  const [mode, setMode] = useState('full')   // 'full'(PDF재추출+진단+재번역) | 'translate'(재번역만)
   const [st, setSt] = useState(null)
   const [open, setOpen] = useState(false)
   useEffect(() => { fetch('/api/works').then(r => r.json()).then(d => setWorks(d.works || [])).catch(() => {}) }, [])
@@ -289,7 +288,7 @@ function ReprocessSection() {
     if (!work || st?.running) return
     try {
       const autoGo = !!loadSettings().reprocAutoGo
-      const r = await fetch('/api/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work, translateOnly: mode === 'translate', instruction: instr.trim(), autoGo }) })
+      const r = await fetch('/api/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work, translateOnly: false, instruction: instr.trim(), autoGo }) })
       if (!r.ok) { alert('시작 실패: ' + (await r.text())); return }
       setSt({ running: true, work, log: [], done: false, phase: 'diagnosing' })
     } catch (e) { alert('시작 실패: ' + e.message) }
@@ -313,17 +312,6 @@ function ReprocessSection() {
             <option value="">작품 선택…</option>
             {works.map(w => <option key={w} value={w}>{w}</option>)}
           </select>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
-            {[{ id: 'full', label: 'PDF부터 다시' }, { id: 'translate', label: '번역만 다시' }].map(m => (
-              <button key={m.id} onClick={() => setMode(m.id)} disabled={busy} style={{
-                flex: 1, padding: '7px 12px', borderRadius: 3, border: 'none', cursor: busy ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 600,
-                background: mode === m.id ? T.accent : T.chip, color: mode === m.id ? T.accentFg : T.fgMuted,
-              }}>{m.label}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: 11.5, color: T.fgDim, marginBottom: 10 }}>
-            {mode === 'full' ? '원본 PDF에서 줄나눔(템포)까지 새로 뽑아요 — 가장 깨끗 (추천)' : '지금 영문 구조는 그대로 두고 번역만 다시 — 빠름'}
-          </div>
           <input value={instr} onChange={e => setInstr(e.target.value)} disabled={busy} placeholder="(선택) 수정 지시 — 예: 욕설 더 순화 / ○○ 호칭 통일"
             style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13, marginBottom: 10 }} />
           <button className="sr-press" onClick={start} disabled={!work || busy}
@@ -334,19 +322,18 @@ function ReprocessSection() {
 
           {/* 진단 후 대기 — 프로파일 + 예상시간 보여주고 GO 받기 */}
           {awaiting && st.profile && (
-            <div style={{ marginTop: 14, border: `1px solid ${T.accent}55`, borderRadius: 6, padding: 12, background: T.accent + '0d' }}>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                {[st.profile.weight === 'dialogue' ? '대사형' : st.profile.weight === 'description' ? '지문형' : '혼합',
-                  st.profile.latitude === 'tight' ? '충실' : st.profile.latitude === 'loose' ? '여유' : '균형',
-                  ...(st.profile.flags || [])].map((t, i) => (
-                  <span key={i} style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: T.chip, color: T.fg }}>{t}</span>
-                ))}
-              </div>
-              {st.profile.relations && <div style={{ fontSize: 12, color: T.fgMuted, lineHeight: 1.5, marginBottom: 10 }}>{st.profile.relations}</div>}
+            <div style={{ marginTop: 14, border: `1px solid ${T.accent}55`, borderRadius: 6, padding: 14, background: T.accent + '0d' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: T.fg, marginBottom: 8 }}>이렇게 좋아져요</div>
+              {(st.profile.improvements?.length ? st.profile.improvements : ['번역을 다시 다듬어요']).map((t, i) => (
+                <div key={i} style={{ fontSize: 13, color: T.fgMuted, padding: '2px 0', display: 'flex', gap: 7 }}>
+                  <span style={{ color: T.accent }}>✦</span><span>{t}</span>
+                </div>
+              ))}
               <button className="sr-press" onClick={go}
-                style={{ width: '100%', padding: '13px', borderRadius: 4, border: 'none', background: T.accent, color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: `0 3px 12px ${T.accent}66` }}>
-                ▶ 번역 시작 <span style={{ fontWeight: 400, fontSize: 13 }}>· {st.sceneCount}씬 · 약 {st.estMin}분</span>
+                style={{ width: '100%', marginTop: 12, padding: '13px', borderRadius: 4, border: 'none', background: T.accent, color: T.accentFg, fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: `0 3px 12px ${T.accent}66` }}>
+                이대로 고치기 <span style={{ fontWeight: 400, fontSize: 13 }}>· 약 {st.estMin}분</span>
               </button>
+              <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center', marginTop: 6 }}>{st.sceneCount}씬 다시 번역해요</div>
             </div>
           )}
 
