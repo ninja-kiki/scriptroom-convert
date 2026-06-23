@@ -135,10 +135,21 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
             style={{ position: 'absolute', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 10, animation: 'fadeIn .15s ease' }}>
             <div onClick={e => e.stopPropagation()}
               style={{ width: '100%', maxWidth: 460, maxHeight: '80vh', overflowY: 'auto', background: T.bgCard, borderRadius: 4, border: `1px solid ${T.rule}`, padding: '18px 20px', animation: 'popIn .18s ease' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <span style={{ color: T.fg, fontWeight: 700, fontSize: 16 }}>바뀐 점</span>
-                <button onClick={() => setShowChangelog(false)} style={{ background: 'none', border: 'none', color: T.fgMuted, fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              {/* 앱 아이콘 헤더 (파비콘과 동일 — 3색 바) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 13, marginBottom: 16 }}>
+                <svg width="54" height="54" viewBox="0 0 512 512" style={{ flexShrink: 0, borderRadius: 13, boxShadow: '0 2px 10px rgba(0,0,0,0.14)' }} aria-hidden>
+                  <rect width="512" height="512" rx="112" fill="#f3efe6" />
+                  <rect x="120" y="136" width="64" height="240" fill="#D62A1E" />
+                  <rect x="224" y="136" width="64" height="240" fill="#F2B705" />
+                  <rect x="328" y="136" width="64" height="240" fill="#1C4E8A" />
+                </svg>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: T.fg, fontWeight: 700, fontSize: 16, letterSpacing: '-.2px' }}>scriptroom convert</div>
+                  <div style={{ color: T.fgMuted, fontSize: 12.5, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>v{APP_VERSION} · {VERSION_LABEL}</div>
+                </div>
+                <button onClick={() => setShowChangelog(false)} style={{ background: 'none', border: 'none', color: T.fgMuted, fontSize: 22, cursor: 'pointer', lineHeight: 1, alignSelf: 'flex-start' }}>×</button>
               </div>
+              <div style={{ color: T.fgDim, fontSize: 11, fontWeight: 700, letterSpacing: '.06em', marginBottom: 10 }}>바뀐 점</div>
               {CHANGELOG.map((v, i) => (
                 <div key={v.version} style={{ marginBottom: i < CHANGELOG.length - 1 ? 18 : 0 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>

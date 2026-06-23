@@ -95,7 +95,8 @@ for (const work of works) {
   console.log(`\n══════ ${work} ══════`)
   console.log(`측정: 씬${m.scenes} 큐${m.cues} 대사비율${m.dialogueRatio} 평균지문${m.avgActionWords}단어 노이즈${m.noiseRatio} 소스추정=${m.sourceGuess}${subF ? ' ·자막O' : ''}`)
   if (!p) { console.log('진단 파싱 실패:', res.raw); continue }
-  console.log(`진단: 무게=${p.weight} · 말투=${p.register} · 자유도=${p.latitude} · 플래그=[${(p.flags || []).join(', ')}]`)
+  console.log(`진단: 무게=${p.weight} · 자유도=${p.latitude} · 플래그=[${(p.flags || []).join(', ')}]`)
+  if (p.toneGuide) console.log(`말투가이드:\n${p.toneGuide.split('\n').map(l => '  ' + l).join('\n')}`)
   console.log(`줄거리: ${p.synopsis}`)
   console.log(`관계: ${p.relations}`)
   if (p.notes) console.log(`특이: ${p.notes}`)
