@@ -72,8 +72,9 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
                     <button key={k} onClick={() => onAccent?.(k)} title={ACCENTS[k].label} style={{
                       width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', padding: 0,
                       background: ACCENTS[k].accent,
-                      border: on ? `2.5px solid ${T.fg}` : isAutoPick ? `2px dashed ${T.fgDim}` : `2px solid transparent`,
-                      boxShadow: `0 0 0 1px ${T.rule}`,
+                      border: (isAutoPick && !on) ? `2px dashed ${T.fgDim}` : '2px solid transparent',
+                      // 선택: 틈 있는 부드러운 회색 링 (검정 테두리 대신)
+                      boxShadow: on ? `0 0 0 2px ${T.bgCard}, 0 0 0 3.5px ${T.fgDim}` : `0 0 0 1px ${T.rule}`,
                     }} />
                   )
                 })}

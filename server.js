@@ -21,7 +21,6 @@ function assembleProfilePrescription(profile) {
   const P = loadProfiles()
   const parts = []
   if (profile.latitude && P.latitude?.[profile.latitude]) parts.push(`- ${P.latitude[profile.latitude]}`)
-  if (profile.register && P.register?.[profile.register]) parts.push(`- ${P.register[profile.register]}`)
   for (const f of (profile.flags || [])) if (P.flags?.[f]) parts.push(`- ${P.flags[f]}`)
   if (!parts.length) return ''
   return `\n\n[이 작품 진단에 따른 처방 — 위 지침보다 이 작품 성격에 맞춰 우선 적용]\n${parts.join('\n')}`
@@ -332,15 +331,15 @@ async function handleDiagnose(body) {
 
 반드시 **JSON만** 출력 (설명·코드펜스 금지). 형식:
 {
-  "weight": "dialogue" | "description" | "mixed",          // 글의 무게중심: 대사형/지문형/혼합
-  "register": "casual" | "formal" | "stylized" | "family", // 말투: 현대일상/격식시대/강한문체(누아르·욕설·랩식)/아동가족
-  "flags": [],   // 해당되는 것만: "songs"(노래·뮤지컬) "narration"(내레이션多) "heavy_credits" "famous"(유명작)
-  "latitude": "loose" | "balanced" | "tight",  // 번역 자유도. 대사형·일상=loose / 지문형·정밀=tight / 섞이면 balanced
+  "weight": "dialogue" | "description" | "mixed",   // 무게중심: 대사형/지문형/혼합
+  "latitude": "loose" | "balanced" | "tight",       // 번역 자유도. 대사형=loose / 지문형·정밀=tight / 섞이면 balanced
+  "flags": [],   // 해당되는 것만(여러 개 가능): "songs"(노래·뮤지컬) "narration"(내레이션多) "heavy_credits" "famous"(유명작) "period"(시대극) "stylized"(강한 작가 문체·누아르·랩식) "foreign_mix"(외국어 혼재) "profanity"(욕설 강) "epistolary"(편지·문어체) "jargon"(전문용어 多) "family"(가족·아동)
   "synopsis": "한 문단 줄거리(아는 작품이면 일반지식 OK, 모르면 샘플 기반 추정)",
-  "relations": "핵심 인물 관계·거리감 1~3줄 (자막 있으면 그 말투 근거로)",
-  "notes": "위 축에 안 잡히는 번역상 특이사항을 자유롭게 (없으면 빈 문자열)"
+  "relations": "핵심 인물 관계·거리감 1~2줄",
+  "toneGuide": "번역에 그대로 쓸 인물별 말투 가이드. '인물: 상대별 반말/존댓말·호칭·말버릇' 형식으로 1줄=1인물, 핵심 12명 이내. 자막이 있으면 그 경어/호칭 선택을 가장 신뢰할 근거로 삼을 것.",
+  "notes": "위에 안 잡히는 번역상 특이사항을 자유롭게 (없으면 빈 문자열)"
 }
-판단은 너의 몫이다. 정형 값에 억지로 끼우지 말고, 애매하면 notes에 적어라.`
+판단은 너의 몫이다. 정형 값에 억지로 끼우지 말고, 애매하면 notes에 적어라. toneGuide는 씬마다 따로 번역해도 말투가 일관되게 유지되도록 구체적으로.`
   const userPrompt = `[로컬 측정치]\n${JSON.stringify(metrics || {}, null, 0)}\n\n[본문 앞부분 샘플]\n${headSample || ''}\n\n[대사 샘플]\n${dialogueSample || ''}${hasSub ? `\n\n[공식 한국어 자막 샘플]\n${subtitleSample}` : ''}`
   const raw = await runClaude(systemPrompt, userPrompt, model)
   let profile = null
@@ -669,22 +668,8 @@ async function runJob(job) {
     }
     if (job.stopped) return finishStopped(job)
 
-    // 1.5 인물 말투 사전 (없을 때만, 작품당 1회)
-    if (!job.characterMemo && job.settings.characterRegister !== false) {
-      try {
-        const sample = buildDialogueSample(job.scenes)
-        if (sample) {
-          job.phase = 'register'; saveJob(job, true)
-          // 공식 한국어 자막이 있으면 말투 근거로 함께 전달
-          const subtitleSample = job.smi?.info?.lang === 'ko' ? buildSubtitleSample(job.smi.entries) : ''
-          const r = await withSlot(() => handleCharacterRegister({ dialogueSample: sample, subtitleSample, model: job.settings.translateModel || job.settings.model }))
-          if (r.register) job.characterMemo = r.register
-        }
-      } catch (e) { console.warn('말투 사전 실패(계속):', e.message) }
-    }
-    if (job.stopped) return finishStopped(job)
-
-    // 1.6 작품 진단 → 처방 (없을 때만, 작품당 1회). profile이 번역 지침을 작품 성격에 맞게 조정.
+    // 1.5 작품 진단 (없을 때만, 작품당 1회) — PDF+자막 한 번 읽어 profile + 인물 말투 가이드(toneGuide)를 함께 산출.
+    //     toneGuide가 characterMemo 역할(말투 일관), profile이 처방(자유도·플래그)을 끈다. (예전 두 호출 통합)
     if (!job.profile && job.settings.diagnose !== false) {
       try {
         job.phase = 'diagnose'; saveJob(job, true)
@@ -692,7 +677,7 @@ async function runJob(job) {
         const headSample = full.split('\n').filter(l => l.trim()).slice(0, 40).join('\n').slice(0, 2000)
         const subtitleSample = job.smi?.info?.lang === 'ko' ? buildSubtitleSample(job.smi.entries) : ''
         const r = await withSlot(() => handleDiagnose({ headSample, dialogueSample: buildDialogueSample(job.scenes), subtitleSample, metrics: quickMetrics(full), model: job.settings.translateModel || job.settings.model }))
-        if (r.profile) job.profile = r.profile
+        if (r.profile) { job.profile = r.profile; if (r.profile.toneGuide && !job.characterMemo) job.characterMemo = r.profile.toneGuide }
       } catch (e) { console.warn('작품 진단 실패(처방 없이 계속):', e.message) }
     }
     if (job.stopped) return finishStopped(job)

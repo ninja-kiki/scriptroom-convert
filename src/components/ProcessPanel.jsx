@@ -438,11 +438,10 @@ function Spinner() {
 
 // 작품 진단 프로파일 칩 — 평소엔 태그 한 줄, 누르면 줄거리·관계·특이사항 펼침.
 const WEIGHT_KO = { dialogue: '대사형', description: '지문형', mixed: '혼합' }
-const REGISTER_KO = { casual: '일상', formal: '격식', stylized: '강한문체', family: '가족' }
 const LATITUDE_KO = { tight: '충실', balanced: '균형', loose: '여유' }
-const FLAG_KO = { songs: '노래', narration: '내레이션', heavy_credits: '크레딧', famous: '유명작' }
+const FLAG_KO = { songs: '노래', narration: '내레이션', heavy_credits: '크레딧', famous: '유명작', period: '시대극', stylized: '강한문체', foreign_mix: '외국어혼재', profanity: '욕설강', epistolary: '문어체', jargon: '전문용어', family: '가족' }
 function ProfileChip({ profile, open, onToggle }) {
-  const tags = [WEIGHT_KO[profile.weight], REGISTER_KO[profile.register], LATITUDE_KO[profile.latitude]].filter(Boolean)
+  const tags = [WEIGHT_KO[profile.weight], LATITUDE_KO[profile.latitude]].filter(Boolean)
   const flags = (profile.flags || []).map(f => FLAG_KO[f] || f)
   return (
     <div style={{ marginBottom: 12, border: `1px solid ${T.rule}`, borderRadius: 6, overflow: 'hidden' }}>

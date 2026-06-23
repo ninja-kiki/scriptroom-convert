@@ -98,23 +98,22 @@ const dialogueSample = buildDialogueSample(enText)
 const subSample = subFile ? subtitleSample(readFileSync(join(dir, subFile), 'utf8')) : ''
 console.log(`작품: ${work} · 자막: ${subFile || '없음'} · 대사샘플 ${dialogueSample.length}자 · 자막샘플 ${subSample.length}자`)
 
-console.log('\n=== 인물 관계·말투 가이드 생성 중... ===')
-const { register } = await post('/api/character-register', { dialogueSample, subtitleSample: subSample, model: MODEL })
-console.log('\n' + (register || '(빈 가이드)') + '\n')
-
-// === 작품 진단 → 처방 (번역 호출에 profile 주입) ===
+// === 작품 진단(1회) → profile + 인물 말투 가이드(toneGuide). 처방은 번역 호출에 주입 ===
 const metrics = quickMetrics(enText)
 const headSample = enText.replace(/\r/g, '').split('\n').filter(l => l.trim()).slice(0, 40).join('\n').slice(0, 2000)
 let profile = null
 try {
-  console.log('=== 작품 진단 중... ===')
+  console.log('\n=== 작품 진단 중... ===')
   const dg = await post('/api/diagnose', { headSample, dialogueSample, subtitleSample: subSample, metrics, model: MODEL })
   profile = dg.profile
 } catch (e) { console.warn('진단 실패(처방 없이 진행):', e.message) }
+const register = profile?.toneGuide || ''   // 말투 가이드 = 진단의 toneGuide (예전 character-register 통합)
 if (profile) {
-  console.log(`[진단] 무게=${profile.weight} · 말투=${profile.register} · 자유도=${profile.latitude} · 플래그=[${(profile.flags || []).join(', ')}]`)
+  console.log(`[진단] 무게=${profile.weight} · 자유도=${profile.latitude} · 플래그=[${(profile.flags || []).join(', ')}]`)
+  if (profile.relations) console.log(`  관계: ${profile.relations}`)
   if (profile.notes) console.log(`  특이: ${profile.notes}`)
-  console.log(`  → 이 진단으로 처방(지침)이 번역에 주입됩니다.\n`)
+  console.log(`  말투가이드:\n${(register || '(없음)').split('\n').map(l => '    ' + l).join('\n')}`)
+  console.log(`  → 진단 처방 + 말투가이드가 번역에 주입됩니다.\n`)
 } else { console.log('[진단] 프로파일 없음 — 표준 지침으로 진행\n') }
 
 if (GUIDE_ONLY) { console.log('(--guide 모드 — 번역 안 함)'); process.exit(0) }
