@@ -12,6 +12,39 @@ import {
 
 const PORT = 3001
 const PROMPTS_PATH = `${process.cwd()}/prompts.json`
+const PROFILES_PATH = `${process.cwd()}/profiles.json`
+
+// 진단(profile) → 처방 조립. profiles.json의 조각을 골라 번역 지침에 덧붙일 한 덩어리로.
+function loadProfiles() { try { return JSON.parse(readFileSync(PROFILES_PATH, 'utf8')) } catch { return {} } }
+function assembleProfilePrescription(profile) {
+  if (!profile) return ''
+  const P = loadProfiles()
+  const parts = []
+  if (profile.latitude && P.latitude?.[profile.latitude]) parts.push(`- ${P.latitude[profile.latitude]}`)
+  if (profile.register && P.register?.[profile.register]) parts.push(`- ${P.register[profile.register]}`)
+  for (const f of (profile.flags || [])) if (P.flags?.[f]) parts.push(`- ${P.flags[f]}`)
+  if (!parts.length) return ''
+  return `\n\n[이 작품 진단에 따른 처방 — 위 지침보다 이 작품 성격에 맞춰 우선 적용]\n${parts.join('\n')}`
+}
+// 진단용 로컬 측정 (소스 품질·대사/지문 비율)
+function quickMetrics(en) {
+  const lines = (en || '').replace(/\r/g, '').split('\n'); const nonEmpty = lines.filter(l => l.trim())
+  const cues = lines.filter(l => /^@/.test(l)); const broken = cues.filter(l => /^@[^A-Z가-힣]/.test(l))
+  const noise = nonEmpty.filter(l => /[\^~|\\]/.test(l) && !/[가-힣]{2,}|[A-Za-z]{4,}/.test(l))
+  let dlg = 0, act = 0, aw = 0, after = false, saw = false
+  for (const l of lines) {
+    const t = l.trim()
+    if (/^@/.test(t)) { after = true; saw = false; continue }
+    if (/^#/.test(t)) { after = false; continue }
+    if (t === '') { if (saw) after = false; continue }
+    if (/^\(/.test(t)) continue
+    if (after) { dlg++; saw = true } else { act++; aw += t.split(/\s+/).length }
+  }
+  return { scenes: lines.filter(l => /^#\s/.test(l)).length, cues: cues.length,
+    brokenCueRatio: cues.length ? +(broken.length / cues.length).toFixed(2) : 0,
+    noiseRatio: +(noise.length / (nonEmpty.length || 1)).toFixed(3),
+    dialogueRatio: (dlg + act) ? +(dlg / (dlg + act)).toFixed(2) : 0, avgActionWords: act ? +(aw / act).toFixed(1) : 0 }
+}
 
 // 지침을 repo 파일에 저장/로드 (동료가 클론하면 그대로 공유)
 function handleLoadPrompts() {
@@ -223,11 +256,12 @@ ${sceneText}`
 }
 
 async function handleTranslate(body) {
-  const { formattedText, characterMemo, guidelines, sceneIndex, totalScenes, targetLang, prevTail, model } = body
+  const { formattedText, characterMemo, guidelines, profile, sceneIndex, totalScenes, targetLang, prevTail, model } = body
   if (!formattedText) throw new Error('formattedText required')
 
   // 자막은 번역에 안 들어감 — 작품당 1회 만든 '말투 글로서리'(characterMemo)로만 자막 지식이 반영됨.
   const memoSection = characterMemo ? `\n\n[인물 말투·관계 가이드 — 씬이 갈려도 각 인물의 말투(반말/존댓말)·호칭을 이 가이드대로 일관되게]\n${characterMemo}` : ''
+  const rxSection = assembleProfilePrescription(profile)   // 진단 처방 (있으면 작품 성격별 지침 주입)
   const prevSection = prevTail ? `\n\n[직전 장면 끝부분 — 대명사·상황 맥락 참고용. 번역하지 말 것]\n${prevTail}` : ''
   const lang = targetLang || '한국어'
 
@@ -239,7 +273,7 @@ async function handleTranslate(body) {
 - @인물명·전환지시어 형태 유지. 짧고 거칠어도 각색 말고 그대로.
 
 지침:
-${guidelines}${memoSection}${prevSection}
+${guidelines}${rxSection}${memoSection}${prevSection}
 
 순수 텍스트만 출력(JSON·설명·예시 금지). 번역할 내용이 없으면(타이틀·표지·빈 페이지) 입력 그대로.`
 
@@ -286,6 +320,32 @@ ${hasSub ? '\n그리고 마지막에 "[톤]" 한 줄로, 공식 자막이 보이
     : `대사 샘플:\n${dialogueSample}`
   const register = await runClaude(systemPrompt, userPrompt, model)
   return { register: (register || '').trim() }
+}
+
+// 작품 프로파일러(진단) — 작품당 1회. 로컬 측정(metrics)으로 소스 품질·무게중심을 객관 수치로 주고,
+// 모델은 내용·말투·관계·스타일을 진단해 프로파일 JSON으로 반환. (처방=지침 조립은 별도 단계)
+async function handleDiagnose(body) {
+  const { headSample, dialogueSample, subtitleSample, metrics, model } = body
+  const hasSub = !!(subtitleSample && subtitleSample.trim())
+  const systemPrompt = `당신은 영화 각본 번역 디렉터입니다. 주어진 각본을 "진단"해서 어떤 번역 전략이 맞는지 판단합니다.
+아래 로컬 측정치(소스 품질·대사/지문 비율 등)와 본문·자막 샘플을 보고, 이 작품의 성격을 진단하세요.
+
+반드시 **JSON만** 출력 (설명·코드펜스 금지). 형식:
+{
+  "weight": "dialogue" | "description" | "mixed",          // 글의 무게중심: 대사형/지문형/혼합
+  "register": "casual" | "formal" | "stylized" | "family", // 말투: 현대일상/격식시대/강한문체(누아르·욕설·랩식)/아동가족
+  "flags": [],   // 해당되는 것만: "songs"(노래·뮤지컬) "narration"(내레이션多) "heavy_credits" "famous"(유명작)
+  "latitude": "loose" | "balanced" | "tight",  // 번역 자유도. 대사형·일상=loose / 지문형·정밀=tight / 섞이면 balanced
+  "synopsis": "한 문단 줄거리(아는 작품이면 일반지식 OK, 모르면 샘플 기반 추정)",
+  "relations": "핵심 인물 관계·거리감 1~3줄 (자막 있으면 그 말투 근거로)",
+  "notes": "위 축에 안 잡히는 번역상 특이사항을 자유롭게 (없으면 빈 문자열)"
+}
+판단은 너의 몫이다. 정형 값에 억지로 끼우지 말고, 애매하면 notes에 적어라.`
+  const userPrompt = `[로컬 측정치]\n${JSON.stringify(metrics || {}, null, 0)}\n\n[본문 앞부분 샘플]\n${headSample || ''}\n\n[대사 샘플]\n${dialogueSample || ''}${hasSub ? `\n\n[공식 한국어 자막 샘플]\n${subtitleSample}` : ''}`
+  const raw = await runClaude(systemPrompt, userPrompt, model)
+  let profile = null
+  try { profile = JSON.parse((raw || '').replace(/^```(json)?/i, '').replace(/```$/, '').trim()) } catch {}
+  return { profile, raw: profile ? undefined : (raw || '').slice(0, 500) }   // 파싱 실패 시 원문 일부로 디버그
 }
 
 // 문제 구간만 받아서 수정 (surgical patch)
@@ -431,6 +491,7 @@ function jobMeta(job) {
     activeMs: job.activeMs || 0, runningSince: job._runStart || null,  // 실제 처리 시간(방치 제외)
     total: job.scenes.length, done: doneCount(job),
     errors: job.scenes.filter(s => s.status?.startsWith('error')).length,
+    profile: job.profile || null,   // 작품 진단 결과 (UI 프로파일 카드용)
   }
 }
 
@@ -514,7 +575,7 @@ async function translateOne(job, scene) {
     // ★ 구조 가드: 안 맞으면 에러 표시만 (자동 재번역 안 함 — 토큰 절약. 재처리는 사용자가 ↻/버튼으로)
     const res = await withSlot(() => handleTranslate({
       formattedText: scene.formatted, prevTail,
-      characterMemo: job.characterMemo || null, guidelines: job.guidelines.translate,
+      characterMemo: job.characterMemo || null, guidelines: job.guidelines.translate, profile: job.profile || null,
       sceneIndex: scene.id, totalScenes: job.scenes.length,
       model: job.settings.translateModel || job.settings.model,
     }))
@@ -544,7 +605,7 @@ async function translateBatch(job, batch) {
     const prevTail = prev ? prev.raw.split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
     const res = await withSlot(() => handleTranslate({
       formattedText: combined, prevTail,
-      characterMemo: job.characterMemo || null, guidelines: job.guidelines.translate,
+      characterMemo: job.characterMemo || null, guidelines: job.guidelines.translate, profile: job.profile || null,
       totalScenes: job.scenes.length,
       model: job.settings.translateModel || job.settings.model,
     }))
@@ -623,6 +684,19 @@ async function runJob(job) {
     }
     if (job.stopped) return finishStopped(job)
 
+    // 1.6 작품 진단 → 처방 (없을 때만, 작품당 1회). profile이 번역 지침을 작품 성격에 맞게 조정.
+    if (!job.profile && job.settings.diagnose !== false) {
+      try {
+        job.phase = 'diagnose'; saveJob(job, true)
+        const full = job.scenes.map(s => s.formatted || s.raw || '').join('\n\n')
+        const headSample = full.split('\n').filter(l => l.trim()).slice(0, 40).join('\n').slice(0, 2000)
+        const subtitleSample = job.smi?.info?.lang === 'ko' ? buildSubtitleSample(job.smi.entries) : ''
+        const r = await withSlot(() => handleDiagnose({ headSample, dialogueSample: buildDialogueSample(job.scenes), subtitleSample, metrics: quickMetrics(full), model: job.settings.translateModel || job.settings.model }))
+        if (r.profile) job.profile = r.profile
+      } catch (e) { console.warn('작품 진단 실패(처방 없이 계속):', e.message) }
+    }
+    if (job.stopped) return finishStopped(job)
+
     // 2. 번역 (미완 씬만, 짧은 씬 배칭)
     job.phase = 'translating'; saveJob(job, true)
     const pending = job.scenes.filter(s => s.formatted && s.status !== 'done')
@@ -657,6 +731,7 @@ function createJob(body) {
     id, title: title || '제목없음', phase: 'formatting', status: 'running',
     startTime: Date.now(), duration: null, activeMs: 0,
     settings: settings || {}, guidelines: guidelines || {}, characterMemo: characterMemo || '',
+    profile: null,
     smi: smi || null,
     scenes: scenes.map(s => ({
       id: s.id, raw: s.raw,
@@ -789,6 +864,7 @@ const server = createServer(async (req, res) => {
       else if (mRetrans) result = retranslateJob(mRetrans[1], data.keepGlossary)
       else if (mCtrl) result = controlJob(mCtrl[1], mCtrl[2])
       else if (req.url === '/api/character-register') result = await handleCharacterRegister(data)
+      else if (req.url === '/api/diagnose') result = await handleDiagnose(data)
       else if (req.url === '/api/format') result = await handleFormat(data)
       else if (req.url === '/api/translate') result = await handleTranslate(data)
       else if (req.url === '/api/revise') result = await handleRevise(data)

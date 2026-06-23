@@ -153,6 +153,7 @@ export default function App() {
   const isStoppedRef = useRef(false)
   const characterMemoRef = useRef('')  // 이번 작업의 인물 글로서리 (재처리에서도 동일 사용)
   const [characterMemo, setCharacterMemo] = useState('')  // 표시·편집용 (폴링으로 갱신)
+  const [profile, setProfile] = useState(null)  // 작품 진단 결과 (프로파일 칩 표시용)
   const diagRef = useRef(null)  // 이번 작업의 처리 진단 (완료 시/수동 리포트 시 기록)
   const serverJobRef = useRef(null)  // 서버 잡 id (서버가 루프 소유 → 탭 닫아도 계속)
   const pollRef = useRef(null)       // 진행 폴링 인터벌
@@ -531,6 +532,7 @@ export default function App() {
         if (job.startTime) setStartTime(job.startTime)
         setTimeInfo({ activeMs: job.activeMs || 0, runningSince: job._runStart || null })
         if (job.characterMemo !== undefined) { characterMemoRef.current = job.characterMemo; setCharacterMemo(job.characterMemo || '') }
+        if (job.profile !== undefined) setProfile(job.profile)
         const paused = job.status === 'paused' || job.status === 'rate_limited'
         isPausedRef.current = paused
         setIsPaused(paused)
@@ -975,7 +977,7 @@ export default function App() {
         <ProcessPanel
           title={title} scenes={scenes} phase={phase} startTime={startTime} timeInfo={timeInfo}
           isPaused={isPaused} isRateLimited={isRateLimited}
-          characterMemo={characterMemo} isServerJob={!!serverJobRef.current}
+          characterMemo={characterMemo} profile={profile} isServerJob={!!serverJobRef.current}
           onSaveGlossary={handleSaveGlossary} onRetranslate={handleRetranslate}
           onPause={handlePause} onResume={handleResume} onStop={handleStop} onContinue={handleContinue}
           onReader={() => { setReaderStartIdx(0); setReaderOpen(true) }}

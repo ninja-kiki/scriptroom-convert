@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { T, fmtDuration, fmtTokens, loadSettings, classifyError, translationStructureOk } from '../lib/core.js'
 import SceneCard from './SceneCard.jsx'
 
-export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo, isPaused, isRateLimited, characterMemo, isServerJob, onSaveGlossary, onRetranslate, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onReprocessBroken, onDownload, onReset, onReader, onReport }) {
+export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo, isPaused, isRateLimited, characterMemo, profile, isServerJob, onSaveGlossary, onRetranslate, onPause, onResume, onStop, onContinue, onRetry, onReprocess, onReprocessBroken, onDownload, onReset, onReader, onReport }) {
+  const [profileOpen, setProfileOpen] = useState(false)
   // 실제 처리 시간(방치·일시정지 제외). 서버 잡은 timeInfo, 없으면 startTime 폴백.
   const elapsedMs = timeInfo?.activeMs != null
     ? timeInfo.activeMs + (timeInfo.runningSince ? Date.now() - timeInfo.runningSince : 0)
@@ -165,7 +166,7 @@ export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
           <h2 style={{ color: T.fg, fontSize: 18, fontWeight: 700 }}>{title}</h2>
           <span style={{ color: T.fgMuted, fontSize: 13 }}>{doneCount}/{total} 씬</span>
-          {phase !== 'done' && !isPaused && <span style={{ color: T.warn, fontSize: 12, fontWeight: 600 }}>{phase === 'formatting' ? '포맷 중' : phase === 'register' ? '말투 분석 중' : '번역 중'}</span>}
+          {phase !== 'done' && !isPaused && <span style={{ color: T.warn, fontSize: 12, fontWeight: 600 }}>{phase === 'formatting' ? '포맷 중' : phase === 'register' ? '말투 분석 중' : phase === 'diagnose' ? '작품 진단 중' : '번역 중'}</span>}
           {isPaused && <span style={{ color: T.warn, fontSize: 12 }}>일시정지됨</span>}
         </div>
 
@@ -174,6 +175,9 @@ export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo
           <div style={{ height: '100%', borderRadius: 3, width: `${pct}%`,
             background: errCount > 0 ? T.err : isDone ? T.good : T.warn, transition: 'width .3s' }} />
         </div>
+
+        {/* 작품 진단 프로파일 칩 — 평소 한 줄, 누르면 펼침 (UI 안 지저분하게) */}
+        {profile && <ProfileChip profile={profile} open={profileOpen} onToggle={() => setProfileOpen(v => !v)} />}
 
         {/* Stat badges */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -430,5 +434,34 @@ function Badge({ children, color, title, onClick, style }) {
 
 function Spinner() {
   return <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', lineHeight: 1 }}>⟳</span>
+}
+
+// 작품 진단 프로파일 칩 — 평소엔 태그 한 줄, 누르면 줄거리·관계·특이사항 펼침.
+const WEIGHT_KO = { dialogue: '대사형', description: '지문형', mixed: '혼합' }
+const REGISTER_KO = { casual: '일상', formal: '격식', stylized: '강한문체', family: '가족' }
+const LATITUDE_KO = { tight: '충실', balanced: '균형', loose: '여유' }
+const FLAG_KO = { songs: '노래', narration: '내레이션', heavy_credits: '크레딧', famous: '유명작' }
+function ProfileChip({ profile, open, onToggle }) {
+  const tags = [WEIGHT_KO[profile.weight], REGISTER_KO[profile.register], LATITUDE_KO[profile.latitude]].filter(Boolean)
+  const flags = (profile.flags || []).map(f => FLAG_KO[f] || f)
+  return (
+    <div style={{ marginBottom: 12, border: `1px solid ${T.rule}`, borderRadius: 6, overflow: 'hidden' }}>
+      <div onClick={onToggle} className="sr-press" style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', cursor: 'pointer', flexWrap: 'wrap',
+      }}>
+        <span style={{ fontSize: 11, color: T.fgDim, fontWeight: 700, letterSpacing: '.04em' }}>진단</span>
+        {tags.map((t, i) => <Badge key={i} color={T.fg}>{t}</Badge>)}
+        {flags.map((f, i) => <Badge key={'f' + i} color={T.accent}>{f}</Badge>)}
+        <span style={{ marginLeft: 'auto', color: T.fgDim, fontSize: 11 }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{ padding: '2px 12px 12px', fontSize: 12.5, color: T.fgMuted, lineHeight: 1.6, borderTop: `1px solid ${T.rule}` }}>
+          {profile.synopsis && <p style={{ margin: '8px 0 0' }}><b style={{ color: T.fgDim }}>줄거리</b> {profile.synopsis}</p>}
+          {profile.relations && <p style={{ margin: '6px 0 0' }}><b style={{ color: T.fgDim }}>관계</b> {profile.relations}</p>}
+          {profile.notes && <p style={{ margin: '6px 0 0' }}><b style={{ color: T.fgDim }}>특이</b> {profile.notes}</p>}
+        </div>
+      )}
+    </div>
+  )
 }
 
