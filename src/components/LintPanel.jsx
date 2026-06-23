@@ -38,7 +38,7 @@ export default function LintPanel() {
       } else if (f.name.endsWith('.txt')) {
         const text = await f.text()
         const det = detect(text)
-        next.push({ kind: 'txt', name: f.name, text, sum: summarize(text), det, open: items.length === 0, splitAction: det.glued.length > 0, unify: false, instr: '', running: false, prog: null })
+        next.push({ kind: 'txt', name: f.name, text, sum: summarize(text), det, open: items.length === 0, splitAction: det.glued.length > 0, unify: false, instr: '', advOpen: false, running: false, prog: null })
       }
     }
     if (next.length) setItems(prev => [...prev, ...next])
@@ -180,74 +180,18 @@ export default function LintPanel() {
       })()}
       <input ref={ref} type="file" accept=".txt,.json,.pdf" multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
 
-      {items.length === 0 && (() => {
-        const FnSpan = ({ n, children }) => (
-          <span
-            onMouseEnter={() => setHoverNote(n)}
-            onMouseLeave={() => setHoverNote(null)}
-            style={{ textDecoration: 'underline', textDecorationStyle: 'solid', background: hoverNote === n ? T.chip : 'transparent', borderRadius: 2, cursor: 'default' }}
-          >{children}<sup style={{ fontSize: 7, marginLeft: 1, fontFamily: 'sans-serif' }}>{n}</sup></span>
-        )
-        const notes = [
-          { n: 1, label: 'AI 군말 제거' },
-          { n: 2, label: '씬 번호 끝 숫자 정리' },
-          { n: 3, label: '영어+한국어 중복 정리' },
-          { n: 4, label: '대사 속 지문 분리' },
-          { n: 5, label: '겹친 줄 제거' },
-        ]
-        return (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              {/* 이전 */}
-              <div style={{ flex: 1, minWidth: 0, background: '#fff', borderRadius: 3, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                <div style={{ background: T.accent, color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 8px', letterSpacing: '0.08em' }}>이전</div>
-                <pre style={{ margin: 0, padding: '14px 12px', fontFamily: "'Courier New', Courier, monospace", fontSize: 10.5, lineHeight: 1.7, color: '#1A1A1A', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {'# 내부. 바 - 밤 '}
-                  <FnSpan n={2}>{'47'}</FnSpan>
-                  {'\n\n'}
-                  <FnSpan n={1}>{'물론이죠! 다음은 번역입니다:'}</FnSpan>
-                  {'\n마일스가 바 스툴에 앉는다.\n\n@MILES\n한 잔만 더요. '}
-                  <FnSpan n={3}>{'One more, please.'}</FnSpan>
-                  {'\n\n@MILES\n오늘은 여기까지. '}
-                  <FnSpan n={4}>{'그가 잔을 비운다.'}</FnSpan>
-                  {'\n\n@BARTENDER\n외상은 안 돼요.\n'}
-                  <FnSpan n={5}>{'외상은 안 돼요.'}</FnSpan>
-                </pre>
-              </div>
-              <div style={{ color: T.fgDim, fontSize: 18, alignSelf: 'center', flexShrink: 0 }}>→</div>
-              {/* 이후 */}
-              <div style={{ flex: 1, minWidth: 0, background: '#fff', borderRadius: 3, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                <div style={{ background: T.accent, color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 8px', letterSpacing: '0.08em' }}>이후</div>
-                <pre style={{ margin: 0, padding: '14px 12px', fontFamily: "'Courier New', Courier, monospace", fontSize: 10.5, lineHeight: 1.7, color: '#1A1A1A', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{`# 내부. 바 - 밤
-
-마일스가 바 스툴에 앉는다.
-
-@MILES
-한 잔만 더요.
-
-@MILES
-오늘은 여기까지.
-
-그가 잔을 비운다.
-
-@BARTENDER
-외상은 안 돼요.`}</pre>
-              </div>
-            </div>
-            {/* 각주 */}
-            <div style={{ marginTop: 14, marginBottom: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {notes.map(({ n, label }) => (
-                <span key={n}
-                  onMouseEnter={() => setHoverNote(n)}
-                  onMouseLeave={() => setHoverNote(null)}
-                  style={{ fontSize: 11, color: T.fgDim, background: hoverNote === n ? T.chip : 'transparent', padding: '2px 6px', borderRadius: 3, cursor: 'default', transition: 'background .1s' }}>
-                  <sup style={{ fontSize: 8, fontFamily: 'sans-serif' }}>{n}</sup> {label}
-                </span>
-              ))}
-            </div>
+      {items.length === 0 && (
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <div style={{ color: T.fgMuted, fontSize: 13, marginBottom: 11 }}>
+            번역본을 넣으면 <b style={{ color: T.fg }}>군말·중복·줄나눔</b>을 자동으로 정리해요
           </div>
-        )
-      })()}
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {['AI 군말 제거', '겹친 줄 정리', '대사 속 지문 분리', '말투 통일'].map(t => (
+              <span key={t} style={{ fontSize: 11.5, color: T.fgMuted, background: T.chip, padding: '4px 11px', borderRadius: 999 }}>{t}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {items.map((it, idx) => {
         // 리더 수정요청 JSON
@@ -289,51 +233,35 @@ export default function LintPanel() {
             </div>
             {it.open && (
               <div style={{ borderTop: `1px solid ${T.rule}`, padding: '14px' }}>
-                {/* ① 자동으로 고침 (무료) */}
-                {(autoList.length > 0 || s.glued > 0) ? (
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: T.good, marginBottom: 6 }}>✓ 자동으로 고침 <span style={{ color: T.fgDim, fontWeight: 400 }}>(무료, 내용은 안 바뀜)</span></div>
-                    {autoList.map((t, k) => <div key={k} style={{ fontSize: 13, color: T.fgMuted, padding: '2px 0' }}>· {t}</div>)}
-                    {s.glued > 0 && (
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 7, fontSize: 13, color: T.fg, cursor: 'pointer', padding: '4px 0' }}>
-                        <input type="checkbox" checked={it.splitAction} onChange={e => upd(idx, { splitAction: e.target.checked })} style={{ marginTop: 3 }} />
-                        <span>· 대사에 붙은 <b>지문 {s.glued}개</b> 떼어내기 <span style={{ color: T.fgDim, fontSize: 12 }}>(@화자 대사에 붙은 행동·장면 묘사를 빈 줄로 분리)</span></span>
-                      </label>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 13, color: T.fgDim, marginBottom: 14 }}>자동으로 고칠 건 없어요.</div>
-                )}
-
-                {/* ② 확인만 필요 (자동으로 안 고침) */}
-                {reviewCount > 0 && (
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: T.warn, marginBottom: 4 }}>⚠ 눈으로 확인하세요 <span style={{ color: T.fgDim, fontWeight: 400 }}>(자동으로 안 건드림)</span></div>
-                    {d.dialog.length > 0 && <div style={{ fontSize: 12.5, color: T.fgMuted }}>· 번역 안 된 듯한 줄 {d.dialog.length}개 <span style={{ color: T.fgDim }}>(일부러 둔 외국어일 수도)</span></div>}
-                    {d.dialog.slice(0, 5).map(i => <Line key={'d' + i} i={i} lines={d.lines} />)}
-                    {d.miscue.length > 0 && <div style={{ fontSize: 12.5, color: T.fgMuted, marginTop: 4 }}>· 화자(@)가 잘못 붙은 듯한 줄 {d.miscue.length}개 <span style={{ color: T.fgDim }}>(시간·전환 표시가 @로)</span></div>}
-                    {d.miscue.slice(0, 5).map(i => <Line key={'m' + i} i={i} lines={d.lines} />)}
+                {/* 한 줄 요약 (최소) */}
+                {!clean && (
+                  <div style={{ fontSize: 13, color: T.fgMuted, marginBottom: 12 }}>
+                    {(autoList.length + (s.glued > 0 ? 1 : 0)) > 0 && <>자동 정리 <b style={{ color: T.fg }}>{autoList.length + (s.glued > 0 ? 1 : 0)}</b>곳</>}
+                    {reviewCount > 0 && <span style={{ color: T.warn }}>{(autoList.length || s.glued) ? ' · ' : ''}확인 {reviewCount}곳</span>}
                   </div>
                 )}
 
-                {/* ③ AI로 더 다듬기 (선택) */}
-                <div style={{ borderTop: `1px solid ${T.rule}`, paddingTop: 12 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: T.fg, marginBottom: 8 }}>AI로 더 다듬기 <span style={{ color: T.fgDim, fontWeight: 400, fontSize: 11.5 }}>(토큰 사용 · 선택)</span></div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.fg, cursor: 'pointer', marginBottom: 8 }}>
-                    <input type="checkbox" checked={it.unify} onChange={e => upd(idx, { unify: e.target.checked })} />
-                    말투 통일 <span style={{ color: T.fgDim, fontSize: 12 }}>— 인물별 반말/존댓말·호칭을 일관되게 (뜻은 유지)</span>
-                  </label>
-                  <input value={it.instr} onChange={e => upd(idx, { instr: e.target.value })} placeholder="원하는 수정을 적어보세요 (예: 욕설 더 순화 / ○○를 △△로 바꿔줘) — 비우면 안 함"
-                    style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13 }} />
-                </div>
-
+                {/* 강조 메인 버튼 — 딸깍 한 번 */}
                 <button className="sr-press" onClick={() => applyAll(idx)} disabled={it.running || (clean && !it.unify && !it.instr.trim())}
-                  style={{ marginTop: 14, width: '100%', padding: '11px', borderRadius: 3, border: 'none', background: it.running ? T.chip : T.accent, color: it.running ? T.fgDim : '#fff', fontWeight: 700, fontSize: 14, cursor: it.running ? 'default' : 'pointer' }}>
-                  {it.running ? `${it.prog?.phase || '처리 중'} ${it.prog?.t ? `${it.prog.d}/${it.prog.t}` : ''}` : '고치기 → _수정.txt 저장'}
+                  style={{ width: '100%', padding: '13px', borderRadius: 4, border: 'none', background: (it.running || (clean && !it.unify && !it.instr.trim())) ? T.chip : T.accent, color: (it.running || (clean && !it.unify && !it.instr.trim())) ? T.fgDim : T.accentFg, fontWeight: 700, fontSize: 15, cursor: it.running ? 'default' : 'pointer', boxShadow: (it.running || clean) ? 'none' : `0 3px 12px ${T.accent}55` }}>
+                  {it.running ? `${it.prog?.phase || '처리 중'} ${it.prog?.t ? `${it.prog.d}/${it.prog.t}` : ''}` : clean ? '✓ 깨끗해요' : '✦ 자동으로 고치기 → 저장'}
                 </button>
-                <div style={{ fontSize: 11.5, color: T.fgDim, marginTop: 6, textAlign: 'center' }}>
-                  {it.unify || it.instr.trim() ? '무료 자동 수정 + 선택한 AI 수정을 함께 적용해요' : (autoList.length > 0 || (s.glued > 0 && it.splitAction)) ? '무료 자동 수정만 적용해요 (토큰 0)' : '적용할 게 없어요'}
-                </div>
+
+                {/* 더 다듬기 (접힘) */}
+                <button onClick={() => upd(idx, { advOpen: !it.advOpen })}
+                  style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 12, cursor: 'pointer', marginTop: 10, padding: 0 }}>
+                  AI로 더 다듬기 {it.advOpen ? '▲' : '▾'} <span style={{ fontSize: 11 }}>(말투 통일·직접 지시)</span>
+                </button>
+                {it.advOpen && (
+                  <div style={{ marginTop: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.fg, cursor: 'pointer', marginBottom: 8 }}>
+                      <input type="checkbox" checked={it.unify} onChange={e => upd(idx, { unify: e.target.checked })} />
+                      말투 통일 <span style={{ color: T.fgDim, fontSize: 12 }}>— 인물별 반말/존댓말 일관되게</span>
+                    </label>
+                    <input value={it.instr} onChange={e => upd(idx, { instr: e.target.value })} placeholder="직접 지시 (예: 욕설 더 순화)"
+                      style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13 }} />
+                  </div>
+                )}
               </div>
             )}
           </div>
