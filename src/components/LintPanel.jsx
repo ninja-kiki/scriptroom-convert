@@ -278,12 +278,22 @@ function ReprocessSection() {
   const [instr, setInstr] = useState('')
   const [st, setSt] = useState(null)
   const [open, setOpen] = useState(false)
-  useEffect(() => { fetch('/api/works').then(r => r.json()).then(d => setWorks(d.works || [])).catch(() => {}) }, [])
+  useEffect(() => {
+    fetch('/api/works').then(r => r.json()).then(d => setWorks(d.works || [])).catch(() => {})
+    fetch('/api/reprocess-status').then(r => r.json()).then(s => { setSt(s); if (s?.running || (s?.history?.length)) setOpen(true) }).catch(() => {})   // 기록·진행중 복원
+  }, [])
   useEffect(() => {
     if (!st?.running) return
     const t = setInterval(async () => { try { setSt(await (await fetch('/api/reprocess-status')).json()) } catch {} }, 1500)
     return () => clearInterval(t)
   }, [st?.running])
+  async function resume(w) {
+    try {
+      const r = await fetch('/api/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work: w, resume: true }) })
+      if (!r.ok) { alert('이어하기 실패: ' + (await r.text())); return }
+      setSt({ running: true, work: w, log: ['이어하기…'], done: false, phase: 'translating' })
+    } catch (e) { alert(e.message) }
+  }
   async function start() {
     if (!work || st?.running) return
     try {
@@ -363,6 +373,24 @@ function ReprocessSection() {
           <div style={{ fontSize: 11, color: T.fgDim, marginTop: 8, lineHeight: 1.5 }}>
             끝나면 리더에 반영하려면 배포(sync) 한 번 필요.
           </div>
+
+          {/* 최근 기록 — 중단/실패는 이어하기 */}
+          {st?.history?.length > 0 && (
+            <div style={{ marginTop: 14, borderTop: `1px solid ${T.rule}`, paddingTop: 10 }}>
+              <div style={{ fontSize: 11, color: T.fgDim, fontWeight: 700, marginBottom: 6 }}>최근</div>
+              {st.history.map((h, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: T.fgMuted, padding: '3px 0' }}>
+                  <span style={{ color: h.status === 'done' ? T.good : h.status === 'stopped' ? T.fgDim : T.err }}>
+                    {h.status === 'done' ? '✓' : h.status === 'stopped' ? '■' : '✕'}
+                  </span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.work}</span>
+                  {(h.status === 'stopped' || h.status === 'error') && !busy && (
+                    <button onClick={() => resume(h.work)} style={{ padding: '3px 10px', borderRadius: 3, border: `1px solid ${T.accent}`, background: 'none', color: T.accent, fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>이어하기</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

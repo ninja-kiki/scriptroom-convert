@@ -149,6 +149,9 @@ if (RESUME && existsSync(koPath)) {
 }
 const reuseCount = prevKo ? prevKo.filter(s => /[가-힣]/.test(s)).length : 0
 console.log(`=== 번역 시작: ${scenes.length}씬${RESUME && prevKo ? ` (재사용 ${reuseCount} · 재번역 ${scenes.length - reuseCount})` : ''} ===`)
+if (existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(koPath, koPath + '.retbak')   // 원본 1회 백업(선)
+// 현재까지 번역분 + 나머지 영문으로 전체 구조 유지해 저장 (끊겨도 안 날아감 / --resume으로 이어감)
+const checkpoint = (out) => { try { writeFileSync(koPath, [...out, ...scenes.slice(out.length)].join('\n\n') + '\n') } catch {} }
 const outScenes = []
 let failed = 0
 for (let i = 0; i < scenes.length; i++) {
@@ -167,16 +170,8 @@ for (let i = 0; i < scenes.length; i++) {
       else await new Promise(r => setTimeout(r, 5000 * (attempt + 1)))
     }
   }
+  if ((i + 1) % 20 === 0) checkpoint(outScenes)   // 20씬마다 중간 저장
   if ((i + 1) % 10 === 0 || i === scenes.length - 1) console.log(`  ${i + 1}/${scenes.length} (실패 ${failed})`)
 }
-
-const failRate = failed / scenes.length
-if (failRate > 0.25) {
-  console.error(`\n✗ 실패율 ${(failRate * 100).toFixed(0)}% (>25%) — 번역이 많이 깨져 덮어쓰기 중단. 기존 _translated 보존.`)
-  writeFileSync(koPath.replace(/\.txt$/, '.retfailed.txt'), outScenes.join('\n\n') + '\n')
-  console.error(`  부분 결과는 ${koPath.replace(/\.txt$/, '.retfailed.txt')} 에 저장(검토용). 서버 안정될 때 다시 실행하세요.`)
-  process.exit(2)
-}
-if (existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(koPath, koPath + '.retbak')
-writeFileSync(koPath, outScenes.join('\n\n') + '\n')
+writeFileSync(koPath, outScenes.join('\n\n') + '\n')   // 최종 저장
 console.log(`\n✓ ${koPath} (백업: .retbak · 실패 ${failed}/${scenes.length})`)
