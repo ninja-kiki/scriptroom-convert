@@ -154,7 +154,7 @@ export default function LintPanel() {
             onDragOver={e => { e.preventDefault(); setDrag(true) }}
             onDragLeave={() => setDrag(false)}
             onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files) }}
-            style={{ border: `2px dashed ${drag ? T.accent : T.rule}`, boxSizing: 'border-box', borderRadius: 4, aspectRatio: '4/3', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, cursor: 'pointer', background: drag ? T.accent + '22' : T.bgCard, marginBottom: 12, transition: 'background .15s, border-color .15s' }}>
+            style={{ border: `2px dashed ${drag ? T.accent : T.rule}`, boxSizing: 'border-box', borderRadius: 4, minHeight: 190, padding: '24px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, cursor: 'pointer', background: drag ? T.accent + '22' : T.bgCard, marginBottom: 12, transition: 'background .15s, border-color .15s' }}>
             <div style={{ display: 'flex', gap: 28, alignItems: 'flex-end' }}>
               {['txt', 'json', 'pdf'].map(ext => {
                 const loaded = loadedByExt[ext] || []
