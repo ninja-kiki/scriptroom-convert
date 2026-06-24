@@ -32,15 +32,15 @@ export const THEMES = {
     chip: 'rgba(0,0,0,0.06)',
     name: 'light',
   },
-  dark: {
-    bg: '#17150F', bgCard: '#221F17', bgInput: '#1B1812', bgMuted: '#13110C',
-    fg: '#EDE7D8', fgMuted: '#B6AF9D', fgDim: '#7E7666',
-    rule: 'rgba(255,255,255,0.14)',
+  dark: {   // scriptroom 다크와 동일한 중립 회색 팔레트 (예전 갈색톤 → 정렬)
+    bg: '#0F0F0F', bgCard: '#1A1A1A', bgInput: '#1C1C1C', bgMuted: '#161616',
+    fg: '#F0F0F0', fgMuted: '#C0C0C0', fgDim: '#666666',
+    rule: 'rgba(255,255,255,0.08)',
     accent: '#1E4D8C', accentFg: '#FFFFFF',
     good: '#7AB37A', warn: '#D9A400', err: '#C0392B',
     fmt: '#1E4D8C',    // 포맷/구조 = 파랑 (scriptroom 고정값)
     trans: '#C0392B',  // 번역(KO) = 빨강 (scriptroom 고정값)
-    chip: 'rgba(255,255,255,0.07)',
+    chip: 'rgba(255,255,255,0.06)',
     name: 'dark',
   },
 }
