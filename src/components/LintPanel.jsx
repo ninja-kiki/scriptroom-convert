@@ -294,13 +294,14 @@ function ReprocessSection() {
       setSt({ running: true, work: w, log: ['이어하기…'], done: false, phase: 'translating' })
     } catch (e) { alert(e.message) }
   }
-  async function start() {
-    if (!work || st?.running) return
+  async function start(workArg) {
+    const w = (typeof workArg === 'string' && workArg) ? workArg : work
+    if (!w || st?.running) return
     try {
       const autoGo = !!loadSettings().reprocAutoGo
-      const r = await fetch('/api/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work, translateOnly: false, instruction: instr.trim(), autoGo }) })
+      const r = await fetch('/api/reprocess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work: w, translateOnly: false, instruction: instr.trim(), autoGo }) })
       if (!r.ok) { alert('시작 실패: ' + (await r.text())); return }
-      setSt({ running: true, work, log: [], done: false, phase: 'diagnosing' })
+      setSt({ running: true, work: w, log: [], done: false, phase: 'diagnosing' })
     } catch (e) { alert('시작 실패: ' + e.message) }
   }
   async function go() {
@@ -359,10 +360,13 @@ function ReprocessSection() {
             <div style={{ marginTop: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <div style={{ fontSize: 12, color: st.error ? T.err : st.done ? (st.phase === 'stopped' ? T.fgMuted : T.good) : T.fgMuted, fontWeight: 600, flex: 1 }}>
-                  {st.error ? `오류: ${st.error}` : st.phase === 'stopped' ? '중단됨' : st.done ? `✓ 완료 — ${st.work} (리더 반영은 배포 한 번)` : st.phase === 'diagnosing' ? `${st.work} 진단 중…` : `${st.work} 번역 중…`}
+                  {st.error ? `진단/번역 실패 — Claude 서버 과부하일 수 있어요. 잠시 후 다시 시도하세요.` : st.phase === 'stopped' ? '중단됨' : st.done ? `✓ 완료 — ${st.work} (리더 반영은 배포 한 번)` : st.phase === 'diagnosing' ? `${st.work} 진단 중…` : `${st.work} 번역 중…`}
                 </div>
                 {st.running && (
                   <button onClick={stop} style={{ padding: '5px 12px', borderRadius: 3, border: `1px solid ${T.err}`, background: 'none', color: T.err, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>중단</button>
+                )}
+                {st.error && !st.running && (
+                  <button onClick={() => start(st.work)} style={{ padding: '5px 12px', borderRadius: 3, border: `1px solid ${T.accent}`, background: 'none', color: T.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>다시 시도</button>
                 )}
               </div>
               <pre style={{ margin: 0, maxHeight: 180, overflowY: 'auto', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, padding: 10, fontSize: 11, lineHeight: 1.5, color: T.fgMuted, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
