@@ -280,7 +280,11 @@ function ReprocessSection() {
   const [open, setOpen] = useState(false)
   useEffect(() => {
     fetch('/api/works').then(r => r.json()).then(d => setWorks(d.works || [])).catch(() => {})
-    fetch('/api/reprocess-status').then(r => r.json()).then(s => { setSt(s); if (s?.running || (s?.history?.length)) setOpen(true) }).catch(() => {})   // 기록·진행중 복원
+    // 진행 중이면 복원(+펼침), 아니면 기록만 (예전 완료/중단 로그를 새로 열 때 띄우지 않음)
+    fetch('/api/reprocess-status').then(r => r.json()).then(s => {
+      if (s?.running) { setSt(s); setOpen(true) }
+      else setSt({ history: s?.history || [] })
+    }).catch(() => {})
   }, [])
   useEffect(() => {
     if (!st?.running) return
@@ -332,7 +336,7 @@ function ReprocessSection() {
             style={{ width: '100%', padding: '12px', borderRadius: 4, border: 'none', background: (!work || busy) ? T.chip : T.accent, color: (!work || busy) ? T.fgDim : T.accentFg, fontWeight: 700, fontSize: 14.5, cursor: (!work || busy) ? 'default' : 'pointer', boxShadow: (!work || busy) ? 'none' : `0 3px 12px ${T.accent}55` }}>
             {busy ? '개선 중…' : '개선하기'}
           </button>
-          {!busy && !st && <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center', marginTop: 6 }}>먼저 진단하고, 예상 시간 보여준 뒤 시작해요</div>}
+          {!awaiting && !st?.running && !st?.done && !st?.error && <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center', marginTop: 6 }}>먼저 진단하고, 예상 시간 보여준 뒤 시작해요</div>}
 
           {/* 진단 후 대기 — 프로파일 + 예상시간 보여주고 GO 받기 */}
           {awaiting && st.profile && (() => {
@@ -356,7 +360,7 @@ function ReprocessSection() {
             )
           })()}
 
-          {st && !awaiting && (
+          {st && !awaiting && (st.running || st.done || st.error) && (
             <div style={{ marginTop: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <div style={{ fontSize: 12, color: st.error ? T.err : st.done ? (st.phase === 'stopped' ? T.fgMuted : T.good) : T.fgMuted, fontWeight: 600, flex: 1 }}>
