@@ -17,33 +17,33 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
   const scene = scenes[sceneIdx]
   const total = scenes.length
 
-  // 검토 대상 = 공식 자막과 정렬됐는데 표현이 다른(검토할 만한) 줄이 있는 씬
-  const hasReview = (s) => (s.smiMatches || []).some(m => m.aligned && (m.smiText || '').trim() !== (m.original || '').trim())
-  const reviewIdxs = scenes.map((s, i) => hasReview(s) ? i : -1).filter(i => i >= 0)
+  const reviewIdxs = []   // 자막 유사도 기반 검토 제거 (각본↔영화자막은 본디 다름)
 
   // 씬 이동 — 검토 모드면 검토 씬만 건너뜀
   const stepScene = useCallback((dir) => {
+    const toBottom = dir < 0   // 위로 갈 땐 이전 씬 맨 아래부터
     if (reviewOnly && reviewIdxs.length) {
       const cands = dir > 0 ? reviewIdxs.filter(i => i > sceneIdx) : reviewIdxs.filter(i => i < sceneIdx).reverse()
-      goScene(cands.length ? cands[0] : reviewIdxs[dir > 0 ? 0 : reviewIdxs.length - 1])
-    } else goScene(sceneIdx + dir)
+      goScene(cands.length ? cands[0] : reviewIdxs[dir > 0 ? 0 : reviewIdxs.length - 1], toBottom)
+    } else goScene(sceneIdx + dir, toBottom)
   }, [reviewOnly, reviewIdxs, sceneIdx])
 
   // 현재 뷰에서 보여줄 텍스트
   function getContent() {
-    if (viewMode === 'translated' && scene.translated) return { text: scene.translated, smi: scene.smiMatches }
-    if (viewMode === 'formatted' && scene.formatted) return { text: scene.formatted, smi: null }
-    if (viewMode === 'raw') return { text: scene.raw, smi: null }
+    if (viewMode === 'translated' && scene.translated) return { text: scene.translated }
+    if (viewMode === 'formatted' && scene.formatted) return { text: scene.formatted }
+    if (viewMode === 'raw') return { text: scene.raw }
     // 요청한 뷰가 없으면 있는 것 중 최선
-    if (scene.translated) return { text: scene.translated, smi: scene.smiMatches }
-    if (scene.formatted) return { text: scene.formatted, smi: null }
-    return { text: scene.raw, smi: null }
+    if (scene.translated) return { text: scene.translated }
+    if (scene.formatted) return { text: scene.formatted }
+    return { text: scene.raw }
   }
 
-  const goScene = useCallback((idx) => {
+  const goScene = useCallback((idx, toBottom = false) => {
     const clamped = Math.max(0, Math.min(total - 1, idx))
     setSceneIdx(clamped)
-    setTimeout(() => { contentRef.current?.scrollTo(0, 0) }, 0)
+    // 위로 올라온 경우엔 새 씬을 맨 아래부터 (읽던 흐름 유지), 아니면 맨 위
+    setTimeout(() => { const el = contentRef.current; if (el) el.scrollTop = toBottom ? el.scrollHeight : 0 }, 0)
   }, [total])
 
   const scrollBy = useCallback((px) => {
@@ -112,7 +112,7 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
     jumpRef.current?.blur()
   }
 
-  const { text, smi } = getContent()
+  const { text } = getContent()
   const isChecked = checked.has(sceneIdx)
   const checkedCount = checked.size
 
@@ -207,14 +207,7 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
               {scene.status?.startsWith('error') && classifyError(scene.error).label}
             </div>
           )}
-          {smi
-            ? <AnnotatedTranslation text={text} smiMatches={smi} fontSize={15} />
-            : <pre style={{
-                fontFamily: 'monospace', fontSize: 15, color: T.fg,
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.9,
-                margin: 0,
-              }}>{text}</pre>
-          }
+          <AnnotatedTranslation text={text} fontSize={15} />
         </div>
       </div>
 

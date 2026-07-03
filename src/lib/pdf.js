@@ -5,6 +5,14 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
+// 볼드 효과를 텍스트 레이어에 다중으로 그린 PDF(스파이더맨 류) — 한 줄 안 동일 문자열 반복을 1회로 접음.
+// "EXT. HOUSE - DAYEXT. HOUSE - DAY...1111" → "EXT. HOUSE - DAY1". 접힌 경우에만 꼬리 동일숫자 다발도 접음(연도 2000 등 보호).
+export function collapseRepeats(orig) {
+  let s = orig, prev
+  do { prev = s; s = s.replace(/(.{6,}?)\1+/g, '$1') } while (s !== prev)
+  return s !== orig ? s.replace(/(\d)\1{2,}\s*$/, '$1') : s
+}
+
 export async function extractTextFromPDF(file, onProgress) {
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
@@ -25,7 +33,7 @@ export async function extractTextFromPDF(file, onProgress) {
         const y = item.transform?.[5]
         const x = item.transform?.[4] ?? Infinity
         if (lastY !== null && Math.abs(y - lastY) > 2 && lineText.trim()) {
-          pageLines.push({ text: lineText, x: lineMinX })
+          pageLines.push({ text: collapseRepeats(lineText), x: lineMinX })
           lineText = ''; lineMinX = Infinity
         }
         if (!lineText.trim()) lineMinX = Math.min(lineMinX, x)
@@ -33,7 +41,7 @@ export async function extractTextFromPDF(file, onProgress) {
         lastY = y
       }
     }
-    if (lineText.trim()) pageLines.push({ text: lineText, x: lineMinX })
+    if (lineText.trim()) pageLines.push({ text: collapseRepeats(lineText), x: lineMinX })
     pages.push(pageLines)
     onProgress?.(i, totalPages)
   }
@@ -60,6 +68,13 @@ export async function extractTextFromPDF(file, onProgress) {
   const boiler = new Set([...edgeCount].filter(([, c]) => c >= threshold).map(([s]) => s))
 
   // ── 최종 줄 + 헤딩 후보 (보일러플레이트 제외) ──────────────
+  // 들여쓰기 보존: 각본은 x좌표(왼쪽여백=지문, 들여쓰기=대사, 더 깊이=인물 큐)가 곧 구조다.
+  // x를 앞 공백으로 환산해 남겨야 포맷터(규칙·LLM)가 대사/지문을 안 헷갈린다 — 버리면 대사·지문이 붙는 근본 원인.
+  let minX = Infinity
+  for (const pl of pages) for (const l of pl) if (l.x < minX && l.text.trim()) minX = l.x
+  if (!isFinite(minX)) minX = 0
+  const indentOf = (x) => ' '.repeat(Math.max(0, Math.min(40, Math.round((x - minX) / 7))))   // ~7px = 공백 1칸(모노스페이스)
+
   const allLines = []
   const candidates = []
   for (const pageLines of pages) {
@@ -69,7 +84,7 @@ export async function extractTextFromPDF(file, onProgress) {
       if (isEdge && boiler.has(sig(l.text))) return   // 러닝헤더/푸터 제거
 
       const idx = allLines.length
-      allLines.push(l.text)
+      allLines.push(indentOf(l.x) + l.text.trim())
 
       const t = l.text.trim(), x = l.x
       if (x < 130 && t.length >= 5 && t.length <= 75) {

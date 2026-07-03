@@ -4,6 +4,7 @@
 // 서버(3001) 필요. 자막(KR srt/smi)이 있으면 말투·관계 가이드 근거로 씀. 번역엔 자막을 직접 안 넣음.
 import { readFileSync, writeFileSync, readdirSync, copyFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { reflowBody } from '../src/lib/format-rules.js'   // 끊긴 문장 합치기(변환과 동일)
 
 const CONTENT = '/Users/hojun/Projects/scriptroom/content'
 const SERVER = 'http://localhost:3001'
@@ -17,6 +18,10 @@ const DIAGNOSE_ONLY = process.argv.includes('--diagnose-only')   // 진단만 �
 const pjIdx = process.argv.indexOf('--profile-json')
 const PROFILE_JSON = pjIdx >= 0 ? (process.argv[pjIdx + 1] || '') : ''        // 진단 건너뛰고 이 프로파일로 번역(게이트 2단계)
 const PROFILE_OUT = '/tmp/reproc_profile.json'
+const srcIdx = process.argv.indexOf('--src')
+const SRC = srcIdx >= 0 ? (process.argv[srcIdx + 1] || '') : ''               // formatted 소스 오버라이드(/tmp 재추출본). 있으면 content _formatted 안 읽음
+const outIdx = process.argv.indexOf('--out')
+const OUT = outIdx >= 0 ? (process.argv[outIdx + 1] || '') : ''               // 출력 경로 오버라이드(/tmp). 있으면 content _translated 안 건드림(다운로드용)
 if (!work) { console.error('사용: node tools/retranslate.mjs <작품폴더> --guide|--write'); process.exit(1) }
 
 const dir = join(CONTENT, work)
@@ -24,8 +29,9 @@ const files = readdirSync(dir)
 const fmtFile = files.find(f => /_formatted\.txt$/.test(f))
 const trFile = files.find(f => /_translated\.txt$/.test(f))
 const subFile = files.find(f => /KR\.(srt|smi)$/i.test(f)) || files.find(f => /\.(srt|smi)$/i.test(f) && /kr|ko|한/i.test(f)) || files.find(f => /\.(srt|smi)$/i.test(f))  // 마지막 fallback: 아무 자막이나(한글 없으면 subtitleSample이 비워 무시)
-if (!fmtFile) { console.error('_formatted.txt 없음'); process.exit(1) }
-const enText = readFileSync(join(dir, fmtFile), 'utf8').replace(/\r/g, '')
+if (!fmtFile && !SRC) { console.error('_formatted.txt 없음'); process.exit(1) }
+let enText = readFileSync(SRC || join(dir, fmtFile), 'utf8').replace(/\r/g, '')   // SRC(/tmp 재추출본) 우선, 없으면 content 읽기
+enText = reflowBody(enText.split('\n')).join('\n')   // PDF 단 너비로 끊긴 문장 한 줄로 (번역 줄나눔 개선)
 
 // 씬 분할: # 헤딩 기준
 function splitScenes(text) {
@@ -138,7 +144,7 @@ if (GUIDE_ONLY) { console.log('(--guide 모드 — 번역 안 함)'); process.ex
 if (!WRITE) { console.log('(--write 없음 — 번역 안 함)'); process.exit(0) }
 
 const RESUME = process.argv.includes('--resume')
-const koPath = join(dir, trFile || fmtFile.replace('_formatted', '_translated'))
+const koPath = OUT || join(dir, trFile || fmtFile.replace('_formatted', '_translated'))   // OUT 있으면 /tmp(다운로드용), 없으면 content
 const scenes = splitScenes(enText)
 // --resume: 기존 번역본에서 이미 한글인 씬은 재사용, 영어로 남은(실패) 씬만 재번역
 let prevKo = null
@@ -149,7 +155,7 @@ if (RESUME && existsSync(koPath)) {
 }
 const reuseCount = prevKo ? prevKo.filter(s => /[가-힣]/.test(s)).length : 0
 console.log(`=== 번역 시작: ${scenes.length}씬${RESUME && prevKo ? ` (재사용 ${reuseCount} · 재번역 ${scenes.length - reuseCount})` : ''} ===`)
-if (existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(koPath, koPath + '.retbak')   // 원본 1회 백업(선)
+if (!OUT && existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(koPath, koPath + '.retbak')   // content 모드일 때만 원본 백업 (OUT=/tmp면 백업 불필요)
 // 현재까지 번역분 + 나머지 영문으로 전체 구조 유지해 저장 (끊겨도 안 날아감 / --resume으로 이어감)
 const checkpoint = (out) => { try { writeFileSync(koPath, [...out, ...scenes.slice(out.length)].join('\n\n') + '\n') } catch {} }
 const outScenes = []

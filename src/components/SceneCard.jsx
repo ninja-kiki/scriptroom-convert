@@ -136,11 +136,11 @@ function SceneDetail({ scene, viewMode, onViewChange }) {
       {/* 고정 높이 스크롤 박스 — 포맷·번역 모두 같은 크기로 열려 방향키 읽기에 일관됨 */}
       <div data-scene-scroll style={{ height: 300, overflowY: 'auto' }}>
         {tab === 'translated'
-          ? <AnnotatedTranslation text={scene.translated || ''} smiMatches={scene.smiMatches} />
+          ? <AnnotatedTranslation text={scene.translated || ''} />
           : <pre style={{ ...preStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{current?.text || ''}</pre>
         }
       </div>
-      {scene.error && (() => {
+      {scene.status?.startsWith('error') && scene.error && (() => {   // 성공(done)한 씬엔 옛 에러 안 띄움 — 실패 상태일 때만
         const e = classifyError(scene.error)
         return (
           <div style={{ marginTop: 8 }}>

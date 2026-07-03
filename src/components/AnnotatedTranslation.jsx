@@ -1,61 +1,47 @@
-import { useState } from 'react'
 import { T } from '../lib/core.js'
 
-const tooltipStyle = () => ({
-  display: 'block', marginTop: 4, marginBottom: 4,
-  background: T.bgInput, border: `1px solid ${T.accent}44`,
-  borderRadius: 3, padding: '6px 10px', fontSize: 11,
-  fontFamily: 'sans-serif', whiteSpace: 'normal',
-})
-
-export default function AnnotatedTranslation({ text, smiMatches, fontSize = 12 }) {
-  const [tooltip, setTooltip] = useState(null)
-  if (!smiMatches || smiMatches.length === 0) {
-    return <pre style={preStyle(fontSize)}>{text}</pre>
+// 번역본 렌더. 대부분은 평문(monospace)이지만, [크레딧: …]·[자막: …] 마커는 영화처럼 연출.
+//  (자막 유사도 매칭은 제거됨 — 각본과 영화자막은 본디 유사하기 힘들어 혼란만 줌.)
+export default function AnnotatedTranslation({ text, fontSize = 12 }) {
+  const lines = (text || '').split('\n')
+  // 마커 블록([크레딧:/자막: … ]) 단위로 묶고, 나머지 평문 줄은 이어서 하나의 pre로
+  const blocks = []
+  let plain = []
+  const flushPlain = () => { if (plain.length) { blocks.push({ type: 'plain', text: plain.join('\n') }); plain = [] } }
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^\s*\[(크레딧|자막)\s*:/)
+    if (m) {
+      let j = i, buf = [lines[i]]
+      while (j < lines.length && !/\]\s*$/.test(lines[j])) { j++; if (j < lines.length) buf.push(lines[j]) }
+      const content = buf.join('\n').replace(/^\s*\[(크레딧|자막)\s*:\s*/, '').replace(/\]\s*$/, '').trim()
+      flushPlain()
+      blocks.push({ type: m[1], text: content })
+      i = j
+    } else plain.push(lines[i])
   }
-
-  const matchByLine = {}
-  smiMatches.forEach(m => { matchByLine[m.lineIdx] = m })
-  const lines = text.split('\n')
-  const alignedCount = smiMatches.filter(m => m.aligned).length
+  flushPlain()
 
   return (
     <div>
-      {alignedCount > 0 && (
-        <div style={{ color: T.fgDim, fontSize: 11, marginBottom: 6 }}>
-          공식 자막과 정렬 {alignedCount}줄 <span style={{ color: T.accent }}>┄</span> 점선 — 클릭하면 공식 자막과 비교 (번역은 안 바뀜)
-        </div>
-      )}
-      <pre style={{ ...preStyle(fontSize), whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-        {lines.map((line, idx) => {
-          const m = matchByLine[idx]
-          // 확신 정렬된 대사 줄만 표시 (참고용 — 텍스트 교체 없음)
-          if (!m || !m.aligned) return <span key={idx}>{line + '\n'}</span>
-          const diff = (m.smiText || '').trim() !== (m.original || '').trim()
-          return (
-            <span key={idx} style={{ position: 'relative' }}>
-              <span onClick={() => setTooltip(tooltip?.lineIdx === idx ? null : { lineIdx: idx })}
-                style={{ textDecoration: 'underline dotted', textDecorationColor: diff ? T.warn : T.accent, textUnderlineOffset: 3, color: T.fg, cursor: 'pointer' }}>
-                {line}
-              </span>
-              {tooltip?.lineIdx === idx && (
-                <span style={tooltipStyle()}>
-                  <span style={{ color: T.accent }}>이 번역</span> {m.original}<br/>
-                  <span style={{ color: diff ? T.warn : T.fgDim }}>공식 자막</span> <span style={{ color: T.fgMuted }}>{m.smiText}</span><br/>
-                  <span style={{ color: T.fgDim }}>유사도 {Math.round(m.similarity * 100)}%{diff ? ' · 표현 다름(검토)' : ' · 거의 동일'}</span>
-                </span>
-              )}
-              {'\n'}
-            </span>
-          )
-        })}
-      </pre>
+      {blocks.map((b, i) => {
+        if (b.type === '크레딧') return (
+          <div key={i} style={{ margin: '18px 0', padding: '16px 18px', textAlign: 'center', borderTop: `1px solid ${T.rule}`, borderBottom: `1px solid ${T.rule}` }}>
+            <div style={{ fontSize: 9.5, letterSpacing: 2, color: T.fgDim, textTransform: 'uppercase', marginBottom: 8 }}>Credit</div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: fontSize + 3, lineHeight: 1.75, color: T.fg, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{b.text}</div>
+          </div>
+        )
+        if (b.type === '자막') return (
+          <div key={i} style={{ margin: '10px 0', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ maxWidth: '85%', padding: '5px 14px', borderRadius: 4, background: T.fg + '10', textAlign: 'center', fontStyle: 'italic', fontSize: fontSize + 1, lineHeight: 1.6, color: T.fgMuted, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{b.text}</div>
+          </div>
+        )
+        return <pre key={i} style={preStyle(fontSize)}>{b.text}</pre>
+      })}
     </div>
   )
 }
 
 const preStyle = (fontSize) => ({
   fontFamily: 'monospace', fontSize, color: T.fg,
-  lineHeight: 1.9, margin: 0,
+  lineHeight: 1.9, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
 })
-

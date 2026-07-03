@@ -9,6 +9,15 @@ const wi = process.argv.indexOf('--write')
 const outPath = wi >= 0 ? process.argv[wi + 1] : null
 if (!pdfPath) { console.error('PDF 경로 필요'); process.exit(1) }
 
+// 볼드 효과를 텍스트 레이어에 다중으로 그린 PDF(스파이더맨 류) 대응 — 한 줄 안에서
+// 같은 문자열이 연달아 반복되면 1회로 접는다. "EXT. HOUSE - DAYEXT. HOUSE - DAY...1111" → "EXT. HOUSE - DAY1"
+function collapseRepeats(orig) {
+  let s = orig, prev
+  do { prev = s; s = s.replace(/(.{6,}?)\1+/g, '$1') } while (s !== prev)
+  // 긴 단위가 실제로 접혔을 때만 꼬리 동일숫자 다발(1111→1)도 접기 — 연도(2000) 같은 정상 숫자 보호
+  return s !== orig ? s.replace(/(\d)\1{2,}\s*$/, '$1') : s
+}
+
 // 1) 줄 추출 (text, x=시작좌표, y) — y로 줄 묶고, 페이지번호/머리말 제거는 단순화
 async function extractLines(path) {
   const data = new Uint8Array(readFileSync(path))
@@ -18,7 +27,7 @@ async function extractLines(path) {
     const page = await pdf.getPage(p)
     const items = (await page.getTextContent()).items.filter(i => 'str' in i)
     let lastY = null, x = null, text = ''
-    const push = () => { if (text.trim()) lines.push({ text: text.replace(/\s+/g, ' ').trim(), x, y: lastY, page: p }) }
+    const push = () => { if (text.trim()) lines.push({ text: collapseRepeats(text.replace(/\s+/g, ' ').trim()), x, y: lastY, page: p }) }
     for (const it of items) {
       const ix = it.transform[4], iy = it.transform[5]
       if (lastY !== null && Math.abs(iy - lastY) > 3) { push(); text = ''; x = null }
@@ -30,12 +39,49 @@ async function extractLines(path) {
   return lines
 }
 
-// 2) x밴드 자동 감지: 지문(좌측 최빈), 인물(큰 들여쓰기), 대사(중간)
+// 1.5) 러닝 헤더/푸터 제거 — 여러 페이지에 반복 등장하는 동일 줄(페이지 꼬릿말·워터마크·출처 URL 등).
+//   병합(soft-wrap) 전에 없애야 footer가 다음 페이지 본문과 한 줄로 붙는 오염을 막는다.
+function stripRepeatedBoiler(lines) {
+  const norm = t => t.replace(/\s+/g, ' ').trim()
+  const maxPage = Math.max(1, ...lines.map(l => l.page))
+  const freq = new Map()
+  for (const l of lines) { const k = norm(l.text); if (k.length >= 8) freq.set(k, (freq.get(k) || 0) + 1) }
+  const thr = Math.max(3, Math.floor(maxPage * 0.3))
+  const boiler = [...freq].filter(([, c]) => c >= thr).map(([k]) => k)
+  if (!boiler.length) return lines
+  const boilerSet = new Set(boiler)
+  const longBoiler = boiler.filter(b => b.length >= 20)   // 본문 단어 오삭제 방지: 긴 것만 부분 제거
+  const out = []
+  for (const l of lines) {
+    if (boilerSet.has(norm(l.text))) continue              // 단독 boiler 줄 통째 제거
+    let text = l.text
+    for (const b of longBoiler) if (text.includes(b)) text = text.split(b).join(' ').replace(/\s+/g, ' ').trim()  // 본문에 붙어버린 footer 부분 제거
+    if (text.trim()) out.push({ ...l, text })
+  }
+  return out
+}
+
+// 2) x밴드 자동 감지: 인물 큐는 '실제 큐 후보의 x 클러스터'로 잡는다(데이터 기반).
+//   PDF마다 큐 들여쓰기가 달라, 지문여백+고정오프셋(예전 방식)은 큐 밴드가 어긋나 큐를 통째로 놓쳤다(big: 큐 x325인데 밴드 x525로 추정 → 큐 0).
 function detectBands(lines) {
-  const freq = {}
-  for (const l of lines) { const b = Math.round(l.x / 5) * 5; freq[b] = (freq[b] || 0) + 1 }
+  const bx = x => Math.round(x / 5) * 5
+  const freq = {}, cueFreq = {}
+  for (const l of lines) {
+    const k = bx(l.x); freq[k] = (freq[k] || 0) + 1
+    if (isRealCue(l.text)) cueFreq[k] = (cueFreq[k] || 0) + 1
+  }
   const xsByFreq = Object.entries(freq).map(([x, n]) => [+x, n]).sort((a, b) => b[1] - a[1])
-  const xAction = Math.min(...xsByFreq.slice(0, 3).map(e => e[0]))   // 상위 빈도 중 가장 왼쪽 = 지문 여백
+  const cueSorted = Object.entries(cueFreq).map(([x, n]) => [+x, n]).sort((a, b) => b[1] - a[1])
+  // 큐 후보가 한 x에 충분히 모이면(≥5) 그 클러스터를 큐 밴드로 신뢰
+  if (cueSorted.length && cueSorted[0][1] >= 5) {
+    const xChar = cueSorted[0][0]
+    const character = xChar - 20                                       // 큐 클러스터 살짝 아래까지 큐로 인정
+    const leftPeaks = xsByFreq.filter(([x]) => x < character - 30)     // 큐보다 확실히 왼쪽 = 지문/대사
+    const xAction = leftPeaks.length ? Math.min(...leftPeaks.slice(0, 3).map(e => e[0])) : xChar - 220
+    return { xAction, dialogue: Math.round((xAction + character) / 2), character, transition: xChar + 300 }
+  }
+  // 폴백: 큐 클러스터를 못 찾으면 예전 방식(지문 최빈 + 고정 오프셋)
+  const xAction = Math.min(...xsByFreq.slice(0, 3).map(e => e[0]))
   return { xAction, dialogue: xAction + 50, character: xAction + 110, transition: xAction + 320 }
 }
 
@@ -96,7 +142,10 @@ function build(lines, b) {
   return body.map(b => b.text).join('\n\n') + '\n'
 }
 
-const lines = await extractLines(pdfPath)
+let lines = await extractLines(pdfPath)
+const before = lines.length
+lines = stripRepeatedBoiler(lines)
+if (lines.length < before) console.error(`러닝 헤더/푸터 제거: ${before - lines.length}줄`)
 const bands = detectBands(lines)
 console.error(`줄 ${lines.length} · x밴드: 지문<${bands.dialogue} 대사${bands.dialogue}-${bands.character} 인물≥${bands.character}`)
 const formatted = build(lines, bands)

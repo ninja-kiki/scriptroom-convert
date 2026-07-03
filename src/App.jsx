@@ -4,7 +4,7 @@ import { extractText, ocrPdfViaServer, splitIntoScenes, splitByHeadingIndices, p
 import { ruleFormat } from './lib/format-rules.js'
 import { splitGluedAction } from './lib/lint.js'
 import { analyzeScenes } from './lib/analyze.js'
-import { parseSMIEntries, alignSmi, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
+import { parseSMIEntries, decodeSubtitle, parseSubtitleLines, subtitleInfo } from './lib/smi.js'
 import { detectFileType } from './lib/revise.js'
 import UploadStep from './components/UploadStep.jsx'
 import ReviewStep from './components/ReviewStep.jsx'
@@ -257,14 +257,12 @@ export default function App() {
         model: loadSettings().translateModel || loadSettings().model,
       })
       const rawTranslated = cleanOutput(_tr.translated)
-      // 자막 교체 안 함 — 정렬 메타(검토용 노랑 표시)만 계산
-      const smiMatches = smiEntriesRef.current ? alignSmi(rawTranslated, smiEntriesRef.current).matches : []
       if (!translationStructureOk(scene.formatted, rawTranslated)) {
         updateScene(scene.id, { status: 'error_translate', error: '구조 불일치: 영문 포맷과 줄·마커 수가 안 맞음 (누락/창작/거부 의심) — 재처리 필요' })
         return false
       }
       updateScene(scene.id, {
-        status: 'done', translated: rawTranslated, smiMatches,
+        status: 'done', translated: rawTranslated,
         tokens: { ...scene.tokens, translate_in: estTokens(scene.formatted), translate_out: estTokens(rawTranslated) },
       })
       return true
@@ -324,9 +322,7 @@ export default function App() {
       const parts = splitByHeading(raw)
       if (parts.length !== batch.length) { await fallback(); return } // 안전: 개수 안 맞으면 개별로
       batch.forEach((s, i) => {
-        // 자막 교체 안 함 — 정렬 메타(검토용)만
-        const matches = smiEntriesRef.current ? alignSmi(parts[i], smiEntriesRef.current).matches : []
-        updateScene(s.id, { status: 'done', translated: parts[i], smiMatches: matches, batched: true,
+        updateScene(s.id, { status: 'done', translated: parts[i], batched: true,
           tokens: { ...s.tokens, translate_in: estTokens(s.formatted), translate_out: estTokens(parts[i]) } })
       })
     } catch (e) {
@@ -494,12 +490,16 @@ export default function App() {
     // 더 나은 쪽 선택: 표준 헤딩(INT./EXT. 등)을 더 많이 인식한 결과를 채택
     const headedCount = list => (list || []).filter(s => isLikelyHeading((s.raw.split('\n').find(l => l.trim()) || ''))).length
     const aiH = headedCount(aiScenes), ruleH = headedCount(ruleScenes)
-    if (aiScenes && aiH >= ruleH) {
+    // 원본에 실제로 있는 INT./EXT. 헤딩 수 — LLM이 특이 헤딩(<<COLOUR SEQUENCE>>·씬번호 등)을 대량 누락했는지 판정용
+    const rawH = (rawText.match(/^[ \t]*(INT\.|EXT\.|I\/E\.)/gim) || []).length + (rawText.match(/^[ \t]*[A-Z]?\d+\.?\s+(INT\.|EXT\.)/gim) || []).length
+    // LLM은 원본 헤딩의 80% 이상 잡을 때만 채택 — 규칙이 원본을 훨씬 잘 잡으면(memento처럼) 규칙 우선
+    const aiTrustworthy = aiScenes && aiH >= ruleH && (rawH === 0 || aiH >= rawH * 0.8)
+    if (aiTrustworthy) {
       rawScenes = aiScenes; diag.method = 'ai'
     } else {
       rawScenes = ruleScenes; diag.method = aiScenes ? 'ai→regex' : 'regex'
     }
-    diag.aiHeadings = aiH; diag.ruleHeadings = ruleH
+    diag.aiHeadings = aiH; diag.ruleHeadings = ruleH; diag.rawHeadings = rawH
     diag.scenes = rawScenes.length
 
     const warnings = analyzeScenes(rawScenes, rawText)
@@ -596,7 +596,7 @@ export default function App() {
   }, [])
 
   // Step 2: 검토 후 변환 시작 — 서버에 잡 생성 후 폴링. (루프는 서버가 소유)
-  async function handleStart(characterMemo) {
+  async function handleStart(characterMemo, cleanupInstr = '') {
     characterMemoRef.current = characterMemo || ''
     // 표시·처리 모두 긴 씬을 청크 분할한 결과 기준
     const initialScenes = forceSplitScenes(reviewScenes)
@@ -624,7 +624,11 @@ export default function App() {
         ? { lines: smiLinesRef.current, entries: smiEntriesRef.current, info: smiInfo }
         : null,
       settings,
-      guidelines: { format: loadGuidelines('format'), translate: loadGuidelines('translate') },
+      guidelines: (() => {
+        const ci = (cleanupInstr || '').trim()
+        const s = ci ? `\n\n[사용자 정리·제거 지시 — 최우선 반영]\n${ci}` : ''
+        return { format: loadGuidelines('format') + s, translate: loadGuidelines('translate') + s }
+      })(),
       characterMemo: characterMemo || '',
     }
     try {

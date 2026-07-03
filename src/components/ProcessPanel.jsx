@@ -137,7 +137,11 @@ export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo
         if (ni < 0 || ni >= visible.length) return
         const nextId = visible[ni].id
         setExpandedId(nextId)
-        setTimeout(() => document.querySelector(`[data-scene-id="${nextId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
+        setTimeout(() => {
+          document.querySelector(`[data-scene-id="${nextId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          // 위로 올라온 경우엔 이전 씬을 맨 아래부터 (읽던 흐름 유지)
+          if (!down) { const nb = document.querySelector(`[data-scene-id="${nextId}"] [data-scene-scroll]`); if (nb) nb.scrollTop = nb.scrollHeight }
+        }, 0)
       } else if (e.key === 'Escape') {
         setExpandedId(null)
       }
@@ -287,10 +291,10 @@ export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo
                   style={{ ...ctrlBtn, opacity: glossDraft === null ? 0.4 : 1 }}>저장</button>
                 <button className="sr-press" onClick={() => { if (window.confirm('현재 말투 가이드로 전체를 다시 번역할까요? 기존 번역을 새로 덮어쓰고 토큰을 씁니다.')) onRetranslate(true) }}
                   style={tintBtn(T.accent)}>이 가이드로 다시 번역</button>
-                <button className="sr-press" onClick={() => { if (window.confirm('말투 가이드를 자막 근거로 새로 만들고 전체를 다시 번역할까요?')) onRetranslate(false) }}
-                  style={tintBtn(T.fgMuted)}>새로 생성 + 다시 번역</button>
+                <button className="sr-press" onClick={() => { if (window.confirm('작품 진단을 처음부터 다시 받고(말투 가이드 + 인명 표기 사전 새로 생성) 전체를 다시 번역할까요? 토큰을 더 씁니다.')) onRetranslate(false) }}
+                  style={tintBtn(T.fgMuted)}>진단부터 새로 + 다시 번역</button>
               </div>
-              <div style={{ color: T.fgDim, fontSize: 11, marginTop: 6 }}>의역·호칭이 어긋나면 여기서 고치고 <b>저장</b> → "이 가이드로 다시 번역". 자막의 말투 판단이 잘못 잡혔을 때 사람이 바로잡는 곳이에요.</div>
+              <div style={{ color: T.fgDim, fontSize: 11, marginTop: 6 }}>의역·호칭이 어긋나면 여기서 고치고 <b>저장</b> → "이 가이드로 다시 번역". <b>인물 이름이 씬마다 흔들리면</b> "진단부터 새로" — 인명 표기를 한 번 정해 전 씬에 통일해요.</div>
             </div>
           )}
         </div>

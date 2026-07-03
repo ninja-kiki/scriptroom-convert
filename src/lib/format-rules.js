@@ -54,6 +54,28 @@ function toCue(line) {
 }
 
 // 씬 raw → { formatted, confidence(0~1), stats }. confidence 낮으면 LLM 권장.
+// PDF 단 너비로 한 문장이 여러 줄로 끊긴 걸 한 줄로 합침(리플로우).
+// 본문(지문/대사)에서 '앞 줄이 종결부호 없이 끝 + 다음 줄도 본문'이면 이어붙임.
+// 마커(#·@·괄호)·종결부호·빈 줄·목록은 경계로 보고 합치지 않음.
+export function reflowBody(lines) {
+  const res = []
+  for (const line of lines) {
+    const t = line.trim()
+    const prev = res.length ? res[res.length - 1] : null
+    const prevT = prev != null ? prev.trim() : ''
+    const bodyPrev = prevT && !/^[#@(]/.test(prevT)
+    const bodyCur = t && !/^[#@(]/.test(t)
+    const prevOpen = !/[.!?…:;"'’”)\]]$/.test(prevT)   // 앞 줄이 종결부호 없이 끝남(=문장 미완)
+    const curContinues = !/^[-•*]/.test(t)             // 다음 줄이 목록 표시로 시작하지 않음
+    if (bodyPrev && bodyCur && prevOpen && curContinues) {
+      res[res.length - 1] = prev.replace(/\s+$/, '') + ' ' + t
+    } else {
+      res.push(line)
+    }
+  }
+  return res
+}
+
 export function ruleFormat(raw) {
   const cleaned = raw.split('\n').filter(l => {
     const t = l.trim()
@@ -62,18 +84,32 @@ export function ruleFormat(raw) {
     return true
   })
 
+  // 들여쓰기 밴드 감지 — 추출이 x좌표를 앞 공백으로 보존해줌(각본은 왼쪽여백=지문, 들여쓰기=대사).
+  // 지문 깊이 = 비어있지 않은 줄의 최빈 들여쓰기. 대사 = 그보다 4칸+ 깊은 줄.
+  const indentOf = (l) => (l.match(/^ */) || [''])[0].length
+  const freq = new Map()
+  for (const l of cleaned) { if (l.trim()) { const d = indentOf(l); freq.set(d, (freq.get(d) || 0) + 1) } }
+  const actionDepth = [...freq].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0
+  const hasIndent = [...freq.keys()].some(d => d >= actionDepth + 4)   // 들여쓰기 정보가 실재할 때만 사용
+  const isDialogueDepth = (l) => hasIndent && indentOf(l) >= actionDepth + 4
+
   const out = []
   let headings = 0, cues = 0, bodyLines = 0
   let firstContentSeen = false, firstIsHeading = false
+  let prevBodyWasDialogue = false
 
   for (const line of cleaned) {
     const t = line.trim()
-    if (!t) { out.push(''); continue }
+    if (!t) { out.push(''); prevBodyWasDialogue = false; continue }
     const heading = isStrictHeading(t)
     if (!firstContentSeen) { firstContentSeen = true; firstIsHeading = heading }
-    if (heading) { out.push(normalizeHeading(t)); headings++; continue }
-    if (isCharCue(t)) { out.push(toCue(t)); cues++; continue }
-    out.push(line); bodyLines++ // 지문/대사 — 마커 없음
+    if (heading) { out.push(normalizeHeading(t)); headings++; prevBodyWasDialogue = false; continue }
+    if (isCharCue(t)) { out.push(toCue(t)); cues++; prevBodyWasDialogue = true; continue }   // 큐 다음은 대사 맥락
+    // 대사 들여쓰기 → 지문(왼쪽) 복귀 지점에 빈 줄 — 대사·지문이 붙는 근본 원인 차단
+    const dlg = isDialogueDepth(line)
+    if (prevBodyWasDialogue && !dlg && out.length && out[out.length - 1].trim() !== '') out.push('')
+    out.push(t); bodyLines++ // 지문/대사 — 마커 없음 (출력은 평평하게)
+    prevBodyWasDialogue = dlg
   }
 
   // 확신도
@@ -83,5 +119,5 @@ export function ruleFormat(raw) {
   if (bodyLines > 8 && cues === 0) confidence -= 0.4 // 본문 많은데 인물 큐 0 = 의심
   confidence = Math.max(0, confidence)
 
-  return { formatted: out.join('\n'), confidence, stats: { headings, cues, bodyLines } }
+  return { formatted: reflowBody(out).join('\n'), confidence, stats: { headings, cues, bodyLines } }
 }

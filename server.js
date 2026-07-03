@@ -3,9 +3,8 @@ import { spawn, execSync } from 'child_process'
 import { readdirSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, unlinkSync, mkdtempSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { ruleFormat } from './src/lib/format-rules.js'
-import { alignSmi } from './src/lib/smi.js'
-import { splitGluedAction } from './src/lib/lint.js'
+import { ruleFormat, reflowBody } from './src/lib/format-rules.js'
+import { splitGluedAction, detect } from './src/lib/lint.js'
 import {
   estTokens, cleanOutput, looksLikeRefusal, buildDialogueSample, buildSubtitleSample, buildBatches, splitByHeading,
 } from './src/lib/pipeline.js'
@@ -17,6 +16,7 @@ const CONTENT_DIR = '/Users/hojun/Projects/scriptroom/content'   // 기존 작�
 
 // 기존 작품 재변환 — reprocess.mjs(PDF재추출→청소→진단→재번역)를 자식 프로세스로. 한 번에 하나.
 let reproc = { running: false, work: null, log: [], done: false, error: null, startedAt: null }
+let reprocQueue = []   // 대기열: [{ work, instruction }] — 현재 작업이 끝나면 자동으로 다음 시작(자동 진행)
 function handleWorks() {
   let works = []
   try {
@@ -25,6 +25,15 @@ function handleWorks() {
     }).sort()
   } catch {}
   return { works }
+}
+// 기존 번역본에 '통째로 반복된 깨진 단락'(번역 고장)이 있는지 — 재번역하면 사라지므로 게이트에서 알려줌.
+function countTranslationBreakage(work) {
+  try {
+    const dir = join(CONTENT_DIR, work)
+    const f = readdirSync(dir).find(x => /_translated\.txt$/.test(x))
+    if (!f) return 0
+    return detect(readFileSync(join(dir, f), 'utf8')).repeat.length
+  } catch { return 0 }
 }
 const REPROC_PROFILE = '/tmp/reproc_profile.json'
 const REPROC_HISTORY = `${process.cwd()}/reproc-history.json`
@@ -38,9 +47,56 @@ function addReprocHistory(work, status) {   // status: 'done' | 'stopped' | 'err
 }
 function reprocPush(d) { reproc.log.push(...d.toString().split('\n').filter(Boolean)); if (reproc.log.length > 400) reproc.log = reproc.log.slice(-400) }
 // 게이트 2단계(또는 이어하기): 번역 실행. resume이면 --resume(한글 씬 건너뛰고 이어감)·진단 재사용 안 함.
+function reprocOutPath(work) { return `/tmp/reproc_result_${(work || '').replace(/[^\w.-]/g, '_')}.txt` }
+// 재번역 전(content 현재 번역본) vs 후(/tmp 결과) 씬 단위 diff — 대표 변화 몇 개. LLM 0.
+function reprocDiff(work) {
+  try {
+    const outPath = reprocOutPath(work)
+    if (!existsSync(outPath)) return null
+    const dir = join(CONTENT_DIR, work)
+    const trFile = readdirSync(dir).find(f => /_translated\.txt$/.test(f))
+    if (!trFile) return null
+    const splitScenes = t => t.replace(/\r/g, '').split(/\n(?=# )/).map(s => s.trim()).filter(Boolean)
+    const before = splitScenes(readFileSync(join(dir, trFile), 'utf8'))
+    const after = splitScenes(readFileSync(outPath, 'utf8'))
+    const n = Math.min(before.length, after.length)
+    const pairs = []; let changed = 0
+    for (let i = 0; i < n; i++) {
+      if (before[i] === after[i]) continue
+      changed++
+      if (pairs.length < 4) pairs.push({ before: before[i].slice(0, 320), after: after[i].slice(0, 320) })
+    }
+    return { pairs, changed, total: n }
+  } catch { return null }
+}
+// 재번역 결과(또는 소스) 품질 검사 — 깨진 결과를 '완료'로 안 내보내고 걸러주기 위함.
+function reprocQualityIssues(text, isResult) {
+  const out = []
+  const lines = (text || '').split('\n')
+  // 워터마크·URL 노이즈: 같은 꼬릿말/URL이 매 페이지 반복되는 건 autofix(boiler 제거)가 지우므로 경고 대상이 아님.
+  // '서로 다른' 노이즈가 본문에 산재할 때만(=고유 종류가 많을 때) 재번역이 깨질 진짜 오염으로 본다.
+  // (페이지번호 N/N 은 확실한 autofix 대상이라 게이트에서 제외)
+  const noiseLines = lines.filter(l => /https?:\/\//i.test(l) || /studiobinder/i.test(l))
+  const distinctNoise = new Set(noiseLines.map(l => l.trim())).size
+  if (noiseLines.length >= 10 && distinctNoise >= 8) out.push(`PDF 워터마크·URL 노이즈 ${distinctNoise}종`)
+  const heads = lines.filter(l => /^#\s/.test(l))
+  const rep = heads.filter(l => /(.{8,}?)\1/.test(l.replace(/^#\s*/, ''))).length                                  // 같은 구절 반복(영어 3중 등)
+  const enMix = isResult ? heads.filter(l => /[A-Z]{3,}[ .].*[A-Z]{3,}/.test(l.replace(/^#\s*/, ''))).length : 0    // 결과(한글)인데 영어 헤딩 잔존
+  const broken = Math.max(rep, enMix)
+  if (heads.length >= 5 && broken >= heads.length * 0.3) out.push(`씬 제목 깨짐 ${broken}개`)
+  if (isResult) {
+    const body = lines.filter(l => l.trim() && !/^[#@(]/.test(l))
+    const en = body.filter(l => !/[가-힣]/.test(l) && /[A-Za-z]{4,}/.test(l) && !/^[A-Z][A-Z .]{2,}$/.test(l.trim())).length
+    if (body.length >= 20 && en / body.length > 0.15) out.push(`미번역 영어 본문 ${en}줄`)
+  }
+  return out
+}
 function reprocStartTranslate(resume = false) {
   reproc.phase = 'translating'; reproc.running = true; reproc.done = false
-  const args = ['tools/retranslate.mjs', reproc.work, '--write']
+  const OUT = reprocOutPath(reproc.work)
+  reproc.outPath = OUT; reproc.resultReady = false   // 결과는 /tmp(다운로드용) — content 안 건드림
+  const args = ['tools/retranslate.mjs', reproc.work, '--write', '--out', OUT]
+  if (existsSync('/tmp/reproc_fmt.txt')) args.push('--src', '/tmp/reproc_fmt.txt')   // 진단 때 재추출한 소스 사용
   if (resume) args.push('--resume')
   else args.push('--profile-json', REPROC_PROFILE)
   if (reproc.instruction) args.push('--instruction', reproc.instruction)
@@ -51,9 +107,22 @@ function reprocStartTranslate(resume = false) {
     reproc.child = null; if (reproc.stopped) return
     reproc.running = false; reproc.done = true; reproc.phase = 'done'
     if (code !== 0) reproc.error = `종료 코드 ${code}`
+    else {
+      reproc.resultReady = existsSync(OUT)   // 완료 → 다운로드 가능
+      try { reproc.qualityIssues = reproc.resultReady ? reprocQualityIssues(readFileSync(OUT, 'utf8'), true) : [] } catch { reproc.qualityIssues = [] }
+      try { reproc.diff = reproc.resultReady ? reprocDiff(reproc.work) : null } catch { reproc.diff = null }   // 이전↔이후 대표 변화
+    }
     addReprocHistory(reproc.work, code === 0 ? 'done' : 'error')
+    reprocAdvance()   // 대기열에 다음 작품 있으면 자동 시작
   })
-  child.on('error', (e) => { reproc.child = null; reproc.running = false; reproc.done = true; reproc.error = e.message; addReprocHistory(reproc.work, 'error') })
+  child.on('error', (e) => { reproc.child = null; reproc.running = false; reproc.done = true; reproc.error = e.message; addReprocHistory(reproc.work, 'error'); reprocAdvance() })
+}
+// 대기열 다음 작품 자동 시작 (현재 작업이 완료/실패로 끝났을 때 호출). 큐 항목은 게이트 없이 자동 진행.
+function reprocAdvance() {
+  if (reproc.running) return
+  const next = reprocQueue.shift()
+  if (!next) return
+  startReprocDiagnose(next.work, next.instruction, true, false)
 }
 function handleReprocessStop() {
   if (!reproc.running) throw new Error('진행 중인 작업이 없습니다')
@@ -64,17 +133,8 @@ function handleReprocessStop() {
   addReprocHistory(reproc.work, 'stopped')   // 중단 = 이어하기 가능
   return { ok: true }
 }
-function handleReprocess(body) {
-  if (reproc.running) throw new Error('이미 재변환이 진행 중입니다')
-  const { work, translateOnly, instruction, autoGo, resume } = body || {}
-  if (!work) throw new Error('work required')
-  // 이어하기: 진단·재추출 없이 바로 번역(--resume). 중단·실패한 작품을 이어감.
-  if (resume) {
-    reproc = { running: true, work, instruction: (instruction || '').trim(), phase: 'translating', log: ['이어하기 — 남은 씬만 번역'], done: false, error: null, profile: null, sceneCount: 0, estMin: 0, autoGo: true, stopped: false, child: null, startedAt: Date.now() }
-    reprocStartTranslate(true)
-    return { ok: true, work, resumed: true }
-  }
-  // 1단계: 진단까지만 (PDF 재추출+청소+진단). 끝나면 autoGo면 바로 번역, 아니면 'awaiting_go'로 대기.
+// 진단 1단계 시작 (PDF 재추출+청소+진단). 끝나면 autoGo면 바로 번역, 아니면 'awaiting_go'로 대기.
+function startReprocDiagnose(work, instruction, autoGo, translateOnly) {
   reproc = { running: true, work, instruction: (instruction || '').trim(), phase: 'diagnosing', log: [], done: false, error: null, profile: null, sceneCount: 0, estMin: 0, autoGo: !!autoGo, stopped: false, child: null, startedAt: Date.now() }
   const args = ['tools/reprocess.mjs', work, '--diagnose-only']
   if (translateOnly) args.push('--translate-only')
@@ -84,23 +144,61 @@ function handleReprocess(body) {
   child.on('close', (code) => {
     reproc.child = null
     if (reproc.stopped) return
-    if (code !== 0) { reproc.running = false; reproc.done = true; reproc.error = `진단 실패(코드 ${code})`; addReprocHistory(reproc.work, 'error'); return }
+    if (code !== 0) { reproc.running = false; reproc.done = true; reproc.error = `진단 실패(코드 ${code})`; addReprocHistory(reproc.work, 'error'); reprocAdvance(); return }
     try { reproc.profile = JSON.parse(readFileSync(REPROC_PROFILE, 'utf8')) } catch {}
     const m = reproc.log.join('\n').match(/__SCENES__\s+(\d+)/)
     reproc.sceneCount = m ? +m[1] : 0
     reproc.estMin = Math.max(1, Math.round(reproc.sceneCount * 6 / 60))   // ~6초/씬 추정
+    // 기존 번역본이 '통째로 반복 고장'이면 게이트 개선목록 맨 위에 명시 (재번역으로 정리됨)
+    try {
+      const broken = countTranslationBreakage(reproc.work)
+      if (broken > 0 && reproc.profile) {
+        reproc.profile.breakage = broken
+        reproc.profile.improvements = ['통째로 반복된 깨진 단락(번역 고장)을 정리해요', ...(reproc.profile.improvements || [])]
+      }
+    } catch {}
+    // 소스(재추출본) 오염 검사 — 워터마크·깨진 헤딩이면 재번역해도 깨지니 게이트에서 미리 경고
+    try { if (existsSync('/tmp/reproc_fmt.txt')) reproc.sourceIssues = reprocQualityIssues(readFileSync('/tmp/reproc_fmt.txt', 'utf8'), false) } catch {}
     if (reproc.autoGo) reprocStartTranslate()
     else reproc.phase = 'awaiting_go'   // 사용자가 '번역 시작' 누를 때까지 대기 (running 유지)
   })
-  child.on('error', (e) => { reproc.running = false; reproc.done = true; reproc.error = e.message })
+  child.on('error', (e) => { reproc.running = false; reproc.done = true; reproc.error = e.message; reprocAdvance() })
+}
+function handleReprocess(body) {
+  const { work, translateOnly, instruction, autoGo, resume } = body || {}
+  if (!work) throw new Error('work required')
+  // 이어하기: 진단·재추출 없이 바로 번역(--resume). 중단·실패한 작품을 이어감.
+  if (resume) {
+    if (reproc.running) throw new Error('이미 재변환이 진행 중입니다')
+    reproc = { running: true, work, instruction: (instruction || '').trim(), phase: 'translating', log: ['이어하기 — 남은 씬만 번역'], done: false, error: null, profile: null, sceneCount: 0, estMin: 0, autoGo: true, stopped: false, child: null, startedAt: Date.now() }
+    reprocStartTranslate(true)
+    return { ok: true, work, resumed: true }
+  }
+  // 이미 진행 중이면 대기열에 추가 (자동 진행). 같은 작품 중복은 막음.
+  if (reproc.running) {
+    if (reproc.work === work || reprocQueue.some(q => q.work === work)) return { ok: true, work, queued: true, dup: true }
+    reprocQueue.push({ work, instruction: (instruction || '').trim() })
+    return { ok: true, work, queued: true }
+  }
+  startReprocDiagnose(work, instruction, !!autoGo, translateOnly)
   return { ok: true, work }
+}
+function handleReprocessQueueRemove(body) {
+  const w = body?.work
+  reprocQueue = reprocQueue.filter(q => q.work !== w)
+  return { ok: true, queue: reprocQueue.map(q => q.work) }
 }
 function handleReprocessGo() {
   if (reproc.phase !== 'awaiting_go') throw new Error('대기 중인 진단이 없습니다')
   reprocStartTranslate()
   return { ok: true }
 }
-function handleReprocessStatus() { const { child, ...rest } = reproc; return { ...rest, history: loadReprocHistory().slice(0, 8) } }
+function handleReprocessStatus() {
+  const { child, ...rest } = reproc
+  // history 각 항목에 결과파일(/tmp) 존재 여부 — 새 방식으로 돌려 아직 안 받은 것만 다운로드 버튼이 뜨게
+  const history = loadReprocHistory().slice(0, 8).map(h => ({ ...h, hasResult: h.status === 'done' && existsSync(reprocOutPath(h.work)) }))
+  return { ...rest, queue: reprocQueue.map(q => q.work), history }
+}
 
 // 진단(profile) → 처방 조립. profiles.json의 조각을 골라 번역 지침에 덧붙일 한 덩어리로.
 function loadProfiles() { try { return JSON.parse(readFileSync(PROFILES_PATH, 'utf8')) } catch { return {} } }
@@ -112,6 +210,15 @@ function assembleProfilePrescription(profile) {
   for (const f of (profile.flags || [])) if (P.flags?.[f]) parts.push(`- ${P.flags[f]}`)
   if (!parts.length) return ''
   return `\n\n[이 작품 진단에 따른 처방 — 위 지침보다 이 작품 성격에 맞춰 우선 적용]\n${parts.join('\n')}`
+}
+// 인명 표기 사전 — 씬별 독립 번역이라 같은 이름이 씬마다 다른 한글로 흔들리는 걸 막음.
+// profile.nameMap = { "ANI": "애니", "IVAN": "이반", ... } 을 강한 지시로 번역 프롬프트에 주입.
+function assembleNameGlossary(profile) {
+  const m = profile?.nameMap
+  if (!m || typeof m !== 'object') return ''
+  const pairs = Object.entries(m).filter(([k, v]) => k && v).map(([k, v]) => `${k} → ${v}`)
+  if (!pairs.length) return ''
+  return `\n\n[인물 이름 한글 표기 — 공식 자막에서 가져온 표준 표기. 대사·지문 속 인물 이름은 이 표기를 그대로 쓸 것. 같은 인물을 다른 음역(애니/아니/Ani 식)으로 적지 말 것. (@인물 큐 줄은 기존 규칙대로 영문 유지)]\n${pairs.join(' · ')}`
 }
 // 진단용 로컬 측정 (소스 품질·대사/지문 비율)
 function quickMetrics(en) {
@@ -285,7 +392,7 @@ function spawnClaude(systemPrompt, userPrompt, model) {
       liveProcs.delete(proc)
       if (code !== 0) {
         const combined = (err + ' ' + out).toLowerCase()
-        if (/rate limit|usage limit|too many|quota/.test(combined)) {
+        if (/rate limit|usage limit|spend limit|spending limit|monthly limit|too many|quota|limit.*claude\.ai\/settings\/usage/.test(combined)) {
           const e = new Error('RATE_LIMIT'); e.code = 'RATE_LIMIT'; reject(e); return
         }
         // 로그인/인증 문제 — 안내가 필요한 별도 분류
@@ -339,6 +446,7 @@ ${sceneText}`
   let formatted = await runClaude(systemPrompt, userPrompt, model)
   // 빈 씬에서 LLM이 대화체로 답하면 → 저장하지 말고 원문 유지
   if (looksLikeRefusal(formatted)) formatted = sceneText
+  else formatted = reflowBody(formatted.split('\n')).join('\n')   // PDF 단 너비로 끊긴 문장 한 줄로 합치기
   return { formatted, tokens: null }
 }
 
@@ -349,6 +457,7 @@ async function handleTranslate(body) {
   // 자막은 번역에 안 들어감 — 작품당 1회 만든 '말투 글로서리'(characterMemo)로만 자막 지식이 반영됨.
   const memoSection = characterMemo ? `\n\n[인물 말투·관계 가이드 — 씬이 갈려도 각 인물의 말투(반말/존댓말)·호칭을 이 가이드대로 일관되게]\n${characterMemo}` : ''
   const rxSection = assembleProfilePrescription(profile)   // 진단 처방 (있으면 작품 성격별 지침 주입)
+  const nameSection = assembleNameGlossary(profile)        // 인명 표기 사전 (씬 간 이름 통일)
   const prevSection = prevTail ? `\n\n[직전 장면 끝부분 — 대명사·상황 맥락 참고용. 번역하지 말 것]\n${prevTail}` : ''
   const lang = targetLang || '한국어'
 
@@ -360,7 +469,7 @@ async function handleTranslate(body) {
 - @인물명·전환지시어 형태 유지. 짧고 거칠어도 각색 말고 그대로.
 
 지침:
-${guidelines}${rxSection}${memoSection}${prevSection}
+${guidelines}${rxSection}${nameSection}${memoSection}${prevSection}
 
 순수 텍스트만 출력(JSON·설명·예시 금지). 번역할 내용이 없으면(타이틀·표지·빈 페이지) 입력 그대로.`
 
@@ -409,6 +518,20 @@ ${hasSub ? '\n그리고 마지막에 "[톤]" 한 줄로, 공식 자막이 보이
   return { register: (register || '').trim() }
 }
 
+// PDF '심판' — 드롭한 PDF를 좌표로 재추출해 깨끗한 formatted를 돌려줌. footer 제거·구조 복원 적용.
+//   기존 formatted가 추출 오류(큐 꼬임 등)일 때 원천(PDF)에서 다시 뽑아 대조/교체하는 용도. LLM 0(로컬 파싱).
+function handlePdfReformat(body) {
+  const { pdfBase64 } = body || {}
+  if (!pdfBase64) throw new Error('pdfBase64 required')
+  const tmp = '/tmp/verify_pdf.pdf', out = '/tmp/verify_pdf_fmt.txt'
+  writeFileSync(tmp, Buffer.from(pdfBase64, 'base64'))
+  try { if (existsSync(out)) unlinkSync(out) } catch {}
+  try { execSync(`node tools/pdf-reformat.mjs ${JSON.stringify(tmp)} --write ${JSON.stringify(out)} 2>/dev/null`, { cwd: process.cwd(), timeout: 60000 }) } catch {}
+  if (!existsSync(out)) throw new Error('PDF 재추출 실패 — 스캔본(텍스트 레이어 없음)일 수 있어요')
+  const formatted = readFileSync(out, 'utf8')
+  return { formatted, cues: (formatted.match(/^@/gm) || []).length, scenes: (formatted.match(/^#/gm) || []).length, lines: formatted.split('\n').filter(l => l.trim()).length }
+}
+
 // 작품 프로파일러(진단) — 작품당 1회. 로컬 측정(metrics)으로 소스 품질·무게중심을 객관 수치로 주고,
 // 모델은 내용·말투·관계·스타일을 진단해 프로파일 JSON으로 반환. (처방=지침 조립은 별도 단계)
 async function handleDiagnose(body) {
@@ -424,6 +547,7 @@ async function handleDiagnose(body) {
   "flags": [],   // 해당되는 것만(여러 개 가능): "songs"(노래·뮤지컬) "narration"(내레이션多) "heavy_credits" "famous"(유명작) "period"(시대극) "stylized"(강한 작가 문체·누아르·랩식) "foreign_mix"(외국어 혼재) "profanity"(욕설 강) "epistolary"(편지·문어체) "jargon"(전문용어 多) "family"(가족·아동)
   "synopsis": "한 문단 줄거리(아는 작품이면 일반지식 OK, 모르면 샘플 기반 추정)",
   "relations": "핵심 인물 관계·거리감 1~2줄",
+  "nameMap": { "ANI": "애니", "IVAN": "이반" },   // 인물 이름의 영문(대사 큐 표기) → 한글 표기. ★자막이 있으면 임의로 음역하지 말고 자막에 실제로 쓰인 인물 이름 표기를 그대로 채집해 넣을 것(자막이 표준). 자막에 안 나오는 인물만 보완. 한국어 자막이 없으면 외래어 표기법·관용 표기(통용되는 작품이면 그 공식 표기)에 맞춰 한 번만 정해 전 인물을 채워라 — 핵심은 작품 내내 한 인물=한 표기로 고정되는 것. 주요 인물 전원(20명 이내). 애칭·풀네임이 다르면 둘 다 키로.
   "toneGuide": "번역에 그대로 쓸 인물별 말투 가이드. '인물: 상대별 반말/존댓말·호칭·말버릇' 형식으로 1줄=1인물, 핵심 12명 이내. 자막이 있으면 그 경어/호칭 선택을 가장 신뢰할 근거로 삼을 것.",
   "improvements": ["이 작품을 다시 번역하면 좋아지는 점을 사용자용 짧은 구로 2~4개. 예: '줄나눔 템포를 살려요' '편지는 문어체로 분리해요' '인물 말투를 일관되게 맞춰요' '노래는 가사처럼 옮겨요'. 진단 특성에 맞게."],
   "notes": "위에 안 잡히는 번역상 특이사항을 자유롭게 (없으면 빈 문자열)"
@@ -635,11 +759,6 @@ async function formatScene(job, scene) {
   }
 }
 
-// 정렬 메타만 계산 (텍스트 교체 안 함). 한국어 자막일 때만 의미 있음.
-function alignMeta(job, text) {
-  return job.smi?.entries ? alignSmi(text, job.smi.entries).matches : []
-}
-
 // 번역 구조 검증 — 영문 포맷본과 마커·줄 수가 맞는지. 누락·창작·거부·환각을 한 번에 걸러냄.
 // #(헤딩)·@(인물 큐) 줄 수는 지침상 1:1 보존돼야 하고, 비어있지 않은 줄 수도 비슷해야 함.
 function translationStructureOk(formatted, translated) {
@@ -669,12 +788,11 @@ async function translateOne(job, scene) {
     }))
     const translated = cleanOutput(res.translated)  // 줄 1:1 유지 — splitGluedAction 미적용
     scene.translated = translated
-    scene.smiMatches = alignMeta(job, translated)  // 정렬은 메타만 (교체 없음)
     scene.tokens = { ...scene.tokens, translate_in: estTokens(scene.formatted), translate_out: estTokens(translated) }
     if (!translationStructureOk(scene.formatted, translated)) {
       scene.status = 'error_translate'; scene.error = '구조 불일치: 영문 포맷과 줄·마커 수가 안 맞음 (누락/창작/거부 의심) — 재처리 필요'; return
     }
-    scene.status = 'done'
+    scene.status = 'done'; scene.error = null   // 성공 → 옛 에러 비움(재시도로 살아난 씬에 잔존 안 하게)
   } catch (e) {
     if (e.code === 'RATE_LIMIT') rateLimitJob(job)
     if (e.code === 'AUTH' || e.code === 'CLAUDE_NOT_FOUND') haltJob(job)
@@ -704,9 +822,9 @@ async function translateBatch(job, batch) {
     if (batch.some((s, i) => !translationStructureOk(s.formatted, parts[i]))) { await fallback(); return }
     batch.forEach((s, i) => {
       const translated = parts[i]  // ★ 줄 1:1 정렬 유지 — splitGluedAction 미적용
-      s.translated = translated; s.smiMatches = alignMeta(job, translated); s.batched = true
+      s.translated = translated; s.batched = true
       s.tokens = { ...s.tokens, translate_in: estTokens(s.formatted), translate_out: estTokens(parts[i]) }
-      s.status = 'done'
+      s.status = 'done'; s.error = null
     })
   } catch (e) {
     if (e.code === 'RATE_LIMIT') rateLimitJob(job)
@@ -809,7 +927,7 @@ function createJob(body) {
     smi: smi || null,
     scenes: scenes.map(s => ({
       id: s.id, raw: s.raw,
-      formatted: s.formatted || null, translated: null, smiMatches: null,
+      formatted: s.formatted || null, translated: null,
       tokens: {}, status: s.status === 'formatted' ? 'formatted' : 'pending',
       error: null, heading: s.heading || null,
     })),
@@ -856,13 +974,13 @@ function setGlossary(id, memo) {
   return { ok: true }
 }
 
-// 작품 전체 다시 번역 — 번역만 리셋(formatted 유지). keepGlossary=false면 말투 가이드도 새로 생성.
+// 작품 전체 다시 번역 — 번역만 리셋(formatted 유지). keepGlossary=false면 진단(말투 가이드+인명사전)도 새로 생성.
 function retranslateJob(id, keepGlossary) {
   const job = jobs.get(id)
   if (!job) throw new Error('job not found')
-  if (!keepGlossary) job.characterMemo = ''
+  if (!keepGlossary) { job.characterMemo = ''; job.profile = null }   // 진단 비움 → 재진단으로 nameMap·toneGuide 새로 산출
   for (const s of job.scenes) {
-    s.translated = null; s.smiMatches = null; s.error = null
+    s.translated = null; s.error = null
     s.status = s.formatted ? 'formatted' : 'pending'
   }
   job.status = 'running'; job.phase = 'formatting'; job.paused = false; job.stopped = false; job.duration = null
@@ -912,6 +1030,14 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url === '/api/works') return sendJSON(handleWorks())
   if (req.method === 'GET' && url === '/api/reprocess-status') return sendJSON(handleReprocessStatus())
+  if (req.method === 'GET' && url.startsWith('/api/reprocess-result')) {
+    const w = new URLSearchParams(url.split('?')[1] || '').get('work') || reproc.work || ''
+    const p = reprocOutPath(w)
+    if (!existsSync(p)) return sendJSON({ error: '결과 파일 없음' }, 404)
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': `attachment; filename="${encodeURIComponent(w)}_translated.txt"` })
+    res.end(readFileSync(p, 'utf8'))
+    return
+  }
   if (req.method === 'GET' && url.startsWith('/api/jobs/')) {
     const id = url.slice('/api/jobs/'.length)
     const job = jobs.get(id)
@@ -941,9 +1067,11 @@ const server = createServer(async (req, res) => {
       else if (mCtrl) result = controlJob(mCtrl[1], mCtrl[2])
       else if (req.url === '/api/character-register') result = await handleCharacterRegister(data)
       else if (req.url === '/api/diagnose') result = await handleDiagnose(data)
+      else if (req.url === '/api/pdf-reformat') result = handlePdfReformat(data)
       else if (req.url === '/api/reprocess') result = handleReprocess(data)
       else if (req.url === '/api/reprocess-go') result = handleReprocessGo(data)
       else if (req.url === '/api/reprocess-stop') result = handleReprocessStop(data)
+      else if (req.url === '/api/reprocess-queue-remove') result = handleReprocessQueueRemove(data)
       else if (req.url === '/api/format') result = await handleFormat(data)
       else if (req.url === '/api/translate') result = await handleTranslate(data)
       else if (req.url === '/api/revise') result = await handleRevise(data)

@@ -68,14 +68,17 @@ export default function SettingsPanel({ onClose, themeName = 'light', onToggleTh
                 {['red', 'blue', 'yellow'].map(k => {
                   const on = accentKey === k
                   const isAutoPick = accentKey === 'auto' && accentForVersion() === k
+                  const active = on || isAutoPick   // 자동이 고른 색도 체크로 (점선 대신)
                   return (
                     <button key={k} onClick={() => onAccent?.(k)} title={ACCENTS[k].label} style={{
                       width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', padding: 0,
-                      background: ACCENTS[k].accent,
-                      border: (isAutoPick && !on) ? `2px dashed ${T.fgDim}` : '2px solid transparent',
-                      // 선택: 틈 있는 부드러운 회색 링 (검정 테두리 대신)
-                      boxShadow: on ? `0 0 0 2px ${T.bgCard}, 0 0 0 3.5px ${T.fgDim}` : `0 0 0 1px ${T.rule}`,
-                    }} />
+                      background: ACCENTS[k].accent, border: 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: `0 0 0 1px ${T.rule}`,
+                      opacity: active ? 1 : 0.55, transform: active ? 'scale(1.08)' : 'none', transition: 'opacity .12s, transform .12s',
+                    }}>
+                      {active && <span style={{ color: '#fff', fontSize: 13, fontWeight: 800, lineHeight: 1, textShadow: '0 1px 2px rgba(0,0,0,.35)' }}>✓</span>}
+                    </button>
                   )
                 })}
               </div>

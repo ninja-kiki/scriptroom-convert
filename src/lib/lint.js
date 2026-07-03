@@ -1,5 +1,6 @@
 // 번역본 검수 엔진 — 전부 코드 기반(토큰 0). 브라우저/노드 공용.
 // detect(text) → 카테고리별 결함 + 자동수정 가능 여부.  autofix(text) → 청소된 텍스트.
+import { reflowBody } from './format-rules.js'   // PDF 단 너비로 끊긴 문장 한 줄로 합치기(변환과 동일)
 
 const ko = t => (t.match(/[가-힣]/g) || []).length
 const la = t => (t.match(/[A-Za-z]/g) || []).length
@@ -67,7 +68,7 @@ const looksAction = t => {
 // ── 검출 ────────────────────────────────────────────────
 export function detect(text) {
   const lines = text.split('\n')
-  const out = { meta: [], boiler: [], dupe: [], headNum: [], bilingual: [], dialog: [], struct: [], miscue: [], glued: [], spacing: 0 }
+  const out = { meta: [], boiler: [], dupe: [], headNum: [], bilingual: [], dialog: [], struct: [], miscue: [], glued: [], repeat: [], spacing: 0 }
 
   // 대사 블록(@큐로 시작) 안에서, 2번째 줄 이후에 나타나는 액션 묘사 = 지문 섞임 의심
   for (const b of blocks(lines)) {
@@ -98,6 +99,22 @@ export function detect(text) {
   })
 
   out.bilingual = findBilingual(lines)
+
+  // 통째로 반복된 단락 (번역 고장: 같은 블록이 연달아 3회 이상 = 명백한 고장/루프) — 첫 1개만 남기고 제거.
+  // 2회 반복은 노래 후렴 등 의도된 경우가 있어 건드리지 않음(보수적). 실한 블록만(여러 줄 또는 20자+).
+  {
+    const bs = blocks(lines)
+    let i = 0
+    while (i < bs.length) {
+      const key = bs[i].lines.map(s => s.trim()).join('\n')
+      const substantial = bs[i].lines.length >= 2 || key.replace(/\s/g, '').length >= 20
+      let j = i + 1
+      if (substantial) while (j < bs.length && bs[j].lines.map(s => s.trim()).join('\n') === key) j++
+      if (j - i >= 3) for (let k = i + 1; k < j; k++) for (let li = bs[k].start; li <= bs[k].end; li++) out.repeat.push(li)
+      i = j > i ? j : i + 1
+    }
+  }
+
   out.lines = lines.length
   return out
 }
@@ -140,25 +157,84 @@ function findBilingual(lines) {
   return drops
 }
 
+// 한 줄 안 동일 문자열 반복 접기 — 볼드를 텍스트 레이어에 다중으로 그린 PDF(스파이더맨 류)에서
+// "외부. 파커 가 - 낮외부. 파커 가 - 낮...1111" 로 뽑힌 헤딩 복구. 접힌 경우에만 꼬리 동일숫자도 접음(연도 보호).
+export function collapseRepeatedRun(orig) {
+  let s = orig, prev
+  do { prev = s; s = s.replace(/(.{6,}?)\1+/g, '$1') } while (s !== prev)
+  return s !== orig ? s.replace(/(\d)\1{2,}\s*$/, '$1') : s
+}
+
+// 문서 머리(첫 # 헤딩 이전)의 타이틀페이지/판권 잡동사니 판정 — 판권 신호가 있을 때만 제거 대상
+const HEAD_JUNK_SIG = /©|COPYRIGHT|판권|ALL RIGHTS|CORPORATION|제출용|촬영 대본|SHOOTING DRAFT|각색 부문|Screenplay by|Written by|원작 소설|Based on|주소|Blvd\.|CA \d{5}/i
+
 // ── 자동수정 (안전한 결함만) ────────────────────────────
 export function autofix(text) {
   let lines = text.split('\n')
+  const koDoc = /[가-힣]/.test(text)   // 한국어 문서면 [자막:], 영어 포맷이면 [SUPER:]
   const is = detect(text)
-  const drop = new Set([...is.meta, ...is.boiler, ...is.dupe])
+  const drop = new Set([...is.meta, ...is.boiler, ...is.dupe, ...is.repeat])
   is.bilingual.forEach(d => { for (let i = d.start; i <= d.end; i++) drop.add(i) })
+  // 머리 판권/타이틀페이지 제거 — 첫 # 헤딩 이전 블록에 판권 신호가 있으면, 그 구간의 비마커 줄 제거
+  const firstHead = lines.findIndex(l => /^#\s/.test(l.trim()))
+  if (firstHead > 0) {
+    const head = lines.slice(0, firstHead)
+    if (head.some(l => HEAD_JUNK_SIG.test(l))) {
+      head.forEach((l, i) => {
+        const t = l.trim()
+        if (t && !/^(FADE|\[|@|#)/i.test(t)) drop.add(i)   // FADE IN·[크레딧:]·마커는 보존
+      })
+    }
+  }
   lines = lines.filter((_, i) => !drop.has(i))
   // 헤딩끝 페이지번호 + 줄나눔 정리
   const res = []
   for (let l of lines) {
     let t = l.trim()
+    if (/^#/.test(t)) { const c = collapseRepeatedRun(t); if (c !== t) { l = c; t = c } }   // 다중 그린 헤딩 접기
     if (/^#/.test(t) && /[가-힣\s)\]]\d{1,3}$/.test(t) && !/(19|20)\d{2}$/.test(t)) { l = l.replace(/(\d{1,3})\s*$/, '').replace(/\s+$/, ''); t = l.trim() }
+    // TITLE:/SUPER:/CHYRON: 화면자막이 대사 블록에 붙지 않게 — [자막:] 마커로 바꾸고 앞뒤 빈 줄
+    if (/^(TITLE|SUPER|CHYRON)\s*[:：]/i.test(t)) {
+      const body = t.replace(/^(TITLE|SUPER|CHYRON)\s*[:：]\s*/i, '')
+      if (res.length && res[res.length - 1] !== '') res.push('')
+      res.push(koDoc ? `[자막: ${body}]` : `[SUPER: ${body}]`); res.push('')
+      continue
+    }
     if (t === '') { if (res.length && res[res.length - 1] === '') continue; res.push(''); continue }
     if (/^[#@]/.test(t) && res.length && res[res.length - 1] !== '') res.push('')
     res.push(l.replace(/\s+$/, ''))
   }
   while (res.length && res[0] === '') res.shift()
   while (res.length && res[res.length - 1] === '') res.pop()
-  return res.join('\n')
+  return reflowBody(res).join('\n')   // 끊긴 문장(@큐·#씬·빈줄 경계는 보존) 한 줄로
+}
+
+// 자동수정 전후 변화를 '코드로' 요약 (LLM 0). before/after 카드 표시용.
+//   removed: 실제로 빠진 대표 줄(종류별) · joins: 줄나눔으로 합쳐진 before→after 예 · counts: 종류별 개수.
+export function autofixChanges(text) {
+  const is = detect(text)
+  const lines = text.split('\n')
+  const removed = []
+  const add = (idxs, kind) => idxs.forEach(i => { const t = (lines[i] || '').trim(); if (t) removed.push({ kind, text: t }) })
+  add(is.meta, 'AI 군말'); add(is.boiler, '머리말/꼬리말'); add(is.dupe, '겹친 줄'); add(is.repeat, '반복 단락')
+  is.bilingual.forEach(d => { const t = (lines[d.start] || '').trim(); if (t) removed.push({ kind: '영한 중복', text: t }) })
+  // 줄나눔(리플로우)으로 합쳐질 대표 예: 종결부호 없이 끝난 본문줄 + 다음 본문줄
+  const joins = []
+  for (let i = 1; i < lines.length && joins.length < 3; i++) {
+    const a = lines[i - 1].trim(), b = lines[i].trim()
+    if (a && b && !/^[#@(]/.test(a) && !/^[#@(]/.test(b) && !/[.!?…:;"'’”)\]]$/.test(a) && !/^[-•*]/.test(b)) {
+      joins.push({ before: a + ' ⏎ ' + b, after: a + ' ' + b })
+    }
+  }
+  const after = autofix(text)
+  return {
+    counts: summarize(text),
+    removed: removed.slice(0, 6), removedTotal: removed.length,
+    joins,
+    beforeLines: lines.filter(l => l.trim()).length,
+    afterLines: after.split('\n').filter(l => l.trim()).length,
+    after,
+  }
 }
 
 // 대사 블록에 붙은 지문을 빈 줄로 분리 (무료·결정적). 내용은 안 건드리고 줄만 띄움.
@@ -179,11 +255,11 @@ export function splitGluedAction(text) {
 export function summarize(text) {
   const is = detect(text)
   return {
-    meta: is.meta.length, boiler: is.boiler.length, dupe: is.dupe.length,
+    meta: is.meta.length, boiler: is.boiler.length, dupe: is.dupe.length, repeat: is.repeat.length,
     headNum: is.headNum.length, bilingual: is.bilingual.length,
     dialog: is.dialog.length, struct: is.struct.length, miscue: is.miscue.length, glued: is.glued.length,
     spacing: is.spacing > is.lines * 0.15 ? is.spacing : 0,
-    autofixable: is.meta.length + is.boiler.length + is.dupe.length + is.bilingual.length + is.headNum.length,
+    autofixable: is.meta.length + is.boiler.length + is.dupe.length + is.repeat.length + is.bilingual.length + is.headNum.length,
     review: is.dialog.length,
   }
 }

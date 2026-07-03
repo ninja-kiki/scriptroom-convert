@@ -8,6 +8,7 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
     : processInfo.method === 'ai→regex' ? 'AI 실패 → 규칙 분석'
     : '분석'
   const [expandedWarning, setExpandedWarning] = useState(null)
+  const [cleanup, setCleanup] = useState('')   // 빼거나 고칠 것 지시 (말투가이드와 분리)
 
   const hasErrors = pdfWarnings.some(w => w.level === 'error')
   const hasWarns = pdfWarnings.some(w => w.level === 'warn')
@@ -168,11 +169,17 @@ export default function ReviewStep({ title, scenes, smiFile, smiWarning, pdfWarn
           ✓ 포맷 완료 파일 — 번역만 진행합니다
         </div>
       )}
+      {/* 빼거나 고칠 것 지시 (말투가이드와 별개) */}
+      <div style={{ marginBottom: 10 }}>
+        <input value={cleanup} onChange={e => setCleanup(e.target.value)}
+          placeholder="(선택) 빼거나 고칠 것 — 예: '촬영 대본 N쪽' 같은 페이지 표시 제거"
+          style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgInput, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13 }} />
+      </div>
       <button
         className="sr-press"
         onClick={() => {
           if (hasErrors && !window.confirm('씬 분리 오류가 감지되었습니다. 그래도 변환을 시작할까요?')) return
-          onStart('')
+          onStart('', cleanup.trim())
         }}
         style={{
           padding: '11px 28px', borderRadius: 3,
