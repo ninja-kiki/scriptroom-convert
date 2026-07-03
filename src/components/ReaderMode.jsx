@@ -13,20 +13,13 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
   const contentRef = useRef()
   const jumpRef = useRef()
 
-  const [reviewOnly, setReviewOnly] = useState(false)
   const scene = scenes[sceneIdx]
   const total = scenes.length
 
-  const reviewIdxs = []   // 자막 유사도 기반 검토 제거 (각본↔영화자막은 본디 다름)
-
-  // 씬 이동 — 검토 모드면 검토 씬만 건너뜀
+  // 씬 이동 — 위로 갈 땐 이전 씬 맨 아래부터 (읽던 흐름 유지)
   const stepScene = useCallback((dir) => {
-    const toBottom = dir < 0   // 위로 갈 땐 이전 씬 맨 아래부터
-    if (reviewOnly && reviewIdxs.length) {
-      const cands = dir > 0 ? reviewIdxs.filter(i => i > sceneIdx) : reviewIdxs.filter(i => i < sceneIdx).reverse()
-      goScene(cands.length ? cands[0] : reviewIdxs[dir > 0 ? 0 : reviewIdxs.length - 1], toBottom)
-    } else goScene(sceneIdx + dir, toBottom)
-  }, [reviewOnly, reviewIdxs, sceneIdx])
+    goScene(sceneIdx + dir, dir < 0)
+  }, [sceneIdx])
 
   // 현재 뷰에서 보여줄 텍스트
   function getContent() {
@@ -127,23 +120,14 @@ export default function ReaderMode({ scenes, initialIndex = 0, onClose }) {
         padding: '10px 20px', borderBottom: `1px solid ${T.rule}`,
         flexShrink: 0,
       }}>
-        {/* 씬 이동 (검토 모드면 검토 씬만) */}
-        <button onClick={() => stepScene(-1)} disabled={sceneIdx === 0 && !reviewOnly}
-          style={navBtn(sceneIdx > 0 || reviewOnly)}>◀</button>
+        {/* 씬 이동 */}
+        <button onClick={() => stepScene(-1)} disabled={sceneIdx === 0}
+          style={navBtn(sceneIdx > 0)}>◀</button>
         <span style={{ color: T.fgMuted, fontSize: 13, minWidth: 80, textAlign: 'center' }}>
           {sceneIdx + 1} / {total}
         </span>
-        <button onClick={() => stepScene(1)} disabled={sceneIdx === total - 1 && !reviewOnly}
-          style={navBtn(sceneIdx < total - 1 || reviewOnly)}>▶</button>
-
-        {/* 검토 필터 — 공식 자막과 표현 다른 씬만 */}
-        {reviewIdxs.length > 0 && (
-          <button onClick={() => setReviewOnly(v => !v)} title="공식 자막과 표현이 다른 줄(노랑 점선)이 있는 씬만 ◀▶로 넘기기"
-            style={{ padding: '4px 11px', borderRadius: 3, border: `1px solid ${reviewOnly ? T.warn : T.rule}`,
-              background: reviewOnly ? T.warn + '22' : 'none', color: reviewOnly ? T.warn : T.fgMuted, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            검토 {reviewIdxs.length}
-          </button>
-        )}
+        <button onClick={() => stepScene(1)} disabled={sceneIdx === total - 1}
+          style={navBtn(sceneIdx < total - 1)}>▶</button>
 
         {/* 씬 제목 */}
         <span style={{ flex: 1, color: T.fg, fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

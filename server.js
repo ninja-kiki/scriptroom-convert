@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { ruleFormat, reflowBody } from './src/lib/format-rules.js'
 import { splitGluedAction, detect } from './src/lib/lint.js'
-import {
+import { splitScenes,
   estTokens, cleanOutput, looksLikeRefusal, buildDialogueSample, buildSubtitleSample, buildBatches, splitByHeading,
 } from './src/lib/pipeline.js'
 
@@ -56,7 +56,6 @@ function reprocDiff(work) {
     const dir = join(CONTENT_DIR, work)
     const trFile = readdirSync(dir).find(f => /_translated\.txt$/.test(f))
     if (!trFile) return null
-    const splitScenes = t => t.replace(/\r/g, '').split(/\n(?=# )/).map(s => s.trim()).filter(Boolean)
     const before = splitScenes(readFileSync(join(dir, trFile), 'utf8'))
     const after = splitScenes(readFileSync(outPath, 'utf8'))
     const n = Math.min(before.length, after.length)
@@ -174,9 +173,11 @@ function handleReprocess(body) {
     reprocStartTranslate(true)
     return { ok: true, work, resumed: true }
   }
-  // 이미 진행 중이면 대기열에 추가 (자동 진행). 같은 작품 중복은 막음.
+  // 이미 진행 중이면 대기열에 추가 (자동 진행). 같은 작품 중복은 막되, 나중 요청의 수정 지시는 갱신(유실 방지).
   if (reproc.running) {
-    if (reproc.work === work || reprocQueue.some(q => q.work === work)) return { ok: true, work, queued: true, dup: true }
+    const queued = reprocQueue.find(q => q.work === work)
+    if (queued) { if ((instruction || '').trim()) queued.instruction = instruction.trim(); return { ok: true, work, queued: true, dup: true } }
+    if (reproc.work === work) return { ok: true, work, queued: true, dup: true }
     reprocQueue.push({ work, instruction: (instruction || '').trim() })
     return { ok: true, work, queued: true }
   }

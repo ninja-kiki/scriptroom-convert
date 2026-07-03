@@ -2,6 +2,9 @@
 // 프레임워크/DOM 의존성 없음. (sliceSmi는 core.js, matchSmiToTranslation은 smi.js)
 import { sliceSmi } from './core.js'
 
+// '# ' 헤딩 기준 씬 분할 — 코드베이스 유일 정의 (server.js·App·LintPanel 공용)
+export const splitScenes = (t) => (t || '').replace(/\r/g, '').split(/\n(?=# )/).map(s => s.trim()).filter(Boolean)
+
 export const estTokens = (s) => Math.round((s || '').length / 3)
 
 // 인물 말투 사전용 대사 샘플 — @화자 + 첫 대사 줄을 작품 전반에서 고르게 뽑아 길이 제한

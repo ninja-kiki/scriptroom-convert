@@ -9,7 +9,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 // "EXT. HOUSE - DAYEXT. HOUSE - DAY...1111" → "EXT. HOUSE - DAY1". 접힌 경우에만 꼬리 동일숫자 다발도 접음(연도 2000 등 보호).
 export function collapseRepeats(orig) {
   let s = orig, prev
-  do { prev = s; s = s.replace(/(.{6,}?)\1+/g, '$1') } while (s !== prev)
+  do { prev = s; s = s.replace(/(.{6,}?)\1{2,}/g, '$1') } while (s !== prev)
   return s !== orig ? s.replace(/(\d)\1{2,}\s*$/, '$1') : s
 }
 

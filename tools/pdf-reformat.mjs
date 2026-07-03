@@ -13,7 +13,7 @@ if (!pdfPath) { console.error('PDF 경로 필요'); process.exit(1) }
 // 같은 문자열이 연달아 반복되면 1회로 접는다. "EXT. HOUSE - DAYEXT. HOUSE - DAY...1111" → "EXT. HOUSE - DAY1"
 function collapseRepeats(orig) {
   let s = orig, prev
-  do { prev = s; s = s.replace(/(.{6,}?)\1+/g, '$1') } while (s !== prev)
+  do { prev = s; s = s.replace(/(.{6,}?)\1{2,}/g, '$1') } while (s !== prev)
   // 긴 단위가 실제로 접혔을 때만 꼬리 동일숫자 다발(1111→1)도 접기 — 연도(2000) 같은 정상 숫자 보호
   return s !== orig ? s.replace(/(\d)\1{2,}\s*$/, '$1') : s
 }

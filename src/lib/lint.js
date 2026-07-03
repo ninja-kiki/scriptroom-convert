@@ -161,7 +161,7 @@ function findBilingual(lines) {
 // "외부. 파커 가 - 낮외부. 파커 가 - 낮...1111" 로 뽑힌 헤딩 복구. 접힌 경우에만 꼬리 동일숫자도 접음(연도 보호).
 export function collapseRepeatedRun(orig) {
   let s = orig, prev
-  do { prev = s; s = s.replace(/(.{6,}?)\1+/g, '$1') } while (s !== prev)
+  do { prev = s; s = s.replace(/(.{6,}?)\1{2,}/g, '$1') } while (s !== prev)
   return s !== orig ? s.replace(/(\d)\1{2,}\s*$/, '$1') : s
 }
 

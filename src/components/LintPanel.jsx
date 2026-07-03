@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { T, loadSettings, loadGuidelines } from '../lib/core.js'
 import { detect, autofix, summarize, splitGluedAction, autofixChanges } from '../lib/lint.js'
-import { buildDialogueSample } from '../lib/pipeline.js'
+import { buildDialogueSample, splitScenes } from '../lib/pipeline.js'
 
 // 각본 파일 아이콘 (종이 문서 모양)
 const DocIcon = ({ ext, active }) => (
@@ -11,14 +11,6 @@ const DocIcon = ({ ext, active }) => (
     <text x="16" y="29" textAnchor="middle" fontSize="7" fontWeight="700" fill={active ? '#444' : '#999'} fontFamily="monospace">{ext.toUpperCase()}</text>
   </svg>
 )
-
-// unused legacy (kept for potential reuse)
-const exBox = (c) => ({
-  flex: 1, minWidth: 0, margin: 0, padding: '6px 9px', background: T.bgInput,
-  border: `1px solid ${T.rule}`, borderLeft: `2px solid ${c}`, borderRadius: 3,
-  fontFamily: 'monospace', fontSize: 10.5, lineHeight: 1.55, color: T.fgMuted,
-  whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden',
-})
 
 // 칩별 예시 (누르면 before→after 한 줄씩)
 const PILL_EX = {
@@ -64,7 +56,7 @@ export default function LintPanel() {
       || (pdfs.length === 1 && groupKeys.length === 1 ? pdfs[0] : null)   // 1:1이면 이름 달라도 매칭
     const mkTxt = (main, pairFmt, pdfFile) => {
       const det = detect(main.text)
-      return { kind: 'txt', name: main.name, text: main.text, sum: summarize(main.text), det, open: false, splitAction: det.glued.length > 0, unify: false, instr: '', advOpen: false, running: false, prog: null, pairFmt: pairFmt || null, pdfFile: pdfFile || null }
+      return { kind: 'txt', name: main.name, text: main.text, sum: summarize(main.text), det, open: false, splitAction: det.glued.length > 0, unify: false, instr: '', running: false, prog: null, pairFmt: pairFmt || null, pdfFile: pdfFile || null }
     }
     const next = [...others]
     let matchedPdf = false
@@ -110,7 +102,7 @@ export default function LintPanel() {
   }
   // ── 씬별 LLM 교정 ──
   async function reviseByScene(text, guidelines, model, onProg) {
-    const chunks = text.split(/\n(?=# )/).filter(s => s.trim())
+    const chunks = splitScenes(text)
     const out = []
     for (let i = 0; i < chunks.length; i++) {
       try {
@@ -177,7 +169,7 @@ export default function LintPanel() {
         } catch {}
       }
       if (!fmt) { alert('원본이 없어요 — 영어 포맷이나 PDF를 넣어 주세요'); return }
-      const scenes = fmt.split(/\n(?=# )/).map(s => s.trim()).filter(Boolean)
+      const scenes = splitScenes(fmt)
       // 1) 진단 — nameMap(인명통일)·toneGuide(말투)·처방
       upd(idx, { prog: { phase: '작품 진단' } })
       let profile = null
@@ -200,7 +192,7 @@ export default function LintPanel() {
       const newTr = out.join('\n\n') + '\n'
       download(it.name.replace('.txt', '_재번역.txt'), newTr)
       // before/after (기존 번역본 vs 새 번역) — 대표 변화
-      const before = it.text.split(/\n(?=# )/).map(s => s.trim()).filter(Boolean)
+      const before = splitScenes(it.text)
       const pairs = []; const n = Math.min(before.length, out.length)
       for (let i = 0; i < n && pairs.length < 4; i++) if (before[i] !== out[i]) pairs.push({ before: before[i].slice(0, 300), after: out[i].slice(0, 300) })
       upd(idx, { result: { retranslate: true, pairs, total: n, changed: before.filter((b, i) => i < n && b !== out[i]).length, tags: profile ? [profile.weight, profile.latitude].filter(Boolean) : [], pdfJudge } })
