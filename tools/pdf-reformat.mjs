@@ -41,23 +41,33 @@ async function extractLines(path) {
 
 // 1.5) 러닝 헤더/푸터 제거 — 여러 페이지에 반복 등장하는 동일 줄(페이지 꼬릿말·워터마크·출처 URL 등).
 //   병합(soft-wrap) 전에 없애야 footer가 다음 페이지 본문과 한 줄로 붙는 오염을 막는다.
+//   ★페이지 가장자리(앞뒤 2줄)만 후보로 본다. 위치 무관 전체빈도로만 판정하면, 내레이터 큐처럼
+//     본문에 정당하게 반복되는 줄(예: casino "@ACE (V.O.)" 114회, 141페이지물 임계값 42 초과)이
+//     러닝헤더로 오판돼 통째로 삭제되는 사고가 남. 러닝헤더/푸터는 항상 페이지 가장자리에만 있다.
 function stripRepeatedBoiler(lines) {
   const norm = t => t.replace(/\s+/g, ' ').trim()
+  const byPage = new Map()
+  lines.forEach((l, i) => { const arr = byPage.get(l.page) || []; arr.push(i); byPage.set(l.page, arr) })
+  const edgeIdx = new Set()
+  for (const idxs of byPage.values()) {
+    const n = idxs.length
+    idxs.forEach((li, i) => { if (i < 2 || i >= n - 2) edgeIdx.add(li) })
+  }
   const maxPage = Math.max(1, ...lines.map(l => l.page))
   const freq = new Map()
-  for (const l of lines) { const k = norm(l.text); if (k.length >= 8) freq.set(k, (freq.get(k) || 0) + 1) }
+  lines.forEach((l, i) => { if (!edgeIdx.has(i)) return; const k = norm(l.text); if (k.length >= 8) freq.set(k, (freq.get(k) || 0) + 1) })
   const thr = Math.max(3, Math.floor(maxPage * 0.3))
   const boiler = [...freq].filter(([, c]) => c >= thr).map(([k]) => k)
   if (!boiler.length) return lines
   const boilerSet = new Set(boiler)
   const longBoiler = boiler.filter(b => b.length >= 20)   // 본문 단어 오삭제 방지: 긴 것만 부분 제거
   const out = []
-  for (const l of lines) {
-    if (boilerSet.has(norm(l.text))) continue              // 단독 boiler 줄 통째 제거
+  lines.forEach((l, i) => {
+    if (edgeIdx.has(i) && boilerSet.has(norm(l.text))) return   // 가장자리 boiler 줄만 통째 제거
     let text = l.text
-    for (const b of longBoiler) if (text.includes(b)) text = text.split(b).join(' ').replace(/\s+/g, ' ').trim()  // 본문에 붙어버린 footer 부분 제거
+    if (edgeIdx.has(i)) for (const b of longBoiler) if (text.includes(b)) text = text.split(b).join(' ').replace(/\s+/g, ' ').trim()  // 가장자리에 붙은 footer 부분만 제거
     if (text.trim()) out.push({ ...l, text })
-  }
+  })
   return out
 }
 
