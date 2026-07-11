@@ -54,16 +54,17 @@ export default function LintPanel() {
     const groupKeys = Object.keys(groups)
     const pdfFor = (base) => pdfs.find(p => norm(p.name.replace(/\.pdf$/i, '')) === norm(base))
       || (pdfs.length === 1 && groupKeys.length === 1 ? pdfs[0] : null)   // 1:1이면 이름 달라도 매칭
-    const mkTxt = (main, pairFmt, pdfFile) => {
-      const det = detect(main.text)
-      return { kind: 'txt', name: main.name, text: main.text, sum: summarize(main.text), det, open: false, splitAction: det.glued.length > 0, unify: false, instr: '', running: false, prog: null, pairFmt: pairFmt || null, pdfFile: pdfFile || null }
+    const mkTxt = (main, pairFmt, pdfFile, formattedOnly) => {
+      // formatted만 있고 translated가 없으면 — 영어 원문이라 한글 기준 검사(미번역·큐 등)는 의미 없음. 새로 번역 대상으로만 취급.
+      const det = formattedOnly ? { meta: [], boiler: [], dupe: [], headNum: [], bilingual: [], dialog: [], struct: [], miscue: [], glued: [], repeat: [], spacing: 0, lines: main.text.split('\n').length } : detect(main.text)
+      return { kind: 'txt', name: main.name, text: main.text, sum: summarize(formattedOnly ? '' : main.text), det, open: false, splitAction: det.glued.length > 0, unify: false, instr: '', running: false, prog: null, pairFmt: pairFmt || null, pdfFile: pdfFile || null, formattedOnly: !!formattedOnly }
     }
     const next = [...others]
     let matchedPdf = false
     for (const [base, g] of Object.entries(groups)) {
       const pdf = pdfFor(base); if (pdf) matchedPdf = true
       if (g.tr) next.push(mkTxt(g.tr, g.fmt ? { name: g.fmt.name, text: g.fmt.text } : null, pdf))   // 번역본 + 영어 짝 + PDF
-      else if (g.fmt) next.push(mkTxt(g.fmt, null, pdf))   // 영어만
+      else if (g.fmt) next.push(mkTxt(g.fmt, null, pdf, true))   // 영어(원본)만 — 번역본 없음, 새로 번역 대상
       for (const s of g.solo) next.push(mkTxt(s, null, null))   // 짝 아닌 단독 txt
     }
     if (pdfs.length && !matchedPdf) setPdfNote(true)   // PDF는 넣었는데 짝을 못 찾음
@@ -146,12 +147,13 @@ export default function LintPanel() {
   async function retranslateDrop(idx) {
     const it = items[idx]
     if (it.running) return
-    if (!it.pairFmt?.text && !it.pdfFile) return
+    if (!it.pairFmt?.text && !it.pdfFile && !it.formattedOnly) return
     upd(idx, { running: true, result: null })
     const model = loadSettings().translateModel || loadSettings().model
     const guidelines = loadGuidelines('translate')
     try {
-      let fmt = it.pairFmt?.text || ''
+      // formattedOnly면 번역본 없이 원본(it.text)만 있는 상태 — 그게 곧 소스
+      let fmt = it.pairFmt?.text || (it.formattedOnly ? it.text : '')
       let pdfJudge = null
       // PDF '심판' — 원천(PDF)에서 재추출해 formatted를 검증/교체. 재추출 큐가 기존의 70% 이상이면 채택.
       if (it.pdfFile) {
@@ -190,12 +192,19 @@ export default function LintPanel() {
         } catch { out.push(scenes[i]) }
       }
       const newTr = out.join('\n\n') + '\n'
-      download(it.name.replace('.txt', '_재번역.txt'), newTr)
-      // before/after (기존 번역본 vs 새 번역) — 대표 변화
-      const before = splitScenes(it.text)
-      const pairs = []; const n = Math.min(before.length, out.length)
-      for (let i = 0; i < n && pairs.length < 4; i++) if (before[i] !== out[i]) pairs.push({ before: before[i].slice(0, 300), after: out[i].slice(0, 300) })
-      upd(idx, { result: { retranslate: true, pairs, total: n, changed: before.filter((b, i) => i < n && b !== out[i]).length, tags: profile ? [profile.weight, profile.latitude].filter(Boolean) : [], pdfJudge } })
+      download(it.name.replace('.txt', it.formattedOnly ? '_translated.txt' : '_재번역.txt'), newTr)
+      // before/after — formattedOnly는 이전 번역본이 없으니(원문=영어) 비교 없이 완료만 표시
+      const pairs = []
+      let n = scenes.length, changed = 0
+      if (!it.formattedOnly) {
+        const before = splitScenes(it.text)
+        n = Math.min(before.length, out.length)
+        for (let i = 0; i < n && pairs.length < 4; i++) if (before[i] !== out[i]) pairs.push({ before: before[i].slice(0, 300), after: out[i].slice(0, 300) })
+        changed = before.filter((b, i) => i < n && b !== out[i]).length
+      } else {
+        changed = n
+      }
+      upd(idx, { result: { retranslate: true, freshTranslate: !!it.formattedOnly, pairs, total: n, changed, tags: profile ? [profile.weight, profile.latitude].filter(Boolean) : [], pdfJudge } })
     } finally { upd(idx, { running: false, prog: null }) }
   }
 
@@ -315,13 +324,15 @@ export default function LintPanel() {
           s.spacing && `들쭉날쭉한 줄나눔`,
         ].filter(Boolean)
         const reviewCount = d.dialog.length + d.miscue.length
-        const clean = autoList.length === 0 && s.glued === 0 && reviewCount === 0 && !it.pairFmt   // 영어 짝이 있으면 그쪽도 정리하므로 '깨끗'으로 막지 않음
+        const clean = !it.formattedOnly && autoList.length === 0 && s.glued === 0 && reviewCount === 0 && !it.pairFmt   // 영어 짝/원본만 있으면 '깨끗'으로 막지 않음
         return (
           <div key={idx} style={{ background: T.bgCard, borderRadius: 4, marginBottom: 8, overflow: 'hidden' }}>
             <div onClick={() => upd(idx, { open: !it.open })}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', cursor: 'pointer' }}>
               <span style={{ color: T.fg, fontSize: 14, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}{it.pairFmt && <span style={{ color: T.accent, fontWeight: 600, fontSize: 11 }}> ＋영어 포맷</span>}</span>
-              {clean
+              {it.formattedOnly
+                ? <span style={{ fontSize: 12.5, color: T.warn, fontWeight: 600 }}>번역 필요</span>
+                : clean
                 ? <span style={{ fontSize: 12.5, color: T.good, fontWeight: 600 }}>✓ 깨끗해요</span>
                 : <span style={{ fontSize: 12.5, color: T.fgMuted }}>
                     {autoList.length + (s.glued > 0 ? 1 : 0) > 0 && <span style={{ color: T.accent, fontWeight: 600 }}>고칠 것 {autoList.length + (s.glued > 0 ? 1 : 0)}</span>}
@@ -331,8 +342,15 @@ export default function LintPanel() {
             </div>
             {it.open && (
               <div style={{ borderTop: `1px solid ${T.rule}`, padding: '14px' }}>
+                {/* 원본(영어 포맷)만 있고 번역본이 없는 경우 — 새로 번역 대상임을 명시 */}
+                {it.formattedOnly && (
+                  <div style={{ marginBottom: 12, padding: '12px 13px', background: T.warn + '14', border: `1.5px solid ${T.warn}66`, borderRadius: 6 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: T.warn, marginBottom: 4 }}>번역본이 없어요 — 이 원본을 처음부터 번역해요</div>
+                    <div style={{ fontSize: 12, color: T.fgMuted, lineHeight: 1.55 }}>영어 포맷(원본)만 들어왔어요. 아래 <b style={{ color: T.warn }}>제대로 다시 번역</b>을 누르면 진단 → 씬별 번역을 거쳐 완성된 번역본을 내려받아요.</div>
+                  </div>
+                )}
                 {/* 무엇을 고치는지 / 무엇을 확인해야 하는지 상세 */}
-                {!clean && (() => {
+                {!it.formattedOnly && !clean && (() => {
                   const lines = it.text.split('\n')
                   const fixItems = [...autoList, s.glued > 0 && `대사에 붙은 지문 ${s.glued}곳 분리`].filter(Boolean)
                   const dialogLines = d.dialog.slice(0, 5).map(i => lines[i]?.trim()).filter(Boolean)
@@ -372,41 +390,45 @@ export default function LintPanel() {
                   )
                 })()}
 
-                {/* 더 다듬기 — 항상 펼쳐진 채로, 저장 버튼 위에 */}
-                <div style={{ marginBottom: 10, padding: '11px 12px', background: T.bgInput, borderRadius: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: T.fg, marginBottom: 8 }}>더 다듬기 <span style={{ fontWeight: 400, color: T.fgDim, fontSize: 11 }}>· 선택 (토큰 씀)</span></div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.fg, cursor: 'pointer', marginBottom: 8 }}>
-                    <input type="checkbox" checked={it.unify} onChange={e => upd(idx, { unify: e.target.checked })} />
-                    말투 통일 <span style={{ color: T.fgDim, fontSize: 12 }}>— 인물별 반말/존댓말 일관되게</span>
-                  </label>
-                  <input value={it.instr} onChange={e => upd(idx, { instr: e.target.value })} placeholder="직접 지시 (예: 욕설 더 순화 / ○○ 호칭 통일)"
-                    style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgCard, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13 }} />
-                </div>
+                {/* 더 다듬기 — 기존 번역본이 있을 때만 의미 있음(영어 원문엔 말투·지시 적용 대상 없음) */}
+                {!it.formattedOnly && (
+                  <div style={{ marginBottom: 10, padding: '11px 12px', background: T.bgInput, borderRadius: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T.fg, marginBottom: 8 }}>더 다듬기 <span style={{ fontWeight: 400, color: T.fgDim, fontSize: 11 }}>· 선택 (토큰 씀)</span></div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.fg, cursor: 'pointer', marginBottom: 8 }}>
+                      <input type="checkbox" checked={it.unify} onChange={e => upd(idx, { unify: e.target.checked })} />
+                      말투 통일 <span style={{ color: T.fgDim, fontSize: 12 }}>— 인물별 반말/존댓말 일관되게</span>
+                    </label>
+                    <input value={it.instr} onChange={e => upd(idx, { instr: e.target.value })} placeholder="직접 지시 (예: 욕설 더 순화 / ○○ 호칭 통일)"
+                      style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: T.bgCard, border: `1px solid ${T.rule}`, borderRadius: 3, color: T.fg, fontSize: 13 }} />
+                  </div>
+                )}
 
                 {(() => {
                   const retxtRunning = it.running && (it.prog?.phase === '재번역' || it.prog?.phase === '작품 진단' || it.prog?.phase === 'PDF에서 다시 뽑는 중')
                   const cleanRunning = it.running && !retxtRunning
-                  const hasSource = !!it.pairFmt || !!it.pdfFile        // 재번역 소스(영어 포맷 or PDF)
-                  const needsRetrans = reviewCount > 0                 // 미번역·꼬인 큐 있으면 재번역이 근본 해결
+                  const hasSource = !!it.pairFmt || !!it.pdfFile || !!it.formattedOnly   // 재번역 소스(영어 포맷 or PDF or 원본 그 자체)
+                  const needsRetrans = reviewCount > 0 || it.formattedOnly              // 미번역·꼬인 큐 있거나 아예 번역본이 없으면 재번역이 근본 해결
                   const retransPrimary = needsRetrans && hasSource
                   const primaryStyle = { width: '100%', padding: '13px', borderRadius: 4, border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer' }
                   const btnBg = (on) => on ? { background: T.accent, color: T.accentFg, boxShadow: `0 3px 12px ${T.accent}55` } : { background: T.chip, color: T.fgMuted, boxShadow: 'none' }
                   const cleanDisabled = it.running || (clean && !it.unify && !it.instr.trim())
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {/* 재번역 — 원본(영어 포맷/PDF) 있을 때. 확인(미번역) 있으면 주 액션으로 강조 */}
+                      {/* 재번역 — 원본(영어 포맷/PDF/원본단독) 있을 때. 확인(미번역) 있으면 주 액션으로 강조 */}
                       {hasSource && (
                         <button className="sr-press" onClick={() => retranslateDrop(idx)} disabled={it.running}
                           style={{ ...primaryStyle, ...btnBg(retransPrimary && !it.running), cursor: it.running ? 'default' : 'pointer' }}>
-                          {retxtRunning || it.prog?.phase === 'PDF에서 다시 뽑는 중' ? `${it.prog.phase} ${it.prog?.t ? `${it.prog.d}/${it.prog.t}` : ''}` : '✦ 제대로 다시 번역'}
-                          {!it.running && <span style={{ fontWeight: 400, fontSize: 12 }}> · {it.pdfFile ? 'PDF 검증 후 ' : ''}전체 재번역 (토큰)</span>}
+                          {retxtRunning || it.prog?.phase === 'PDF에서 다시 뽑는 중' ? `${it.prog.phase} ${it.prog?.t ? `${it.prog.d}/${it.prog.t}` : ''}` : it.formattedOnly ? '✦ 번역하기' : '✦ 제대로 다시 번역'}
+                          {!it.running && <span style={{ fontWeight: 400, fontSize: 12 }}> · {it.pdfFile ? 'PDF 검증 후 ' : ''}{it.formattedOnly ? '진단 후 전체 번역' : '전체 재번역'} (토큰)</span>}
                         </button>
                       )}
-                      {/* 청소(무료) — 확인 없으면 주 액션 */}
-                      <button className="sr-press" onClick={() => applyAll(idx)} disabled={cleanDisabled}
-                        style={{ ...primaryStyle, ...btnBg(!retransPrimary && !cleanDisabled), cursor: it.running ? 'default' : 'pointer' }}>
-                        {cleanRunning ? `${it.prog?.phase || '처리 중'} ${it.prog?.t ? `${it.prog.d}/${it.prog.t}` : ''}` : clean ? '✓ 깨끗해요' : '✦ 청소해서 저장 (무료)'}
-                      </button>
+                      {/* 청소(무료) — 번역본이 있을 때만. 확인 없으면 주 액션 */}
+                      {!it.formattedOnly && (
+                        <button className="sr-press" onClick={() => applyAll(idx)} disabled={cleanDisabled}
+                          style={{ ...primaryStyle, ...btnBg(!retransPrimary && !cleanDisabled), cursor: it.running ? 'default' : 'pointer' }}>
+                          {cleanRunning ? `${it.prog?.phase || '처리 중'} ${it.prog?.t ? `${it.prog.d}/${it.prog.t}` : ''}` : clean ? '✓ 깨끗해요' : '✦ 청소해서 저장 (무료)'}
+                        </button>
+                      )}
                       {needsRetrans && !hasSource && (
                         <div style={{ fontSize: 11, color: T.fgDim, textAlign: 'center' }}>재번역하려면 <b style={{ color: T.fgMuted }}>영어 포맷(_formatted.txt)</b>이나 <b style={{ color: T.fgMuted }}>PDF</b>도 같이 넣어 주세요</div>
                       )}
@@ -417,7 +439,10 @@ export default function LintPanel() {
                 {/* 재번역 결과 — 이전→이후 대표 변화 */}
                 {it.result?.retranslate && (
                   <div style={{ marginTop: 12, padding: '12px 13px', background: T.bgInput, border: `1px solid ${T.good}55`, borderRadius: 6 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: T.good, marginBottom: 8 }}>✓ 다시 번역했어요 <span style={{ fontWeight: 400, color: T.fgDim, fontSize: 11 }}>· 바뀐 씬 {it.result.changed}/{it.result.total}{it.result.tags?.length ? ` · ${it.result.tags.join('·')}` : ''}</span></div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: T.good, marginBottom: 8 }}>
+                      {it.result.freshTranslate ? '✓ 번역 완료' : '✓ 다시 번역했어요'}
+                      <span style={{ fontWeight: 400, color: T.fgDim, fontSize: 11 }}> · {it.result.freshTranslate ? `${it.result.total}씬` : `바뀐 씬 ${it.result.changed}/${it.result.total}`}{it.result.tags?.length ? ` · ${it.result.tags.join('·')}` : ''}</span>
+                    </div>
                     {it.result.pdfJudge && (
                       <div style={{ fontSize: 11.5, color: T.fgMuted, marginBottom: 8, padding: '6px 9px', background: T.chip, borderRadius: 4 }}>
                         <b style={{ color: T.fg }}>PDF 심판</b> · 원본 재추출 큐 {it.result.pdfJudge.oldCues}→{it.result.pdfJudge.newCues} — {it.result.pdfJudge.adopted ? 'PDF에서 뽑은 걸 소스로 채택 (formatted보다 안 나쁨)' : 'PDF 재추출이 더 부실해 기존 formatted 유지'}

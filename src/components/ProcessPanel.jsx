@@ -199,8 +199,6 @@ export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo
         const settings = loadSettings()
         const fmtCount = scenes.filter(s => s.formatted).length
         const transCount = scenes.filter(s => s.translated).length
-        const fmtDone = fmtCount > 0 && fmtCount === scenes.length
-        const transDone = transCount > 0 && transCount === scenes.length
         const curCount = (type) => type === 'formatted' ? fmtCount : type === 'translated' ? transCount : fmtCount + transCount
         const save = (type) => {
           onDownload(type)  // 'saved' | 'unchanged' — 어느 쪽이든 디스크 내용은 최신
@@ -224,20 +222,15 @@ export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo
             {hasIncomplete && (
               <button className="sr-press" onClick={onContinue} style={tintBtn(T.accent)}>이어하기</button>
             )}
-            {/* 추출 — 완료되면 단계 색(포맷=파랑/번역=빨강), 저장하면 ✓ 저장됨 유지 */}
-            {fmtCount > 0 && (
-              <button className="sr-press" onClick={() => save('formatted')} style={fmtDone ? tintBtn(T.fmt) : ctrlBtn}>
-                {`formatted.txt${!isDone ? ` (${fmtCount})` : ''}`}{isSaved('formatted') && <> · <SavedTag /></>}
+            {/* 진행 중 부분 저장 — 완료 전에만 노출 (완료 후엔 아래 완료 보고서에서 저장) */}
+            {!isDone && fmtCount > 0 && (
+              <button className="sr-press" onClick={() => save('formatted')} style={ctrlBtn}>
+                formatted.txt ({fmtCount}){isSaved('formatted') && <> · <SavedTag /></>}
               </button>
             )}
-            {transCount > 0 && (
-              <button className="sr-press" onClick={() => save('translated')} style={transDone ? tintBtn(T.trans) : ctrlBtn}>
-                {`translated.txt${!isDone ? ` (${transCount})` : ''}`}{isSaved('translated') && <> · <SavedTag /></>}
-              </button>
-            )}
-            {settings.downloadMerged && fmtCount > 0 && transCount > 0 && (
-              <button className="sr-press" onClick={() => save('merged')} style={fmtDone && transDone ? tintBtn(T.accent) : ctrlBtn}>
-                merged.txt{isSaved('merged') && <> · <SavedTag /></>}
+            {!isDone && transCount > 0 && (
+              <button className="sr-press" onClick={() => save('translated')} style={ctrlBtn}>
+                translated.txt ({transCount}){isSaved('translated') && <> · <SavedTag /></>}
               </button>
             )}
             {doneCount > 0 && (
@@ -337,6 +330,18 @@ export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo
         const failed = scenes.filter(s => s.status.startsWith('error'))
         const lowSmi = scenes.filter(s => { const m = s.smiMatches; return m?.length && m.filter(x => x.aligned).length / m.length < 0.3 })
         const clean = failed.length === 0
+        const settings = loadSettings()
+        const fmtCount = scenes.filter(s => s.formatted).length
+        const transCount = scenes.filter(s => s.translated).length
+        const curCount = (type) => type === 'formatted' ? fmtCount : type === 'translated' ? transCount : fmtCount + transCount
+        const save = (type) => { onDownload(type); setSavedAt(s => ({ ...s, [type]: curCount(type) })) }
+        const isSaved = (type) => savedAt[type] != null && savedAt[type] === curCount(type)
+        const saveBtn = (type, label, color) => (
+          <button className="sr-press" onClick={() => save(type)}
+            style={{ flex: 1, minWidth: 120, padding: '11px', borderRadius: 4, border: 'none', background: isSaved(type) ? T.chip : color, color: isSaved(type) ? T.fgMuted : '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', boxShadow: isSaved(type) ? 'none' : `0 2px 8px ${color}55` }}>
+            {isSaved(type) ? `✓ ${label} 저장됨` : `↓ ${label} 저장`}
+          </button>
+        )
         return (
           <div style={{ marginBottom: 16, borderRadius: 3, overflow: 'hidden', background: T.chip, animation: 'riseIn .2s ease' }}>
             <div style={{ padding: '11px 14px', color: clean ? T.good : T.err, fontWeight: 700, fontSize: 14 }}>
@@ -365,6 +370,12 @@ export default function ProcessPanel({ title, scenes, phase, startTime, timeInfo
                 )
               )}
               {clean && lowSmi.length === 0 && <div style={{ color: T.good }}>· 특이사항 없음</div>}
+            </div>
+            {/* 저장 — 결과물이니 완료 보고서 안에 (수정 탭 결과 카드와 통일) */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 14px 14px' }}>
+              {fmtCount > 0 && saveBtn('formatted', '영어 포맷', T.fmt)}
+              {transCount > 0 && saveBtn('translated', '번역본', T.trans)}
+              {settings.downloadMerged && fmtCount > 0 && transCount > 0 && saveBtn('merged', '합본', T.accent)}
             </div>
           </div>
         )

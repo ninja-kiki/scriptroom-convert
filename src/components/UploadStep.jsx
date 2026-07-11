@@ -301,16 +301,24 @@ export default function UploadStep({ onLoad, onRestore, onRevise, onOpenJob }) {
   return (
     <div style={{ padding: '28px 20px', maxWidth: 640, margin: '0 auto' }}>
 
-      {/* 탭 */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
-        {[{ id: 'convert', label: '변환' }, { id: 'revise', label: '수정' }].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className="sr-press" style={{
-            padding: '7px 18px', borderRadius: 3, border: 'none', cursor: 'pointer',
-            background: tab === t.id ? T.accent : T.chip,
-            color: tab === t.id ? T.accentFg : T.fgMuted,
-            fontWeight: 700, fontSize: 14,
-          }}>{t.label}</button>
-        ))}
+      {/* 탭 — 두 갈래를 목적으로 벌린 카드형 (테두리 없이 배경 톤 차이로만 구분) */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+        {[
+          { id: 'convert', label: '변환', desc: '새 각본 PDF → 번역본' },
+          { id: 'revise', label: '수정', desc: '이미 번역한 것 다듬기' },
+        ].map(t => {
+          const on = tab === t.id
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} className="sr-press" style={{
+              flex: 1, textAlign: 'left', cursor: 'pointer',
+              padding: '12px 14px', borderRadius: 4, border: 'none',
+              background: on ? T.accent : T.chip,
+            }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: on ? T.accentFg : T.fgMuted, marginBottom: 3 }}>{t.label}</div>
+              <div style={{ fontSize: 11.5, color: on ? T.accentFg : T.fgDim, opacity: on ? 0.8 : 1, lineHeight: 1.4 }}>{t.desc}</div>
+            </button>
+          )
+        })}
       </div>
 
       {tab === 'revise' && (
