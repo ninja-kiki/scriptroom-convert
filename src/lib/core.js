@@ -96,7 +96,7 @@ export const DEFAULT_FORMAT_GUIDELINES = `PDF 텍스트 추출. 페이지번호/
 export const DEFAULT_TRANSLATE_GUIDELINES = `구조·마커 유지(@인물명·전환지시어 형태 그대로). 직역 금지, 장면 맥락 번역. 욕설 질감 살린 자연스러운 구어체.
 
 규칙:
-- 씬 헤딩 번역: # INT.→내부. EXT.→외부. INSERT→삽입 등, 장소·시간대도 한국어
+- 씬 헤딩 번역: # INT.→내부. EXT.→외부. INSERT/INTERCUT/MONTAGE/SERIES OF SHOTS는 번역하지 말고 인서트/인터컷/몽타주/시리즈 오브 샷처럼 업계에서 쓰는 음차 그대로, 장소·시간대도 한국어
 - @인물명 번역 금지(V.O./O.S./CONT'D 수식어 포함 그대로)
 - 지문 속 대문자 인물명 한국어로(BLAKE→블레이크, SOLDIERS→병사들)
 - (괄호지문) 번역. [CREDIT:]→[크레딧:], [SUPER:]→[자막:] 내용도 번역

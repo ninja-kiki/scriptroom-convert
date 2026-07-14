@@ -92,6 +92,7 @@ function reprocQualityIssues(text, isResult) {
 }
 function reprocStartTranslate(resume = false) {
   reproc.phase = 'translating'; reproc.running = true; reproc.done = false
+  reproc.serverDown = false; reproc.failCount = 0   // 이전 실행 잔재 리셋
   const OUT = reprocOutPath(reproc.work)
   reproc.outPath = OUT; reproc.resultReady = false   // 결과는 /tmp(다운로드용) — content 안 건드림
   const args = ['tools/retranslate.mjs', reproc.work, '--write', '--out', OUT]
@@ -108,8 +109,16 @@ function reprocStartTranslate(resume = false) {
     if (code !== 0) reproc.error = `종료 코드 ${code}`
     else {
       reproc.resultReady = existsSync(OUT)   // 완료 → 다운로드 가능
-      try { reproc.qualityIssues = reproc.resultReady ? reprocQualityIssues(readFileSync(OUT, 'utf8'), true) : [] } catch { reproc.qualityIssues = [] }
-      try { reproc.diff = reproc.resultReady ? reprocDiff(reproc.work) : null } catch { reproc.diff = null }   // 이전↔이후 대표 변화
+      // 서버 장애(세션 한도·과부하)로 씬이 통째 실패하면 retranslate가 영어 원문을 그대로 둔다.
+      // 이건 '소스 오염'이 아니라 서버 문제 — 로그의 '실패 N/M'을 파싱해 실패율이 절반 이상이면 구분한다.
+      const fm = reproc.log.join('\n').match(/실패\s+(\d+)\/(\d+)/g)
+      const last = fm && fm[fm.length - 1].match(/실패\s+(\d+)\/(\d+)/)
+      const failed = last ? +last[1] : 0, totalSc = last ? +last[2] : 0
+      reproc.failCount = failed
+      reproc.serverDown = totalSc > 0 && failed >= Math.max(2, totalSc * 0.5)   // 통째 번역 실패 = 서버 장애
+      // 서버 장애면 품질검사(소스 오염 오진) 생략 — 잘못된 '오염됐어요' 경고 대신 서버 장애 안내를 띄운다.
+      try { reproc.qualityIssues = (reproc.resultReady && !reproc.serverDown) ? reprocQualityIssues(readFileSync(OUT, 'utf8'), true) : [] } catch { reproc.qualityIssues = [] }
+      try { reproc.diff = (reproc.resultReady && !reproc.serverDown) ? reprocDiff(reproc.work) : null } catch { reproc.diff = null }   // 이전↔이후 대표 변화
     }
     addReprocHistory(reproc.work, code === 0 ? 'done' : 'error')
     reprocAdvance()   // 대기열에 다음 작품 있으면 자동 시작

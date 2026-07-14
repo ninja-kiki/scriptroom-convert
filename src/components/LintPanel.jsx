@@ -183,13 +183,22 @@ export default function LintPanel() {
       const register = profile?.toneGuide || ''
       // 2) 씬별 번역
       const out = []
+      let failCount = 0   // 서버 실패(500 등)로 영어 원문 그대로 둔 씬 수 — 소스 오염과 구분하기 위해 추적
       for (let i = 0; i < scenes.length; i++) {
         upd(idx, { prog: { phase: '재번역', d: i + 1, t: scenes.length } })
         const prevTail = i > 0 ? scenes[i - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
         try {
           const r = await fetch('/api/translate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ formattedText: scenes[i], characterMemo: register, guidelines, profile, sceneIndex: i, totalScenes: scenes.length, prevTail, model }) })
-          out.push(r.ok ? ((await r.json()).translated || '').trim() : scenes[i])
-        } catch { out.push(scenes[i]) }
+          if (r.ok) out.push(((await r.json()).translated || '').trim())
+          else { out.push(scenes[i]); failCount++ }   // 서버 오류 → 원문 유지 + 실패 카운트
+        } catch { out.push(scenes[i]); failCount++ }
+      }
+      // 실패율이 절반 이상이면 서버 장애(세션 한도·과부하)로 통째 번역 실패 → 소스 오염이 아니라 서버 문제.
+      // 온전한 기존 번역본을 망가진 영어본으로 덮어쓰지 않도록 다운로드를 막고 재시도 안내.
+      const serverDown = scenes.length > 0 && failCount >= Math.max(2, scenes.length * 0.5)
+      if (serverDown) {
+        upd(idx, { result: { retranslate: true, serverDown: true, failCount, total: scenes.length } })
+        return
       }
       const newTr = out.join('\n\n') + '\n'
       download(it.name.replace('.txt', it.formattedOnly ? '_translated.txt' : '_재번역.txt'), newTr)
@@ -204,7 +213,7 @@ export default function LintPanel() {
       } else {
         changed = n
       }
-      upd(idx, { result: { retranslate: true, freshTranslate: !!it.formattedOnly, pairs, total: n, changed, tags: profile ? [profile.weight, profile.latitude].filter(Boolean) : [], pdfJudge } })
+      upd(idx, { result: { retranslate: true, freshTranslate: !!it.formattedOnly, pairs, total: n, changed, failCount, tags: profile ? [profile.weight, profile.latitude].filter(Boolean) : [], pdfJudge } })
     } finally { upd(idx, { running: false, prog: null }) }
   }
 
@@ -437,7 +446,13 @@ export default function LintPanel() {
                 })()}
 
                 {/* 재번역 결과 — 이전→이후 대표 변화 */}
-                {it.result?.retranslate && (
+                {it.result?.retranslate && it.result.serverDown && (
+                  <div style={{ marginTop: 12, padding: '12px 13px', background: T.bgInput, border: `1px solid ${T.err}55`, borderRadius: 6 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: T.err, marginBottom: 6 }}>⚠ 번역 실패 — 서버 장애(소스 문제 아님)</div>
+                    <div style={{ fontSize: 12, color: T.fgMuted, lineHeight: 1.7 }}>{it.result.failCount ? `${it.result.failCount}개 씬` : '대부분의 씬'}이 번역에 실패했어요(세션 한도·서버 과부하). <b style={{ color: T.fgMuted }}>소스는 멀쩡합니다.</b> 결과가 영어 원문 그대로라 받지 않았어요 — 잠시 뒤 다시 눌러 주세요.</div>
+                  </div>
+                )}
+                {it.result?.retranslate && !it.result.serverDown && (
                   <div style={{ marginTop: 12, padding: '12px 13px', background: T.bgInput, border: `1px solid ${T.good}55`, borderRadius: 6 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: T.good, marginBottom: 8 }}>
                       {it.result.freshTranslate ? '✓ 번역 완료' : '✓ 다시 번역했어요'}
@@ -728,12 +743,19 @@ function ReprocessSection() {
                 </div>
                 {(finished || st.error) && (() => {
                   const qIssues = st.qualityIssues || []
-                  const broken = finished && qIssues.length > 0   // 결과가 깨짐 → '완료'로 안 내보냄
+                  const serverDown = finished && st.serverDown   // 서버 장애로 통째 실패 → 소스 오염 아님
+                  const broken = finished && !serverDown && qIssues.length > 0   // 결과가 깨짐 → '완료'로 안 내보냄
                   return (
                   <div style={{ borderRadius: 3, overflow: 'hidden', background: T.chip }}>
-                    <div style={{ padding: '11px 14px', color: st.error || broken ? T.err : failed > 0 ? T.err : T.good, fontWeight: 700, fontSize: 14 }}>
-                      {st.error ? '개선 실패 — Claude 서버 과부하일 수 있어요' : broken ? '⚠ 완료했지만 결과 품질에 문제가 있어요' : failed > 0 ? `개선 완료 — 실패 ${failed}씬` : '개선 완료 ✓'}
+                    <div style={{ padding: '11px 14px', color: st.error || broken || serverDown ? T.err : failed > 0 ? T.err : T.good, fontWeight: 700, fontSize: 14 }}>
+                      {st.error ? '개선 실패 — Claude 서버 과부하일 수 있어요' : serverDown ? '⚠ 번역 실패 — 서버 장애(소스 문제 아님)' : broken ? '⚠ 완료했지만 결과 품질에 문제가 있어요' : failed > 0 ? `개선 완료 — 실패 ${failed}씬` : '개선 완료 ✓'}
                     </div>
+                    {!st.error && serverDown && (
+                      <div style={{ padding: '0 14px 12px', fontSize: 13, color: T.fgMuted, lineHeight: 1.7 }}>
+                        <div>{st.failCount ? `${st.failCount}개 씬` : '대부분의 씬'}이 번역에 실패했어요(세션 한도·서버 과부하). <b style={{ color: T.fgMuted }}>소스는 멀쩡합니다</b> — 결과가 영어 원문 그대로라 받으면 안 돼요. 기존 번역본은 그대로 남아 있으니, <b style={{ color: T.fgMuted }}>잠시 뒤 다시 시도</b>하세요.</div>
+                        <button className="sr-press" onClick={() => resume(st.work)} style={{ ...ctrlBtn, color: T.accent, marginTop: 10, marginLeft: 0 }}>다시 시도(이어하기)</button>
+                      </div>
+                    )}
                     {!st.error && broken && (
                       <div style={{ padding: '0 14px 12px', fontSize: 13, color: T.fgMuted, lineHeight: 1.7 }}>
                         {qIssues.map((t, i) => <div key={i} style={{ display: 'flex', gap: 7, padding: '1px 0' }}><span style={{ color: T.err }}>•</span><span>{t}</span></div>)}
@@ -741,7 +763,7 @@ function ReprocessSection() {
                         <button className="sr-press" onClick={() => downloadResult(st.work)} style={{ background: 'none', border: 'none', color: T.fgDim, fontSize: 12, cursor: 'pointer', marginTop: 8, padding: 0, textDecoration: 'underline' }}>그래도 받기</button>
                       </div>
                     )}
-                    {!st.error && !broken && (
+                    {!st.error && !broken && !serverDown && (
                       <div style={{ padding: '0 14px 12px', fontSize: 13, color: T.fgMuted, lineHeight: 1.8 }}>
                         {imps && <div style={{ marginBottom: 8 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: T.fg, marginBottom: 3 }}>이렇게 손봤어요</div>
@@ -769,9 +791,20 @@ function ReprocessSection() {
                           </div>
                         )}
                         <div><span style={{ color: T.good }}>· 씬 {done}/{total} 다시 번역됨</span></div>
+                        {failed > 0 && (
+                          <div style={{ marginTop: 10, padding: '10px 12px', background: `${T.err}12`, border: `1px solid ${T.err}44`, borderRadius: 6 }}>
+                            <div style={{ fontSize: 12.5, color: T.fgMuted, lineHeight: 1.6 }}>
+                              <b style={{ color: T.err }}>{failed}개 씬</b>이 번역에 실패해 <b style={{ color: T.fgMuted }}>영어 원문 그대로</b>예요(일시적 네트워크·서버 오류). 받기 전에 그 씬만 다시 채우세요.
+                            </div>
+                            <button className="sr-press" onClick={() => resume(st.work)} disabled={busy}
+                              style={{ width: '100%', marginTop: 8, padding: '10px', borderRadius: 4, border: `1px solid ${T.err}`, background: 'none', color: T.err, fontWeight: 700, fontSize: 13, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}>
+                              ↻ 실패한 {failed}씬만 다시 채우기
+                            </button>
+                          </div>
+                        )}
                         <button className="sr-press" onClick={() => downloadResult(st.work)}
-                          style={{ width: '100%', marginTop: 10, padding: '12px', borderRadius: 4, border: 'none', background: T.accent, color: T.accentFg, fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: `0 3px 12px ${T.accent}55` }}>
-                          ✦ 번역본 다운로드 (.txt)
+                          style={{ width: '100%', marginTop: 10, padding: '12px', borderRadius: 4, border: 'none', background: failed > 0 ? T.chip : T.accent, color: failed > 0 ? T.fgMuted : T.accentFg, fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: failed > 0 ? 'none' : `0 3px 12px ${T.accent}55` }}>
+                          {failed > 0 ? '실패한 채로 그냥 받기 (.txt)' : '✦ 번역본 다운로드 (.txt)'}
                         </button>
                         <div style={{ fontSize: 11, color: T.fgDim, marginTop: 6 }}>받아서 공유폴더에 넣으면 돼요 — 로컬 작품 폴더는 안 건드려요.</div>
                       </div>
