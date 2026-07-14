@@ -25,7 +25,18 @@ async function extractLines(path) {
   const lines = []
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p)
-    const items = (await page.getTextContent()).items.filter(i => 'str' in i)
+    let items = (await page.getTextContent()).items.filter(i => 'str' in i)
+    // 여백 씬/샷 번호 제거 — 촬영대본은 좌·우 여백에 "7A" 같은 씬번호를 본문과 같은 y에 찍는다.
+    //   그대로 두면 줄 양끝에 "7A ... 7A"로 들러붙는다. 본문 왼쪽 시작선(bodyLeft)을 잡아,
+    //   그보다 확실히 왼쪽(여백) 또는 페이지 오른쪽 끝에 있는 '순수 번호 토큰'만 아이템 단위로 버린다.
+    const wordXs = items.filter(i => i.str.trim().length >= 4).map(i => i.transform[4])
+    const bodyLeft = wordXs.length ? Math.min(...wordXs) : 0
+    const isNumTok = s => /^[A-Z]{0,2}\d{1,3}[A-Z]?$/.test(s.trim())
+    items = items.filter(it => {
+      const ix = it.transform[4]
+      if (!isNumTok(it.str)) return true
+      return !(ix < bodyLeft - 10 || ix > bodyLeft + 430)   // 좌여백 또는 우여백의 번호 = 버림
+    })
     let lastY = null, x = null, text = ''
     const push = () => { if (text.trim()) lines.push({ text: collapseRepeats(text.replace(/\s+/g, ' ').trim()), x, y: lastY, page: p }) }
     for (const it of items) {
@@ -95,7 +106,7 @@ function detectBands(lines) {
   return { xAction, dialogue: xAction + 50, character: xAction + 110, transition: xAction + 320 }
 }
 
-const SCENE_RE = /^(#?\s*)(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
+const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
 const TRANS_RE = /(CUT TO:|FADE (IN|OUT|TO)|DISSOLVE TO:|SMASH CUT|MATCH CUT)\s*$/i
 const TIME = /\b(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|AFTERNOON|LATER|EARLIER|CONTINUOUS|MOMENTS|SAME|SUNSET|SUNRISE)\b/
 const isSlug = (s) => { if (!/\s[-–—]\s/.test(s) || s.length > 70) return false; const L = s.replace(/[^A-Za-z]/g, ''), U = s.replace(/[^A-Z]/g, ''); return L.length >= 3 && U.length / L.length >= 0.85 && TIME.test(s.split(/\s[-–—]\s/).pop()) }
@@ -130,9 +141,10 @@ function build(lines, b) {
     const type = classify(line, b)
     const s = line.text.trim()
     if (!s) continue
-    // 페이지번호/단독숫자/머리말 잡음 스킵
-    if (/^\d{1,4}\.?$/.test(s) || /^(CONTINUED|CONT'D)[:.]?$/i.test(s) || s.length < 1) continue
-    if (type === 'scene') { flush(); out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]?\d+\.?\s+/, '').replace(/\s*[A-Z]?\d+\.?$/, '').trim() }) ; prev = line; continue }
+    // 페이지번호/단독숫자/개정 샷번호(4A·6A·A19 등)/머리말 잡음 스킵.
+    //   ★샷번호는 병합(soft-wrap) 전에 걷어내야 옆 문장에 "looks; 4A"처럼 들러붙지 않는다.
+    if (/^\*?\s*[A-Z]{0,2}\d{1,4}[A-Z]?\.?\*?$/.test(s) || /^(CONTINUED|CONT'D)[:.]?$/i.test(s) || s.length < 1) continue
+    if (type === 'scene') { flush(); out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
     if (type === 'character') { flush(); out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
     if (type === 'paren') { flush(); out.push({ type, text: s }); prev = line; continue }
     if (type === 'transition') { flush(); out.push({ type, text: s }); prev = line; continue }
