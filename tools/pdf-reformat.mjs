@@ -156,9 +156,22 @@ function build(lines, b) {
   }
   flush()
 
-  // 첫 씬 헤딩(#) 이전 = 타이틀 페이지/에피그래프 → 버림
+  // 첫 씬 헤딩(#) 이전 = 타이틀 페이지 영역. 통째로 버리면 오프닝 지문·에피그래프·타이틀
+  //   카드(TWBB 크레셴도, moneyball의 Bill James 인용, casino "TITLE: LAS VEGAS, 1980")까지
+  //   날아간다. 그래서 '잡음(제목·by라인·초고/판권/주소)'만 버리고 '실질 내용'은 살린다.
+  const META_RE = /written by|screenplay by|story by|teleplay by|based on|draft|shooting script|revision|confidential|propriet|property of|no portion|all rights|reproduced|distribut|prior written|©|copyright|WGA|registered|sole property|\bsuite\b|\bblvd\b|CA\s*\d{5}/i
+  const CARD_RE = /^(TITLE:|SUPER:|IN\s*BLACK|OVER\s*BLACK|FADE\s*IN|BLACK\.|CHYRON|INTERTITLE)/i
+  const keepPre = b => {
+    const t = (b.text || '').trim()
+    if (!t) return false
+    if (b.type === 'transition') return true            // FADE IN: 등 전환지시어
+    if (b.type !== 'action') return false               // pre 영역의 씬/인물/괄호는 대개 잡음 → 버림
+    if (CARD_RE.test(t)) return true                    // TITLE:/SUPER:/IN BLACK 등 카드
+    if (META_RE.test(t)) return false                   // 판권·크레딧·초고·주소 = 타이틀페이지 메타
+    return t.length >= 45                               // 긴 산문 = 오프닝 지문/에피그래프
+  }
   const firstScene = out.findIndex(b => b.type === 'scene')
-  const body = firstScene > 0 ? out.slice(firstScene) : out
+  const body = firstScene > 0 ? [...out.slice(0, firstScene).filter(keepPre), ...out.slice(firstScene)] : out
 
   // 블록 사이 빈 줄 1개로 렌더 (scriptroom 규칙: 빈 줄=경계)
   return body.map(b => b.text).join('\n\n') + '\n'
