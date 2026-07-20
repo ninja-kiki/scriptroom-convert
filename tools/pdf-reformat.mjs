@@ -141,22 +141,27 @@ function build(lines, b) {
   //   위치와 무관하게 확정적으로 식별되게 한다(씬/인물 마커와 동급의 구조 마커).
   const flush = () => { if (cur) { out.push(cur.type === 'dialogue' ? { ...cur, text: '- ' + cur.text } : cur); cur = null } }
   let prev = null
+  let afterCue = false   // 방금 @인물 큐를 냈고 아직 그 대사를 못 만난 상태
   for (const line of lines) {
-    const type = classify(line, b)
+    let type = classify(line, b)
     const s = line.text.trim()
     if (!s) continue
     // 페이지번호/단독숫자/개정 샷번호(4A·6A·A19 등)/머리말 잡음 스킵.
     //   ★샷번호는 병합(soft-wrap) 전에 걷어내야 옆 문장에 "looks; 4A"처럼 들러붙지 않는다.
     if (/^\*?\s*[A-Z]{0,2}\d{1,4}[A-Z]?\.?\*?$/.test(s) || /^\(?(CONTINUED|CONT'D|MORE)\)?[:.]?$/i.test(s) || s.length < 1) continue
-    if (type === 'scene') { flush(); out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
-    if (type === 'character') { flush(); out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
-    if (type === 'paren') { flush(); out.push({ type, text: s }); prev = line; continue }
+    if (type === 'scene') { flush(); afterCue = false; out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
+    if (type === 'character') { flush(); afterCue = true; out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
+    if (type === 'paren') { flush(); out.push({ type, text: s }); prev = line; continue }   // 괄호는 afterCue 유지(큐→(beat)→대사)
     // 전환지시어(CUT TO: 등)는 괄호로 감싸 독립된 한 줄로 — 리더가 괄호 지시문과 동일하게 흡수·렌더.
-    if (type === 'transition') { flush(); out.push({ type, text: '(' + s.replace(/^\(+|\)+$/g, '').trim() + ')' }); prev = line; continue }
+    if (type === 'transition') { flush(); afterCue = false; out.push({ type, text: '(' + s.replace(/^\(+|\)+$/g, '').trim() + ')' }); prev = line; continue }
+    // ★큐 직후 첫 본문은 각본 구조상 무조건 대사 — x좌표 밴드 감지가 어긋난 작품(batman 등)에서
+    //   대사가 action으로 오분류되던 것을 바로잡는다(대사·지문 붙음의 진짜 뿌리). 대사를 시작하면 afterCue 해제.
+    if (afterCue && type === 'action') type = 'dialogue'
     // dialogue/action: 연속 줄 병합(soft wrap). 단 문단 갭(>1.6*lh)이나 타입 바뀌면 끊기
     const bigGap = prev && line.page === prev.page && (prev.y - line.y) > lh * 1.7
     if (cur && cur.type === type && !bigGap) cur.text += ' ' + s
     else { flush(); cur = { type, text: s } }
+    if (type === 'dialogue') afterCue = false
     prev = line
   }
   flush()
