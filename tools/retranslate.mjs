@@ -52,7 +52,7 @@ function buildDialogueSample(text, maxChars = 4000) {
     if (/^@/.test(lines[i])) {
       const cue = lines[i].replace(/^@/, '').split('(')[0].trim()
       let j = i + 1; while (j < lines.length && lines[j].trim() === '') j++
-      const dlg = (lines[j] || '').trim()
+      const dlg = (lines[j] || '').trim().replace(/^-\s+/, '')   // 대사 마커('- ') 제거 — 샘플엔 순수 대사만
       if (cue && dlg && !/^[#@(]/.test(dlg)) pairs.push(`${cue}: ${dlg}`)
     }
   }

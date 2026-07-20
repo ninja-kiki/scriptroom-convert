@@ -135,7 +135,11 @@ function build(lines, b) {
 
   const out = []
   let cur = null  // { type, text }
-  const flush = () => { if (cur) { out.push(cur); cur = null } }
+  // ★대사에는 지금까지 마커가 없어 지문과 구분이 안 됐다(씬=#, 인물=@, 대사는 맨몸텍스트).
+  //   그래서 파서(sync-sources parseBlocks)가 '@인물 다음 줄=대사'라는 위치 추론에만 의존했고,
+  //   그 추론이 어긋나면 대사·지문이 한 블록으로 붙는 사고가 났다. 대사 줄 앞에 '- '를 붙여
+  //   위치와 무관하게 확정적으로 식별되게 한다(씬/인물 마커와 동급의 구조 마커).
+  const flush = () => { if (cur) { out.push(cur.type === 'dialogue' ? { ...cur, text: '- ' + cur.text } : cur); cur = null } }
   let prev = null
   for (const line of lines) {
     const type = classify(line, b)

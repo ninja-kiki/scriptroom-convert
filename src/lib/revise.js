@@ -172,7 +172,8 @@ function countMissingBlankLines(text) {
     if (cur.startsWith('@')) { inDialogue = true; continue }
     if (cur === '' || cur.startsWith('#')) { inDialogue = false; continue }
     if (cur.startsWith('(') || cur.startsWith('[')) continue
-    if (inDialogue && cur !== '' && next !== '' && !next.startsWith('@') && !next.startsWith('(') && !next.startsWith('#') && !next.startsWith('[')) {
+    // next가 '- '(대사 마커)로 시작하면 다음 대사 문단이 확실 — 지문 오인 아님
+    if (inDialogue && cur !== '' && next !== '' && !next.startsWith('@') && !next.startsWith('(') && !next.startsWith('#') && !next.startsWith('[') && !next.startsWith('- ')) {
       count++; inDialogue = false
     }
   }
@@ -188,7 +189,7 @@ function fixBlankLines(text) {
     if (cur.startsWith('@')) { inDialogue = true; continue }
     if (cur === '' || cur.startsWith('#')) { inDialogue = false; continue }
     if (cur.startsWith('(') || cur.startsWith('[')) continue
-    if (inDialogue && cur !== '' && next !== '' && !next.startsWith('@') && !next.startsWith('(') && !next.startsWith('#') && !next.startsWith('[')) {
+    if (inDialogue && cur !== '' && next !== '' && !next.startsWith('@') && !next.startsWith('(') && !next.startsWith('#') && !next.startsWith('[') && !next.startsWith('- ')) {
       result.push(''); inDialogue = false
     }
   }

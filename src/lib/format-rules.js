@@ -56,15 +56,15 @@ function toCue(line) {
 // 씬 raw → { formatted, confidence(0~1), stats }. confidence 낮으면 LLM 권장.
 // PDF 단 너비로 한 문장이 여러 줄로 끊긴 걸 한 줄로 합침(리플로우).
 // 본문(지문/대사)에서 '앞 줄이 종결부호 없이 끝 + 다음 줄도 본문'이면 이어붙임.
-// 마커(#·@·괄호)·종결부호·빈 줄·목록은 경계로 보고 합치지 않음.
+// 마커(#·@·괄호·대사'- ')·종결부호·빈 줄·목록은 경계로 보고 합치지 않음.
 export function reflowBody(lines) {
   const res = []
   for (const line of lines) {
     const t = line.trim()
     const prev = res.length ? res[res.length - 1] : null
     const prevT = prev != null ? prev.trim() : ''
-    const bodyPrev = prevT && !/^[#@(]/.test(prevT)
-    const bodyCur = t && !/^[#@(]/.test(t)
+    const bodyPrev = prevT && !/^[#@(-]/.test(prevT)
+    const bodyCur = t && !/^[#@(-]/.test(t)
     const prevOpen = !/[.!?…:;"'’”)\]]$/.test(prevT)   // 앞 줄이 종결부호 없이 끝남(=문장 미완)
     const curContinues = !/^[-•*]/.test(t)             // 다음 줄이 목록 표시로 시작하지 않음
     if (bodyPrev && bodyCur && prevOpen && curContinues) {
