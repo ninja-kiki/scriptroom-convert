@@ -82,14 +82,16 @@ export function applyAccent(key) {
 
 export const DEFAULT_FORMAT_GUIDELINES = `PDF 텍스트 추출. 페이지번호/헤더/푸터/타이틀페이지 제거. 내용 추가·요약 금지, 원문 언어 유지, 마커만 추가.
 
-형식: #씬헤딩 / 지문(일반텍스트) / @인물명(큐, V.O./O.S.는 @MARK (V.O.)) / (괄호지문) / - 대사(맨 앞 '- ' 마커) / CUT TO:(마커없이) / [CREDIT:…] / [SUPER:…화면삽입자막]
+형식: #씬헤딩 / 지문(일반텍스트) / @인물명(큐, V.O./O.S.는 @MARK (V.O.)) / (괄호지문) / - 대사(맨 앞 '- ' 마커) / (CUT TO:)(전환도 괄호로) / [크레딧:…] / [타이틀:…] / [자막:…화면삽입자막]
+
+★특수 표기(자막/타이틀/크레딧/전환)는 전부 자기만의 독립된 한 줄(앞뒤 빈 줄)로 — 절대 다른 문장 안에 인라인 금지.
 
 규칙:
 - 헤딩 키워드(INT./EXT./INT./EXT./INSERT/INTERCUT/MONTAGE/SERIES OF SHOTS)는 반드시 #로 시작
 - 씬번호 prefix/suffix 제거: "19 EXT. X"→"# EXT. X", "INT. X DAY 19"→"# INT. X - DAY"
 - 비표준 헤딩은 장소맥락으로 INT./EXT. 추론해 #로 정규화("LOCKER ROOM--… - DAY"→"# INT. LOCKER ROOM - DAY"), 점생략형(EXT/INT.)도 표준화
 - 페이지번호/단독 숫자줄 제거
-- 전환지시어(CUT TO:/FADE IN:/FADE OUT:/SMASH CUT TO: 등) 그대로
+- 전환지시어(CUT TO:/FADE IN:/FADE OUT:/SMASH CUT TO: 등)는 '(CUT TO:)'처럼 괄호로 감싸 독립된 한 줄로
 - 각 씬은 헤딩 포함 완결 단위. 대사 뒤 지문 이어지면 빈 줄 1개 삽입
 - ★줄바꿈 정규화(번역본과 줄 맞춤): 한 대사·지문이 PDF 단 너비 때문에 여러 줄로 끊겨 있으면 한 줄(한 문장/문단 단위)로 합친다. 빈 줄은 문단 경계(지문↔대사, 대사↔지문)에만. 문단 중간의 줄바꿈은 남기지 말 것 — 번역본은 문장 단위로 리플로우되므로 포맷도 같은 줄 구조여야 정렬된다`
 
@@ -105,7 +107,7 @@ export const DEFAULT_TRANSLATE_GUIDELINES = `구조·마커 유지(@인물명·�
   화면에 영어 타이틀 카드로 뜨는 것이고, 앱이 한국어 제목을 따로 보여주므로 옮기면 오히려 틀린다
   (There Will Be Blood→'피가 흐를 것이다' 같은 오역 방지). 역할 표기는 한국어로:
   Screenplay by→각본, Story by→원안, Based on the book by→원작. 에피그래프 인용문·스튜디오 표기는 번역
-- CUT TO: 등 전환지시어 그대로. 대사-지문 빈 줄 유지
+- 전환지시어는 '(CUT TO:)' '(DISSOLVE TO:)'처럼 괄호로 감싼 형태 그대로 유지 — 독립된 한 줄(앞뒤 빈 줄), 문장 중간 인라인 금지. 대사-지문 빈 줄 유지
 - SMI 있으면 대사는 SMI 1순위(호칭·말투·경어 기준), 명백한 오역만 교정`
 
 // Settings

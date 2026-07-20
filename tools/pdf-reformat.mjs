@@ -151,7 +151,8 @@ function build(lines, b) {
     if (type === 'scene') { flush(); out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
     if (type === 'character') { flush(); out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
     if (type === 'paren') { flush(); out.push({ type, text: s }); prev = line; continue }
-    if (type === 'transition') { flush(); out.push({ type, text: s }); prev = line; continue }
+    // 전환지시어(CUT TO: 등)는 괄호로 감싸 독립된 한 줄로 — 리더가 괄호 지시문과 동일하게 흡수·렌더.
+    if (type === 'transition') { flush(); out.push({ type, text: '(' + s.replace(/^\(+|\)+$/g, '').trim() + ')' }); prev = line; continue }
     // dialogue/action: 연속 줄 병합(soft wrap). 단 문단 갭(>1.6*lh)이나 타입 바뀌면 끊기
     const bigGap = prev && line.page === prev.page && (prev.y - line.y) > lh * 1.7
     if (cur && cur.type === type && !bigGap) cur.text += ' ' + s
