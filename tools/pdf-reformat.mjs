@@ -57,6 +57,9 @@ async function extractLines(path) {
 //     러닝헤더로 오판돼 통째로 삭제되는 사고가 남. 러닝헤더/푸터는 항상 페이지 가장자리에만 있다.
 function stripRepeatedBoiler(lines) {
   const norm = t => t.replace(/\s+/g, ' ').trim()
+  // 러닝헤더에 페이지번호가 박혀 매 페이지 텍스트가 미묘하게 다른 경우(예: "The Martian Shooting Script 5.")
+  // 정확일치로는 못 잡으므로, 빈도 판정용으로만 끝의 숫자·#번호 토큰을 지운 느슨한 키를 함께 쓴다.
+  const loose = t => norm(t).replace(/\s*#?\d+[A-Za-z]?\.?\s*$/, '').trim()
   const byPage = new Map()
   lines.forEach((l, i) => { const arr = byPage.get(l.page) || []; arr.push(i); byPage.set(l.page, arr) })
   const edgeIdx = new Set()
@@ -65,16 +68,25 @@ function stripRepeatedBoiler(lines) {
     idxs.forEach((li, i) => { if (i < 2 || i >= n - 2) edgeIdx.add(li) })
   }
   const maxPage = Math.max(1, ...lines.map(l => l.page))
-  const freq = new Map()
-  lines.forEach((l, i) => { if (!edgeIdx.has(i)) return; const k = norm(l.text); if (k.length >= 8) freq.set(k, (freq.get(k) || 0) + 1) })
+  const freq = new Map(), looseFreq = new Map()
+  lines.forEach((l, i) => {
+    if (!edgeIdx.has(i)) return
+    const k = norm(l.text)
+    if (k.length >= 8) freq.set(k, (freq.get(k) || 0) + 1)
+    const lk = loose(l.text)
+    if (lk.length >= 8) looseFreq.set(lk, (looseFreq.get(lk) || 0) + 1)
+  })
   const thr = Math.max(3, Math.floor(maxPage * 0.3))
   const boiler = [...freq].filter(([, c]) => c >= thr).map(([k]) => k)
-  if (!boiler.length) return lines
+  const looseBoiler = [...looseFreq].filter(([, c]) => c >= thr).map(([k]) => k)
+  if (!boiler.length && !looseBoiler.length) return lines
   const boilerSet = new Set(boiler)
+  const looseBoilerSet = new Set(looseBoiler)
   const longBoiler = boiler.filter(b => b.length >= 20)   // 본문 단어 오삭제 방지: 긴 것만 부분 제거
   const out = []
   lines.forEach((l, i) => {
     if (edgeIdx.has(i) && boilerSet.has(norm(l.text))) return   // 가장자리 boiler 줄만 통째 제거
+    if (edgeIdx.has(i) && looseBoilerSet.has(loose(l.text))) return   // 페이지번호만 다른 반복 헤더도 통째 제거
     let text = l.text
     if (edgeIdx.has(i)) for (const b of longBoiler) if (text.includes(b)) text = text.split(b).join(' ').replace(/\s+/g, ' ').trim()  // 가장자리에 붙은 footer 부분만 제거
     if (text.trim()) out.push({ ...l, text })
@@ -107,6 +119,7 @@ function detectBands(lines) {
 }
 
 const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
+const OMITTED_RE = /^OMITTED\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i
 const TRANS_RE = /(CUT TO:|FADE (IN|OUT|TO)|DISSOLVE TO:|SMASH CUT|MATCH CUT)\s*$/i
 const TIME = /\b(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|AFTERNOON|LATER|EARLIER|CONTINUOUS|MOMENTS|SAME|SUNSET|SUNRISE)\b/
 const isSlug = (s) => { if (!/\s[-–—]\s/.test(s) || s.length > 70) return false; const L = s.replace(/[^A-Za-z]/g, ''), U = s.replace(/[^A-Z]/g, ''); return L.length >= 3 && U.length / L.length >= 0.85 && TIME.test(s.split(/\s[-–—]\s/).pop()) }
@@ -119,7 +132,7 @@ function isRealCue(s) {
 }
 function classify(line, b) {
   const s = line.text.trim()
-  if (SCENE_RE.test(s) || isSlug(s)) return 'scene'
+  if (SCENE_RE.test(s) || isSlug(s) || OMITTED_RE.test(s)) return 'scene'
   if (TRANS_RE.test(s) || line.x >= b.transition) return 'transition'
   if (line.x >= b.character && isRealCue(s)) return 'character'
   if (/^\(.*\)$/.test(s)) return 'paren'
@@ -148,7 +161,7 @@ function build(lines, b) {
     if (!s) continue
     // 페이지번호/단독숫자/개정 샷번호(4A·6A·A19 등)/머리말 잡음 스킵.
     //   ★샷번호는 병합(soft-wrap) 전에 걷어내야 옆 문장에 "looks; 4A"처럼 들러붙지 않는다.
-    if (/^\*?\s*[A-Z]{0,2}\d{1,4}[A-Z]?\.?\*?$/.test(s) || /^\(?(CONTINUED|CONT'D|MORE)\)?[:.]?$/i.test(s) || s.length < 1) continue
+    if (/^\*?\s*[A-Z]{0,2}\d{1,4}[A-Z]?\.?\*?$/.test(s) || /^\(?(CONTINUED|CONT'D|MORE)\)?\s*:?\s*(\(\d+\))?\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i.test(s) || s.length < 1) continue
     if (type === 'scene') { flush(); afterCue = false; out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
     if (type === 'character') { flush(); afterCue = true; out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
     if (type === 'paren') { flush(); out.push({ type, text: s }); prev = line; continue }   // 괄호는 afterCue 유지(큐→(beat)→대사)
