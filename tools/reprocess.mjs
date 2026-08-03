@@ -58,7 +58,9 @@ if (DIAGNOSE_ONLY) {
   console.log('[reprocess] 진단 완료 — 번역 시작 대기')
 } else {
   // CLI 직접 실행(개인용): --out 없으면 retranslate가 content에 씀. 앱(server)은 reprocess를 --diagnose-only로만 부르고 번역은 retranslate를 --out으로 직접 spawn.
+  // ★--resume 항상 추가: 씬 수만 안 바뀌면(같은 PDF 재추출은 결정적) 이미 번역된 씬은 재사용하고 남은 것만 이어서 번역.
+  //   서버 500으로 중간에 죽어 재시도할 때 처음부터 다시 도는 걸 막는다(안 그러면 큰 작품은 재시도마다 진행률이 0으로 리셋됨).
   console.log('[3/3] 진단 + 재번역')
-  run(`node tools/retranslate.mjs ${q(work)} --write${SRC_ARG}${INSTRUCTION ? ` --instruction ${q(INSTRUCTION)}` : ''}`)
+  run(`node tools/retranslate.mjs ${q(work)} --write --resume${SRC_ARG}${INSTRUCTION ? ` --instruction ${q(INSTRUCTION)}` : ''}`)
   console.log('[reprocess] ✓ 완료')
 }
