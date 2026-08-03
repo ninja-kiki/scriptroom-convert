@@ -115,7 +115,10 @@ export const DEFAULT_TRANSLATE_GUIDELINES = `구조·마커 유지(@·전환지�
   (There Will Be Blood→'피가 흐를 것이다' 같은 오역 방지). 역할 표기는 한국어로:
   Screenplay by→각본, Story by→원안, Based on the book by→원작. 에피그래프 인용문·스튜디오 표기는 번역
 - 전환지시어는 '(CUT TO:)' '(DISSOLVE TO:)'처럼 괄호로 감싼 형태 그대로 유지 — 독립된 한 줄(앞뒤 빈 줄), 문장 중간 인라인 금지. 대사-지문 빈 줄 유지
-- SMI 있으면 대사는 SMI 1순위(호칭·말투·경어 기준), 명백한 오역만 교정`
+- SMI 있으면 대사는 SMI 1순위(호칭·말투·경어 기준), 명백한 오역만 교정
+- ★이중언어 원문(중국어 등 외국어 대사 + 영어 자막이 병기된 장면)에서 같은 인물의 같은 대사가 '- 인물'과
+  '@인물' 형태로 중복 추출돼 있으면, 추출 오류이니 중복을 걸러내고 하나의 @인물 큐 + 자연스러운 한국어 대사
+  한 줄로 합쳐라. 두 언어를 각각 번역해 대사를 두 번 만들지 말 것`
 
 // Settings
 export const MODELS = [
@@ -199,7 +202,11 @@ export function translationStructureOk(formatted, translated) {
   const cues = (t) => (t.match(/^@/gm) || []).length
   const body = (t) => t.split('\n').filter(l => l.trim()).length
   if (heads(formatted) !== heads(translated)) return false
-  if (cues(formatted) !== cues(translated)) return false
+  // 이중언어 원문(중국어 대사+영어 자막 병기 등)에서 같은 대사가 '- 인물'·'@인물'로 중복 추출된 경우
+  // LLM이 자연스럽게 하나로 합치는 건 정상(환각 아님) — 줄어드는 건 허용, 늘어나는 것만 막는다.
+  const cf = cues(formatted), ct = cues(translated)
+  if (ct > cf) return false
+  if (cf > 0 && ct < cf * 0.5) return false
   const bf = body(formatted), bt = body(translated)
   if (bf > 0 && (bt < bf * 0.6 || bt > bf * 1.6)) return false
   return true

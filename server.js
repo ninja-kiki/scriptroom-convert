@@ -777,7 +777,12 @@ function translationStructureOk(formatted, translated) {
   const cues = (t) => (t.match(/^@/gm) || []).length
   const body = (t) => t.split('\n').filter(l => l.trim()).length
   if (heads(formatted) !== heads(translated)) return false   // 헤딩 수 불일치 = 씬 누락/창작
-  if (cues(formatted) !== cues(translated)) return false      // 인물 큐 수 불일치 = 대사 누락/창작
+  // 인물 큐 수: 원문이 이중언어(중국어 대사+영어 자막 병기 등)로 같은 대사가 "- 인물"·"@인물" 형태로
+  //   중복 추출된 경우, LLM이 이를 자연스럽게 하나로 합쳐 번역하는 게 정상 동작이다(환각 아님).
+  //   그래서 '줄어드는' 건 허용하고, '늘어나는'(=인물 창작) 경우만 엄격히 막는다.
+  const cf = cues(formatted), ct = cues(translated)
+  if (ct > cf) return false
+  if (cf > 0 && ct < cf * 0.5) return false
   const bf = body(formatted), bt = body(translated)
   if (bf > 0 && (bt < bf * 0.6 || bt > bf * 1.6)) return false // 줄 수가 크게 벗어남
   return true
