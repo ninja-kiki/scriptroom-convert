@@ -95,10 +95,14 @@ function quickMetrics(en) {
     dialogueRatio: (dlg + act) ? +(dlg / (dlg + act)).toFixed(2) : 0, avgActionWords: act ? +(aw / act).toFixed(1) : 0 }
 }
 
-async function post(path, body) {
-  const res = await fetch(`${SERVER}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(`${path} ${res.status}`)
-  return res.json()
+async function post(path, body, timeoutMs = 120000) {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), timeoutMs)   // 서버가 응답 없이 멈춰도 무한 대기하지 않도록(과거: 씬 하나가 영원히 hang)
+  try {
+    const res = await fetch(`${SERVER}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal })
+    if (!res.ok) throw new Error(`${path} ${res.status}`)
+    return await res.json()
+  } finally { clearTimeout(t) }
 }
 
 // 헬스
