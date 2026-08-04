@@ -95,7 +95,7 @@ function quickMetrics(en) {
     dialogueRatio: (dlg + act) ? +(dlg / (dlg + act)).toFixed(2) : 0, avgActionWords: act ? +(aw / act).toFixed(1) : 0 }
 }
 
-async function post(path, body, timeoutMs = 120000) {
+async function post(path, body, timeoutMs = 240000) {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)   // 서버가 응답 없이 멈춰도 무한 대기하지 않도록(과거: 씬 하나가 영원히 hang)
   try {
@@ -167,13 +167,16 @@ let failed = 0
 for (let i = 0; i < scenes.length; i++) {
   if (prevKo && /[가-힣]/.test(prevKo[i])) { outScenes.push(prevKo[i]); continue }   // 이미 한글 = 성공한 씬, 재사용
   const prevTail = i > 0 ? scenes[i - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
+  // 씬 길이에 비례한 타임아웃: 정상 씬(수천자)은 기존과 비슷하게, 헤딩 없이 통째로 묶인
+  // 초대형 씬(예: EEAAO 멀티버스 몽타주 4만자)은 응답이 오래 걸려도 일찍 abort돼 계속 실패하던 문제 방지.
+  const sceneTimeout = Math.min(600000, 90000 + scenes[i].length * 15)
   let ok = false
   for (let attempt = 0; attempt < 3 && !ok; attempt++) {   // 레이트리밋 등 일시 오류 재시도(백오프)
     try {
       const r = await post('/api/translate', {
         formattedText: scenes[i], characterMemo: register, guidelines, profile,
         sceneIndex: i, totalScenes: scenes.length, prevTail, model: MODEL,
-      })
+      }, sceneTimeout)
       outScenes.push((r.translated || '').trim()); ok = true
     } catch (e) {
       if (attempt === 2) { console.warn(`  씬 ${i} 실패(3회): ${e.message} — 원문 유지`); outScenes.push(scenes[i]); failed++ }
