@@ -152,9 +152,36 @@ export function saveGuidelines(type, text) {
   }).catch(() => {})
 }
 
+// ★지침의 단일 출처는 서버의 prompts.json 하나다.
+//   과거엔 사본이 3벌(prompts.json · localStorage · core.js 기본값)이었고 UI 실행 경로가
+//   localStorage를 먼저 읽어, 파일을 고쳐도 실행 방법에 따라 옛 지침으로 번역되는 사고가 있었다.
+//   이제 refreshGuidelines()로 받아온 서버본이 항상 우선하고, localStorage는 편집 임시본일 뿐이다.
+let _serverGuidelines = null
+
 export function loadGuidelines(type) {
+  if (_serverGuidelines?.[type]) return _serverGuidelines[type]
   return localStorage.getItem(`convert_guidelines_${type}`) ||
     (type === 'format' ? DEFAULT_FORMAT_GUIDELINES : DEFAULT_TRANSLATE_GUIDELINES)
+}
+
+// 실행 직전 호출 — 서버에서 지침을 새로 받아 고정한다.
+// ★실패하면 조용히 넘어가지 않고 throw 한다: 옛 지침으로 몇십 편을 돌리는 것보다 멈추는 게 낫다.
+export async function refreshGuidelines() {
+  let p
+  try {
+    const res = await fetch('/api/load-prompts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    p = await res.json()
+  } catch (e) {
+    throw new Error(`번역 지침(prompts.json)을 서버에서 불러오지 못했습니다: ${e.message}. 서버 상태를 확인하세요 — 옛 지침으로 실행하지 않도록 중단합니다.`)
+  }
+  if (!p?.translate && !p?.format) throw new Error('prompts.json이 비어 있습니다. 지침 없이 실행하지 않도록 중단합니다.')
+  _serverGuidelines = p
+  if (p.format) localStorage.setItem('convert_guidelines_format', p.format)
+  if (p.translate) localStorage.setItem('convert_guidelines_translate', p.translate)
+  return p
 }
 
 // 처리 진단 로그 — 어떻게 읽고 처리했는지 repo 파일(process-log.jsonl)에 누적
@@ -181,17 +208,10 @@ export function saveGlossary(title, memo) {
   fetch('/api/save-glossary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, memo }) }).catch(() => {})
 }
 
-// 앱 시작 시 repo 파일의 지침을 localStorage로 시드 (동료가 클론하면 그대로 적용)
+// 앱 시작 시 repo 파일의 지침을 미리 받아둠 (동료가 클론하면 그대로 적용).
+// 여기서의 실패는 치명적이지 않다 — 실제 실행 직전 refreshGuidelines()가 다시 받고, 그땐 실패 시 중단한다.
 export async function loadPromptsFromFile() {
-  try {
-    const res = await fetch('/api/load-prompts', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-    })
-    if (!res.ok) return
-    const p = await res.json()
-    if (p.format) localStorage.setItem('convert_guidelines_format', p.format)
-    if (p.translate) localStorage.setItem('convert_guidelines_translate', p.translate)
-  } catch {}
+  try { await refreshGuidelines() } catch {}
 }
 
 // 번역 구조 검증 — 영문 포맷본과 마커(#·@)·줄 수가 1:1인지. 누락·창작·거부·환각을 한 번에 걸러냄.

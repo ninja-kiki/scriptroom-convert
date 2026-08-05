@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { T, applyTheme, currentTheme, applyAccent, currentAccentSetting, loadGuidelines, saveHistory, loadSettings, loadPromptsFromFile, logProcess, translationStructureOk } from './lib/core.js'
+import { T, applyTheme, currentTheme, applyAccent, currentAccentSetting, loadGuidelines, saveHistory, loadSettings, loadPromptsFromFile, refreshGuidelines, logProcess, translationStructureOk } from './lib/core.js'
 import { extractText, ocrPdfViaServer, splitIntoScenes, splitByHeadingIndices, isLikelyHeading, forceSplitScenes } from './lib/pdf.js'
 import { ruleFormat } from './lib/format-rules.js'
 import { splitGluedAction } from './lib/lint.js'
@@ -104,6 +104,13 @@ export default function App() {
   }, [])
 
   // API 호출 + 자동 재시도(지수 백오프). RATE_LIMIT은 재시도 안 하고 즉시 throw.
+  // 실행 직전 지침 동기화 — 서버(prompts.json)가 단일 출처.
+  // 실패하면 옛 localStorage 지침으로 수십 편을 돌리는 대신 사용자에게 알리고 중단한다.
+  async function ensureGuidelines() {
+    try { await refreshGuidelines(); return true }
+    catch (e) { alert(e.message); isProcessing.current = false; return false }
+  }
+
   async function postJSON(url, payload, retries = 2) {
     let lastErr
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -462,6 +469,7 @@ export default function App() {
 
   // 작품 전체 새 설계로 다시 번역 (keepGlossary: 현 말투 가이드 유지 / false: 새로 생성)
   async function handleRetranslate(keepGlossary) {
+    if (!await ensureGuidelines()) return
     const id = serverJobRef.current
     if (!id) return
     isProcessing.current = true
@@ -491,6 +499,7 @@ export default function App() {
 
   // Step 2: 검토 후 변환 시작 — 서버에 잡 생성 후 폴링. (루프는 서버가 소유)
   async function handleStart(characterMemo, cleanupInstr = '') {
+    if (!await ensureGuidelines()) return
     characterMemoRef.current = characterMemo || ''
     // 표시·처리 모두 긴 씬을 청크 분할한 결과 기준
     const initialScenes = forceSplitScenes(reviewScenes)
@@ -553,6 +562,7 @@ export default function App() {
 
   // 수정 모드: 기존 txt → 씬 분리 → Claude 수정
   async function handleStartRevise({ text, title: t, mode }) {
+    if (!await ensureGuidelines()) return
     const rawScenes = splitScenes(text)
     const initialScenes = rawScenes.map((raw, i) => ({
       id: i, raw,
@@ -607,6 +617,7 @@ export default function App() {
   }
 
   async function handleContinue() {
+    if (!await ensureGuidelines()) return
     // 서버 잡이면 서버에서 재개 (미완 씬부터)
     if (serverJobRef.current) {
       isProcessing.current = true
@@ -665,6 +676,7 @@ export default function App() {
   }
 
   async function handleRetry(sceneId) {
+    if (!await ensureGuidelines()) return
     // 서버 잡이면 브라우저 fetch로 재시도하지 말고(=Load failed 원인) 서버 재개로 일임
     if (serverJobRef.current) { handleContinue(); return }
     const scene = scenesRef.current.find(s => s.id === sceneId)
@@ -684,6 +696,7 @@ export default function App() {
   }
 
   async function handleReprocess(sceneId) {
+    if (!await ensureGuidelines()) return
     const scene = scenesRef.current.find(s => s.id === sceneId)
     if (!scene) return
     isProcessing.current = true
@@ -701,6 +714,7 @@ export default function App() {
   // 구조 깨진(영문↔번역 마커·줄 수 불일치) 완료 씬을 찾아 한 번에 재번역.
   // 포맷은 그대로 두고 번역만 다시 — processTranslate에 가드가 있어 통과 못 하면 error_translate로 뜸.
   async function handleReprocessBroken() {
+    if (!await ensureGuidelines()) return
     const broken = scenesRef.current.filter(s =>
       s.status === 'done' && s.formatted && s.translated && !translationStructureOk(s.formatted, s.translated))
     if (!broken.length) { alert('구조가 깨진 씬이 없어요.'); return }
