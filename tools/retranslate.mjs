@@ -151,10 +151,39 @@ const RESUME = process.argv.includes('--resume')
 const koPath = OUT || join(dir, trFile || fmtFile.replace('_formatted', '_translated'))   // OUT 있으면 /tmp(다운로드용), 없으면 content
 const scenes = splitScenes(enText)
 // --resume: 기존 번역본에서 이미 한글인 씬은 재사용, 영어로 남은(실패) 씬만 재번역
+// ★씬 수가 완전히 같을 때만이 아니라, PDF 재추출이 매번 씬 경계를 1~2개 정도 미세하게 다르게 잡아
+//   씬 수가 살짝 어긋나는 경우(흔함)에도 최대한 재사용한다. 안 그러면 이미 잘 번역된 수백 씬을
+//   씬 하나 어긋났다는 이유로 통째로 버리고 처음부터 다시 돌리게 됨(실제로 발생했던 낭비).
+//   정렬은 씬 길이(글자수)를 서명 삼아 순서를 지키는 그리디 매칭으로 하고, 애매하면 안전하게 재번역한다.
 let prevKo = null
 if (RESUME && existsSync(koPath)) {
   const ks = splitScenes(readFileSync(koPath, 'utf8'))
   if (ks.length === scenes.length) prevKo = ks
+  else if (Math.abs(ks.length - scenes.length) <= Math.max(3, Math.round(scenes.length * 0.05))) {
+    // 구조 신호(인물 큐 '@' 개수 · 비어있지 않은 줄 수)로 정렬한다.
+    //   글자수는 못 쓴다 — 한글 번역문은 영어 원문보다 짧아서 올바른 짝도 길이가 크게 다름.
+    //   반면 큐 수·줄 수는 번역 계약상 1:1로 보존되므로(translationStructureOk가 강제) 신뢰할 수 있는 지문이다.
+    const sig = (s) => {
+      const lines = s.split('\n')
+      return { cues: lines.filter(l => /^@/.test(l)).length, lines: lines.filter(l => l.trim()).length }
+    }
+    const sigA = scenes.map(sig), sigB = ks.map(sig)
+    const same = (a, b) => a.cues === b.cues && Math.abs(a.lines - b.lines) <= 1
+    const aligned = new Array(scenes.length).fill(null)
+    let i = 0, j = 0, matched = 0
+    while (i < scenes.length && j < ks.length) {
+      if (same(sigA[i], sigB[j])) { aligned[i] = ks[j]; matched++; i++; j++ }
+      else if (j + 1 < ks.length && same(sigA[i], sigB[j + 1])) { j++ }        // 옛 번역본에 없던 씬이 새로 생김
+      else if (i + 1 < scenes.length && same(sigA[i + 1], sigB[j])) { i++ }    // 새 추출에서 씬이 합쳐짐
+      else { i++; j++ }                                                        // 둘 다 어긋남 — 그 자리는 재번역
+    }
+    if (matched >= scenes.length * 0.7) {
+      prevKo = aligned
+      console.log(`  (--resume 부분정렬: 기존 ${ks.length}씬 ≠ 새 ${scenes.length}씬이지만 ${matched}개 매칭돼 재사용)`)
+    } else {
+      console.log(`  (--resume 무시: 기존 ${ks.length}씬 ≠ 새 ${scenes.length}씬, 정렬도 낮음(${matched}개) — 전체 재번역)`)
+    }
+  }
   else console.log(`  (--resume 무시: 기존 ${ks.length}씬 ≠ 새 ${scenes.length}씬, 전체 재번역)`)
 }
 const reuseCount = prevKo ? prevKo.filter(s => /[가-힣]/.test(s)).length : 0
