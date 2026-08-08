@@ -34,6 +34,26 @@ let enText = readFileSync(SRC || join(dir, fmtFile), 'utf8').replace(/\r/g, '') 
 enText = reflowBody(enText.split('\n')).join('\n')   // PDF 단 너비로 끊긴 문장 한 줄로 (번역 줄나눔 개선)
 
 // 씬 분할: # 헤딩 기준
+// 씬이 '온전히' 번역됐는가 — 재사용 판정 기준.
+//   과거엔 '한글이 하나라도 있으면 번역됨'으로 봤는데, 씬 경계가 밀렸을 때
+//   [앞 씬의 한글 꼬리 + 뒤 씬의 영어 머리]가 붙은 덩어리도 통과시켜
+//   영어 헤딩·큐·지문이 그대로 남은 채 '완료'로 기록되는 사고가 났다(36/38편 오염).
+//   이제는 '영어 잔재가 없어야' 재사용한다. 남아 있으면 그 씬만 다시 번역된다.
+//   단, 전환지시어((CUT TO:) 등)와 외국어 대사는 계약상 영어 유지이므로 잔재로 치지 않는다.
+function isFullyTranslated(scene) {
+  if (!scene || !/[가-힣]/.test(scene)) return false
+  for (const raw of scene.split('\n')) {
+    const s = raw.trim()
+    if (s.length < 12 || /[가-힣]/.test(s)) continue
+    if (/^\(?(CUT|DISSOLVE|FADE|SMASH|MATCH|WIPE)[^)]*\)?:?$/i.test(s)) continue   // 전환 = 영어 유지가 정상
+    if (/^-\s/.test(s)) continue                                                    // 외국어 대사(불어·이탈리아어 등)는 의도적 유지
+    if (/^[#@]/.test(s) || /[A-Za-z]{4,}/.test(s)) {
+      if (/[A-Za-z]/.test(s) && s.replace(/[^A-Za-z]/g, '').length >= 10) return false
+    }
+  }
+  return true
+}
+
 function splitScenes(text) {
   const lines = text.split('\n')
   const scenes = []; let cur = []
@@ -228,7 +248,7 @@ const checkpoint = (out) => { try { writeFileSync(koPath, [...out, ...scenes.sli
 const outScenes = []
 let failed = 0
 for (let i = 0; i < scenes.length; i++) {
-  if (prevKo && /[가-힣]/.test(prevKo[i])) { outScenes.push(prevKo[i]); continue }   // 이미 한글 = 성공한 씬, 재사용
+  if (prevKo && isFullyTranslated(prevKo[i])) { outScenes.push(prevKo[i]); continue }   // 영어 잔재 없이 온전히 번역된 씬만 재사용
   const prevTail = i > 0 ? scenes[i - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
   // 씬 길이에 비례한 타임아웃: 정상 씬(수천자)은 기존과 비슷하게, 헤딩 없이 통째로 묶인
   // 초대형 씬(예: EEAAO 멀티버스 몽타주 4만자)은 응답이 오래 걸려도 일찍 abort돼 계속 실패하던 문제 방지.
