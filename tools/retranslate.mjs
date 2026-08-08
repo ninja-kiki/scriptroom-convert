@@ -240,7 +240,9 @@ if (!prevKo && existsSync(koPath) && !process.argv.includes('--force')) {
     process.exit(3)   // 배치가 '완료'로 오인하지 않도록 별도 종료코드
   }
 }
-const reuseCount = prevKo ? prevKo.filter(s => /[가-힣]/.test(s)).length : 0
+// 표시용 재사용 수도 실제 재사용 기준(isFullyTranslated)과 같아야 한다.
+//   예전엔 '한글 있음'으로 세서 "재사용 99·재번역 0"으로 찍히는데 실제론 재번역이 돌아 로그가 사실과 달랐음.
+const reuseCount = prevKo ? prevKo.filter(s => isFullyTranslated(s)).length : 0
 console.log(`=== 번역 시작: ${scenes.length}씬${RESUME && prevKo ? ` (재사용 ${reuseCount} · 재번역 ${scenes.length - reuseCount})` : ''} ===`)
 if (!OUT && existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(koPath, koPath + '.retbak')   // content 모드일 때만 원본 백업 (OUT=/tmp면 백업 불필요)
 // 현재까지 번역분 + 나머지 영문으로 전체 구조 유지해 저장 (끊겨도 안 날아감 / --resume으로 이어감)
