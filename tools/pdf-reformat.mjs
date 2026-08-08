@@ -127,7 +127,9 @@ const OMITTED_RE = /^OMITTED\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i
 //   정식 INT./EXT.가 뒤에 붙기도, 안 붙기도 함 — 둘 다 씬 경계로 인식해야 통짜 초대형 씬(예: EEAAO 4만자 몽타주)이
 //   안 생긴다. 안 쪼개면 번역 요청이 너무 커져 서버가 처리 중 죽는다(타임아웃이 아니라 fetch 자체 실패).
 const UNIVERSE_RE = /^[A-Z][A-Z '.-]{1,30}VERSE:/
-const TRANS_RE = /(CUT TO:|FADE (IN|OUT|TO)|DISSOLVE TO:|SMASH CUT|MATCH CUT)\s*$/i
+// 전환 지시어 — 콜론이 없거나(CUT TO BLACK) 변형(TRANSITION TO·FLASH BACK TO·FADE UP)인 형태가 실제로 많다.
+//   좁게 잡으면 인물 큐로 오분류돼 '@CUT TO'·'@TRANSITION TO' 같은 가짜 화자가 생긴다(라이브러리 108건 발생).
+const TRANS_RE = /^(?:(?:SMASH|MATCH|JUMP|HARD|QUICK)(?:\s+CUT)?\s+)?(?:CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH(?:\s+BACK)?)?(?:\s*(?:TO|IN|OUT|UP|BACK))*(?:\s+BLACK|\s+WHITE)?\s*:?\s*$/i
 const TIME = /\b(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|AFTERNOON|LATER|EARLIER|CONTINUOUS|MOMENTS|SAME|SUNSET|SUNRISE)\b/
 const isSlug = (s) => { if (!/\s[-–—]\s/.test(s) || s.length > 70) return false; const L = s.replace(/[^A-Za-z]/g, ''), U = s.replace(/[^A-Z]/g, ''); return L.length >= 3 && U.length / L.length >= 0.85 && TIME.test(s.split(/\s[-–—]\s/).pop()) }
 function isRealCue(s) {
@@ -140,7 +142,7 @@ function isRealCue(s) {
 function classify(line, b) {
   const s = line.text.trim()
   if (SCENE_RE.test(s) || isSlug(s) || OMITTED_RE.test(s) || UNIVERSE_RE.test(s)) return 'scene'
-  if (TRANS_RE.test(s) || line.x >= b.transition) return 'transition'
+  if ((s && TRANS_RE.test(s)) || line.x >= b.transition) return 'transition'
   if (line.x >= b.character && isRealCue(s)) return 'character'
   if (/^\(.*\)$/.test(s)) return 'paren'
   if (line.x >= b.dialogue && line.x < b.character) return 'dialogue'
