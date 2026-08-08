@@ -109,6 +109,24 @@ async function post(path, body, timeoutMs = 240000) {
 try { const h = await (await fetch(`${SERVER}/api/health`)).json(); if (!h.ok || !h.claude) { console.error('서버/Claude 준비 안 됨'); process.exit(1) } }
 catch { console.error(`서버(${SERVER}) 연결 실패`); process.exit(1) }
 
+// ★사전 안전장치 — 진단(유료 호출)보다 먼저 판단한다.
+//   --write인데 --resume도 --force도 없이, 이미 절반 이상 번역된 작품을 통째로 다시 번역하려는 경우를 막는다.
+//   (--resume 경로의 정렬 실패는 아래쪽 2차 안전장치에서 다시 잡는다.)
+if (WRITE && !process.argv.includes('--resume') && !process.argv.includes('--force')) {
+  const _koPath = OUT || join(dir, trFile || fmtFile.replace('_formatted', '_translated'))
+  if (existsSync(_koPath)) {
+    const _prev = splitScenes(readFileSync(_koPath, 'utf8'))
+    const _ko = _prev.filter(s => /[가-힣]/.test(s)).length
+    const _ratio = _prev.length ? _ko / _prev.length : 0
+    if (_ratio >= 0.5 && _prev.length >= 20) {
+      console.error(`\n[중단] '${work}'는 이미 ${_ko}/${_prev.length}씬(${Math.round(_ratio * 100)}%)이 번역돼 있습니다.`)
+      console.error(`  --resume 없이 전체 재번역하면 기존 번역을 버리고 비용을 다시 씁니다.`)
+      console.error(`  이어서 채우려면 --resume, 의도한 전면 재번역이면 --force 를 붙이세요.`)
+      process.exit(3)
+    }
+  }
+}
+
 let guidelines = (await post('/api/load-prompts', {})).translate || ''
 if (INSTRUCTION) guidelines += `\n\n[사용자 수정 지시 — 최우선 반영]\n${INSTRUCTION}`
 const dialogueSample = buildDialogueSample(enText)
@@ -185,6 +203,22 @@ if (RESUME && existsSync(koPath)) {
     }
   }
   else console.log(`  (--resume 무시: 기존 ${ks.length}씬 ≠ 새 ${scenes.length}씬, 전체 재번역)`)
+}
+
+// ★안전장치: 이미 번역이 상당히 되어 있는 작품을 통째로 다시 번역하려 하면 '조용히 진행하지 말고' 멈춘다.
+//   과거 --resume이 씬 수 불일치로 무시되면서, 이미 잘 번역된 작품 54건(13,571씬)을 아무 경고 없이
+//   처음부터 다시 돌려 비용을 태운 사고가 있었다. 임계값 조정을 믿는 대신, 큰 낭비는 구조적으로 막는다.
+//   의도적인 전면 재번역은 --force 로 명시해야 한다.
+if (!prevKo && existsSync(koPath) && !process.argv.includes('--force')) {
+  const prev = splitScenes(readFileSync(koPath, 'utf8'))
+  const koCount = prev.filter(s => /[가-힣]/.test(s)).length
+  const koRatio = prev.length ? koCount / prev.length : 0
+  if (koRatio >= 0.5 && scenes.length >= 20) {
+    console.error(`\n[중단] '${work}'는 이미 ${koCount}/${prev.length}씬(${Math.round(koRatio * 100)}%)이 번역돼 있는데, 전체 ${scenes.length}씬을 처음부터 다시 번역하려 합니다.`)
+    console.error(`  씬 정렬에 실패했다는 뜻이라 그대로 두면 이미 번역된 분량을 버리고 비용을 다시 씁니다.`)
+    console.error(`  의도한 전면 재번역이면 --force 를 붙여 다시 실행하세요.`)
+    process.exit(3)   // 배치가 '완료'로 오인하지 않도록 별도 종료코드
+  }
 }
 const reuseCount = prevKo ? prevKo.filter(s => /[가-힣]/.test(s)).length : 0
 console.log(`=== 번역 시작: ${scenes.length}씬${RESUME && prevKo ? ` (재사용 ${reuseCount} · 재번역 ${scenes.length - reuseCount})` : ''} ===`)
