@@ -118,7 +118,10 @@ function detectBands(lines) {
   return { xAction, dialogue: xAction + 50, character: xAction + 110, transition: xAction + 320 }
 }
 
-const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.|EXT\.|INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
+// ★INT/EXT 뒤 마침표는 선택 — 'EXT BAGHDAD STREET - DAWN'처럼 점 없이 쓰는 각본이 있다(허트 로커).
+//   점을 필수로 두면 그런 각본은 씬을 통째로 놓쳐(39씬→13씬) 하나의 거대 씬으로 뭉개진다.
+//   다만 'INTO'·'EXTREMELY' 같은 일반 단어 오탐을 막으려 뒤에 단어경계(공백/점)를 요구한다.
+const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|(?:INT|EXT)(?:\.|\s)|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
 const OMITTED_RE = /^OMITTED\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i
 // 멀티버스/평행세계식 비표준 소제목("TAXES UNIVERSE: INT. X", "ALPHAVERSE: EXT. Y", "ROCK UNIVERSE:").
 //   정식 INT./EXT.가 뒤에 붙기도, 안 붙기도 함 — 둘 다 씬 경계로 인식해야 통짜 초대형 씬(예: EEAAO 4만자 몽타주)이
