@@ -62,6 +62,10 @@ if (out.length !== targets.length) {
 let applied = 0
 out.forEach((ko, k) => {
   if (!/[가-힣]/.test(ko)) return
+  // ★한자 혼입 교정: 모델이 '내부'를 '内부/内部'처럼 한자로 쓰는 일이 실제로 있었다(barbie).
+  //   한국어 각본에 한자가 들어가면 안 되므로 치환하고, 그래도 남으면 그 줄은 적용하지 않는다.
+  ko = ko.replace(/内部|内부/g, '내부').replace(/外部|外부/g, '외부')
+  if (/[一-鿿]/.test(ko)) { console.warn(`  ⚠ 한자 남아 건너뜀: ${ko}`); return }
   if (!/^#\s/.test(ko)) ko = '# ' + ko.replace(/^#*\s*/, '')
   lines[targets[k].i] = ko
   applied++
