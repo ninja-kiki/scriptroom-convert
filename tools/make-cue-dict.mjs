@@ -91,8 +91,9 @@ const choOf = ch => {
   const c = ch.charCodeAt(0) - 0xAC00
   return (c >= 0 && c <= 11171) ? CHO[Math.floor(c / 588)] : null
 }
-const NEAR = { 'ㄱ':'ㅋㄲ', 'ㅋ':'ㄱㄲ', 'ㄷ':'ㅌㄸ', 'ㅌ':'ㄷㄸ', 'ㅂ':'ㅍㅃ', 'ㅍ':'ㅂㅃ',
-               'ㅅ':'ㅆㅈㅊ', 'ㅈ':'ㅉㅊㅅ', 'ㅊ':'ㅈㅅ', 'ㄹ':'ㄴ', 'ㄴ':'ㄹ', 'ㅇ':'ㅎ', 'ㅎ':'ㅇ' }
+// 영어 철자 하나가 여러 소리를 내는 경우를 허용한다(G=게오르그/조지, C=카/스, X=엑스/즈 …).
+const NEAR = { 'ㄱ':'ㅋㄲㅈ', 'ㅋ':'ㄱㄲㅅㅊ', 'ㄷ':'ㅌㄸㅈ', 'ㅌ':'ㄷㄸ', 'ㅂ':'ㅍㅃ', 'ㅍ':'ㅂㅃ',
+               'ㅅ':'ㅆㅈㅊㅋㅎ', 'ㅈ':'ㅉㅊㅅㄱㄷ', 'ㅊ':'ㅈㅅ', 'ㄹ':'ㄴ', 'ㄴ':'ㄹ', 'ㅇ':'ㅎ', 'ㅎ':'ㅇ' }
 function plausible(en, ko) {
   // 'MR. KRAMER → 크레이머 씨', 'UNCLE FRANK → 프랭크 삼촌'처럼 호칭이 앞뒤로 붙는 경우가 있어
   // 영문의 각 단어 첫 글자와 한글의 각 어절 초성을 모두 대조해 하나라도 맞으면 통과시킨다.
@@ -106,7 +107,7 @@ function plausible(en, ko) {
   const koLen = [...ko].filter(c => choOf(c)).length
   if (enLen >= 3 && koLen >= 1) {
     const ratio = koLen / enLen
-    if (ratio < 0.3 || ratio > 1.4) return false     // 예: MIA(3) → 마크(2)=0.67은 통과하므로 아래 검사도 필요
+    if (ratio < 0.18 || ratio > 1.6) return false     // 예: MIA(3) → 마크(2)=0.67은 통과하므로 아래 검사도 필요
   }
 
   let initialOk = false
@@ -123,22 +124,17 @@ function plausible(en, ko) {
   }
   if (!initialOk) return false
 
-  // ★끝소리 검사 — 짧은 이름(≤6자)은 마지막 자음/모음 계열도 대조해 'MIA→마크' 류를 걸러낸다.
-  if (enLen <= 6 && koLen >= 2) {
-    const last = en.replace(/[^A-Za-z]/g, '').toUpperCase().slice(-1)
-    const vowelEnd = 'AEIOUY'.includes(last)
-    const koLast = [...ko].filter(c => choOf(c)).pop()
-    const c = koLast.charCodeAt(0) - 0xAC00
-    const jong = c % 28                                  // 종성 없음 = 0
-    const koCho = choOf(koLast)
-    if (vowelEnd) {
-      // 모음으로 끝나는 이름(MIA, TONY)은 한글도 받침 없는 열린 음절로 끝나는 게 자연스럽다
-      if (jong !== 0) return false
-      // 'MIA→마크'처럼 마지막 글자 초성이 원어에 없는 자음이면 거른다
-      const enCons = new Set([...en.toUpperCase()].map(x => INITIAL[x]).filter(Boolean))
-      if (!enCons.has(koCho)) return false
+  // ★모음으로 끝나는 짧은 이름만 끝소리를 본다 — 'MIA → 마크' 류 차단용.
+  //   자음으로 끝나는 이름(GRACE·CHURCHILL)까지 보면 정상 음차를 막으므로 대상에서 뺀다.
+  const bare = en.replace(/[^A-Za-z]/g, '').toUpperCase()
+  if (bare.length <= 4 && 'AEIOU'.includes(bare.slice(-1))) {
+    const koChars = [...ko].filter(c => choOf(c))
+    const enCons = new Set([...bare].map(x => INITIAL[x]).filter(Boolean))
+    for (const c of koChars) {
+      if (!enCons.has(choOf(c))) return false      // 원어에 없는 자음이 나오면 다른 이름
     }
   }
+
   return true
 }
 
