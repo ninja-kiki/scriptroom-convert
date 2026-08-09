@@ -28,7 +28,7 @@ const fmtCues = cueOf(fmtLines)
 const trCues = cueOf(trLines)
 
 // 이름 부분만 분리 (수식어 괄호 제외)
-const SUFFIX = /\s*\((V\.?O\.?|O\.?S\.?|CONT['’]?D|CONTD|MORE|CONTINUED|PRE-?LAP|OVER RADIO|OVER COMMS|ON PHONE|filtered)[^)]*\)\s*$/i
+const SUFFIX = /\s*\(\s*(V\s*\.?\s*O\s*\.?|O\s*\.?\s*S\s*\.?|CONT['’]?\s*D|CONTD|MORE|CONTINUED|PRE-?LAP|OVER\s+RADIO|OVER\s+COMMS|ON\s+PHONE|filtered|VO|OS)[^)]*\)\s*$/i
 const splitCue = s => {
   const body = s.replace(/^@/, '')
   const m = body.match(SUFFIX)

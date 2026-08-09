@@ -22,7 +22,7 @@ if (!trFile) { console.error('_translated.txt 없음'); process.exit(1) }
 const trPath = join(dir, trFile)
 const lines = readFileSync(trPath, 'utf8').split('\n')
 
-const SUFFIX = /\s*\((V\.?O\.?|O\.?S\.?|CONT['’]?D|CONTD|MORE|CONTINUED|PRE-?LAP|OVER RADIO|OVER COMMS|ON PHONE|filtered)[^)]*\)\s*$/i
+const SUFFIX = /\s*\(\s*(V\s*\.?\s*O\s*\.?|O\s*\.?\s*S\s*\.?|CONT['’]?\s*D|CONTD|MORE|CONTINUED|PRE-?LAP|OVER\s+RADIO|OVER\s+COMMS|ON\s+PHONE|filtered|VO|OS)[^)]*\)\s*$/i
 const splitCue = s => {
   const body = s.replace(/^@/, '')
   const m = body.match(SUFFIX)
@@ -53,16 +53,27 @@ const sys = `당신은 영화 각본 번역가입니다. 아래는 어떤 각본
 - 이미 한국어면 그대로 두세요.
 - 사람 이름이 아닌 표기(OMIT, CONTD, WIDER, THEN 같은 편집 표시)는 그대로 두세요.`
 
-const res = await fetch(`${SERVER}/api/translate`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ formattedText: names.join('\n'), guidelines: sys, sceneIndex: 0, totalScenes: 1 }),
-})
-if (!res.ok) { console.error(`번역 실패: ${res.status}`); process.exit(1) }
-const out = ((await res.json()).translated || '').trim().split('\n').map(s => s.trim()).filter(Boolean)
+// 이름이 많으면 LLM이 줄 수를 못 맞춘다(108개에서 실패). 25개씩 잘라 요청하고, 실패한 덩어리만 버린다.
+async function translateChunk(chunk) {
+  const r = await fetch(`${SERVER}/api/translate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ formattedText: chunk.join('\n'), guidelines: sys, sceneIndex: 0, totalScenes: 1 }),
+  })
+  if (!r.ok) return null
+  const lines = ((await r.json()).translated || '').trim().split('\n').map(s => s.trim()).filter(Boolean)
+  return lines.length === chunk.length ? lines : null
+}
 
-if (out.length !== names.length) {
-  console.error(`  줄 수 불일치(${out.length} ≠ ${names.length}) — 적용하지 않음`)
-  process.exit(2)
+const CHUNK = 25
+const out = []
+for (let i = 0; i < names.length; i += CHUNK) {
+  const chunk = names.slice(i, i + CHUNK)
+  let got = await translateChunk(chunk)
+  if (!got) got = await translateChunk(chunk)          // 한 번 재시도
+  if (!got) {
+    console.warn(`  덩어리 ${i}~${i + chunk.length - 1} 줄 수 불일치 — 이 구간은 건너뜀`)
+    out.push(...chunk)                                  // 원문 그대로 두면 아래에서 '영어라 제외'됨
+  } else out.push(...got)
 }
 
 // ★음차 타당성 검사 — 이름이 엉뚱한 사람으로 바뀌는 사고를 막는다.
