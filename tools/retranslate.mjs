@@ -42,9 +42,13 @@ enText = reflowBody(enText.split('\n')).join('\n')   // PDF 단 너비로 끊긴
 //   단, 전환지시어((CUT TO:) 등)와 외국어 대사는 계약상 영어 유지이므로 잔재로 치지 않는다.
 function isFullyTranslated(scene) {
   if (!scene || !/[가-힣]/.test(scene)) return false
-  for (const raw of scene.split('\n')) {
-    const s = raw.trim()
+  // '(이탈리아어로)' 같은 언어 지시 괄호 뒤의 대사는 원어 유지가 정상 — 잔재로 치지 않는다.
+  const LANG_CUE = /^\(.*(어로|말로|in (Italian|Spanish|French|German|Cantonese|Mandarin|Japanese|Russian))\)/i
+  const ls = scene.split('\n')
+  for (let idx = 0; idx < ls.length; idx++) {
+    const s = ls[idx].trim()
     if (s.length < 12 || /[가-힣]/.test(s)) continue
+    if (ls.slice(Math.max(0, idx - 2), idx).some(p => LANG_CUE.test(p.trim()))) continue
     // 전환 지시어 = 영어 유지가 정상. 접두어가 다양해(ROTATE/SLAM/SNAP/TIME/LONG/JUMP/MATCH MOVE …)
     //   목록으로 나열하면 새 변형마다 오탐이 나므로, 괄호 안 대문자 전환어 형태면 통과시킨다.
     if (/^\([A-Z][A-Z /]*\b(CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH|TO|IN|OUT|BLACK|UP)\b[^)]*\)?:?\)?$/.test(s)) continue
