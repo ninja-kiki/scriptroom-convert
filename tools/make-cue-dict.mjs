@@ -88,6 +88,17 @@ function plausible(en, ko) {
   const enWords = en.split(/[\s.]+/).filter(w => /[A-Za-z]/.test(w))
   const koWords = ko.split(/\s+/).filter(Boolean)
   if (!enWords.length || !koWords.length) return true
+
+  // ★길이 검사 — 초성만 보면 'MIA → 마크'처럼 첫 자음이 우연히 맞는 다른 이름이 통과한다(실제 발생).
+  //   음차는 원어 음절 수에 대략 비례하므로, 한글 글자 수가 영문 길이에 비해 터무니없으면 거른다.
+  const enLen = en.replace(/[^A-Za-z]/g, '').length
+  const koLen = [...ko].filter(c => choOf(c)).length
+  if (enLen >= 3 && koLen >= 1) {
+    const ratio = koLen / enLen
+    if (ratio < 0.3 || ratio > 1.4) return false     // 예: MIA(3) → 마크(2)=0.67은 통과하므로 아래 검사도 필요
+  }
+
+  let initialOk = false
   for (const w of enWords) {
     const want = INITIAL[w.toUpperCase()[0]]
     if (!want) continue
@@ -95,10 +106,29 @@ function plausible(en, ko) {
       const k = [...kw].find(c => choOf(c))
       if (!k) continue
       const got = choOf(k)
-      if (got === want || (NEAR[want] || '').includes(got)) return true
+      if (got === want || (NEAR[want] || '').includes(got)) { initialOk = true; break }
+    }
+    if (initialOk) break
+  }
+  if (!initialOk) return false
+
+  // ★끝소리 검사 — 짧은 이름(≤6자)은 마지막 자음/모음 계열도 대조해 'MIA→마크' 류를 걸러낸다.
+  if (enLen <= 6 && koLen >= 2) {
+    const last = en.replace(/[^A-Za-z]/g, '').toUpperCase().slice(-1)
+    const vowelEnd = 'AEIOUY'.includes(last)
+    const koLast = [...ko].filter(c => choOf(c)).pop()
+    const c = koLast.charCodeAt(0) - 0xAC00
+    const jong = c % 28                                  // 종성 없음 = 0
+    const koCho = choOf(koLast)
+    if (vowelEnd) {
+      // 모음으로 끝나는 이름(MIA, TONY)은 한글도 받침 없는 열린 음절로 끝나는 게 자연스럽다
+      if (jong !== 0) return false
+      // 'MIA→마크'처럼 마지막 글자 초성이 원어에 없는 자음이면 거른다
+      const enCons = new Set([...en.toUpperCase()].map(x => INITIAL[x]).filter(Boolean))
+      if (!enCons.has(koCho)) return false
     }
   }
-  return false
+  return true
 }
 
 const dict = new Map()
