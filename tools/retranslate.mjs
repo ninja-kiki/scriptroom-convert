@@ -51,7 +51,8 @@ function isFullyTranslated(scene) {
     if (ls.slice(Math.max(0, idx - 2), idx).some(p => LANG_CUE.test(p.trim()))) continue
     // 전환 지시어 = 영어 유지가 정상. 접두어가 다양해(ROTATE/SLAM/SNAP/TIME/LONG/JUMP/MATCH MOVE …)
     //   목록으로 나열하면 새 변형마다 오탐이 나므로, 괄호 안 대문자 전환어 형태면 통과시킨다.
-    if (/^\([A-Z][A-Z /]*\b(CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH|TO|IN|OUT|BLACK|UP)\b[^)]*\)?:?\)?$/.test(s)) continue
+    if (/^[A-Za-z0-9._/-]+\.(com|net|org|edu|gov|io)(\/\S*)?$/i.test(s)) continue   // 도메인·URL은 영어 유지가 정상
+    if (/^\([A-Z][A-Z /]*\b(CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH|ROLL|BACK|RESUME|BEGIN|END|INTERCUT|SUPER|TITLE|TO|IN|OUT|BLACK|UP)\b[^)]*\)?:?\)?$/.test(s)) continue
     if (/^\(?(CUT|DISSOLVE|FADE|SMASH|MATCH|WIPE)[^)]*\)?:?$/i.test(s)) continue
     if (/^-\s/.test(s)) continue                                                    // 외국어 대사(불어·이탈리아어 등)는 의도적 유지
     if (/^[#@]/.test(s) || /[A-Za-z]{4,}/.test(s)) {
