@@ -264,6 +264,76 @@ const CONCURRENCY = Number(process.env.SRC_CONCURRENCY || 3)
 const results = new Array(scenes.length)
 let doneCount = 0
 
+// 조각 하나를 번역해 본다(실패하면 null).
+async function translateChunk(i, text, tail) {
+  try {
+    const r = await post('/api/translate', {
+      formattedText: text, characterMemo: register, guidelines, profile,
+      sceneIndex: i, totalScenes: scenes.length, prevTail: tail || null, model: MODEL,
+    }, Math.min(600000, 90000 + text.length * 15))
+    return (r.translated || '').trim() || null
+  } catch { return null }
+}
+
+// 실패한 조각을 빈 줄 경계 기준 절반으로 갈라 각각 번역하고 이어붙인다. depth만큼 더 갈라본다.
+async function translateHalving(i, text, depth) {
+  const blocks = text.split(/\n\s*\n/)
+  if (blocks.length < 2 || depth <= 0) return null
+  let acc = 0, cut = 0
+  for (let k = 0; k < blocks.length; k++) { acc += blocks[k].length; if (acc >= text.length / 2) { cut = k + 1; break } }
+  if (cut <= 0 || cut >= blocks.length) cut = Math.floor(blocks.length / 2)
+  const halves = [blocks.slice(0, cut).join('\n\n'), blocks.slice(cut).join('\n\n')]
+  const out = []
+  for (const h of halves) {
+    let got = await translateChunk(i, h, out.length ? out[out.length - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null)
+    if (!got) got = await translateHalving(i, h, depth - 1)
+    if (!got) return null
+    out.push(got)
+  }
+  console.log(`    ↳ ${text.length}자 조각을 반으로 갈라 성공`)
+  return out.join('\n\n')
+}
+
+// 초대형 씬을 빈 줄 경계로 잘라 순차 번역하고 이어붙인다.
+//   조각 경계는 항상 빈 줄 — 대사 블록(@인물 + - 대사)이 잘리지 않게 한다.
+//   한 조각이라도 실패하면 전체를 포기한다(반쪽짜리 씬을 남기지 않는다).
+async function translateChunked(i) {
+  const CHUNK = 8000
+  const blocks = scenes[i].split(/\n\s*\n/)
+  const chunks = []
+  for (const b of blocks) {
+    if (chunks.length && (chunks[chunks.length - 1].length + b.length) < CHUNK) chunks[chunks.length - 1] += '\n\n' + b
+    else chunks.push(b)
+  }
+  console.log(`  씬 ${i}: ${scenes[i].length}자 — ${chunks.length}조각으로 나눠 재시도`)
+  const parts = []
+  for (let c = 0; c < chunks.length; c++) {
+    let got = null
+    for (let attempt = 0; attempt < 2 && !got; attempt++) {
+      try {
+        const r = await post('/api/translate', {
+          formattedText: chunks[c], characterMemo: register, guidelines, profile,
+          sceneIndex: i, totalScenes: scenes.length,
+          prevTail: c > 0 ? parts[c - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null,
+          model: MODEL,
+        }, Math.min(600000, 90000 + chunks[c].length * 15))
+        got = (r.translated || '').trim() || null
+      } catch (e) { if (attempt === 1) console.warn(`    조각 ${c + 1}/${chunks.length} 실패: ${e.message}`); else await new Promise(r => setTimeout(r, 5000)) }
+    }
+    // 조각 하나가 또 실패하면(내용이 길거나 무거워 응답이 안 옴) 그 조각만 반으로 갈라 다시 시도한다.
+    //   빈 줄 경계를 유지한 채 절반 지점에서 자른다. 두 번까지 갈라본다(8000→4000→2000자).
+    if (!got) {
+      const sub = await translateHalving(i, chunks[c], 2)
+      if (!sub) return false
+      got = sub
+    }
+    parts.push(got)
+  }
+  results[i] = parts.join('\n\n')
+  console.log(`  씬 ${i}: 분할 번역 성공 (${chunks.length}조각)`)
+  return true
+}
+
 async function translateOne(i) {
   if (prevKo && isFullyTranslated(prevKo[i])) { results[i] = prevKo[i]; return }   // 온전히 번역된 씬만 재사용
   const prevTail = i > 0 ? scenes[i - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
@@ -279,7 +349,16 @@ async function translateOne(i) {
       results[i] = (r.translated || '').trim()
       return
     } catch (e) {
-      if (attempt === 2) { console.warn(`  씬 ${i} 실패(3회): ${e.message} — 원문 유지`); results[i] = scenes[i]; failed++ }
+      if (attempt === 2) {
+        // ★씬 하나가 너무 커서 한 번에 못 넘기는 경우가 실제로 있다
+        //   (바스터즈 지하 술집 24분 시퀀스 29,500자 — 3회 모두 fetch failed).
+        //   통째로 포기하면 각본 한복판이 영어로 남으므로, 조각으로 나눠 순차 번역한다.
+        if (scenes[i].length > 12000) {
+          const ok = await translateChunked(i)
+          if (ok) return
+        }
+        console.warn(`  씬 ${i} 실패(3회): ${e.message} — 원문 유지`); results[i] = scenes[i]; failed++
+      }
       else await new Promise(r => setTimeout(r, 5000 * (attempt + 1)))
     }
   }
