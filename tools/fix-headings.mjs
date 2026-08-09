@@ -54,9 +54,21 @@ const res = await fetch(`${SERVER}/api/translate`, {
 if (!res.ok) { console.error(`번역 실패: ${res.status}`); process.exit(1) }
 const out = ((await res.json()).translated || '').trim().split('\n').map(s => s.trim()).filter(Boolean)
 
+// 줄 수가 어긋나면(LLM이 줄을 쪼개거나 붙임) 통짜 매칭은 위험하므로 한 줄씩 개별 번역으로 전환한다.
+//   예전엔 그냥 포기해서 영어 헤딩이 그대로 남았다(the-incredible 13개).
 if (out.length !== targets.length) {
-  console.error(`줄 수 불일치(${out.length} ≠ ${targets.length}) — 안전을 위해 적용하지 않음`)
-  process.exit(2)
+  console.warn(`  줄 수 불일치(${out.length} ≠ ${targets.length}) — 한 줄씩 개별 번역으로 전환`)
+  out.length = 0
+  for (const t of targets) {
+    try {
+      const r = await fetch(`${SERVER}/api/translate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formattedText: t.text, guidelines: sys, sceneIndex: 0, totalScenes: 1 }),
+      })
+      const one = r.ok ? ((await r.json()).translated || '').trim().split('\n').map(s => s.trim()).filter(Boolean)[0] : ''
+      out.push(one || t.text)
+    } catch { out.push(t.text) }
+  }
 }
 // 번역 결과가 여전히 영어면 그 줄은 건너뛴다(잘못 덮어쓰지 않도록)
 let applied = 0
