@@ -52,7 +52,7 @@ function isFullyTranslated(scene) {
     // 전환 지시어 = 영어 유지가 정상. 접두어가 다양해(ROTATE/SLAM/SNAP/TIME/LONG/JUMP/MATCH MOVE …)
     //   목록으로 나열하면 새 변형마다 오탐이 나므로, 괄호 안 대문자 전환어 형태면 통과시킨다.
     if (/^[A-Za-z0-9._/-]+\.(com|net|org|edu|gov|io)(\/\S*)?$/i.test(s)) continue   // 도메인·URL은 영어 유지가 정상
-    if (/^\([A-Z][A-Z /]*\)?:?\)?$/.test(s) && /\b(CUT|CROSSFADE|DISSOLVE|FADE|WIPE|TRANSITION|FLASH|ROLL|BACK|RESUME|BEGIN|END|INTERCUT|SUPER|TITLE|MATCH|SMASH|JUMP|SNAP|SLAM|ROTATE|TIME|LONG|QUICK|HARD)\b/.test(s)) continue
+    if (/^\([A-Z][A-Z /.]*\)?\s*:?\s*\)?\s*\*?$/.test(s) && /\b(CUT|CROSSFADE|DISSOLVE|FADE|WIPE|TRANSITION|FLASH|ROLL|BACK|RESUME|BEGIN|END|INTERCUT|SUPER|TITLE|MATCH|SMASH|JUMP|SNAP|SLAM|ROTATE|TIME|LONG|QUICK|HARD)\b/.test(s)) continue
     if (/^\(?(CUT|DISSOLVE|FADE|SMASH|MATCH|WIPE)[^)]*\)?:?$/i.test(s)) continue
     if (/^-\s/.test(s)) continue                                                    // 외국어 대사(불어·이탈리아어 등)는 의도적 유지
     if (/^[#@]/.test(s) || /[A-Za-z]{4,}/.test(s)) {
