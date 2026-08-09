@@ -256,27 +256,47 @@ if (!OUT && existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(
 const checkpoint = (out) => { try { writeFileSync(koPath, [...out, ...scenes.slice(out.length)].join('\n\n') + '\n') } catch {} }
 const outScenes = []
 let failed = 0
-for (let i = 0; i < scenes.length; i++) {
-  if (prevKo && isFullyTranslated(prevKo[i])) { outScenes.push(prevKo[i]); continue }   // 영어 잔재 없이 온전히 번역된 씬만 재사용
+// ★씬을 동시에 여러 개 번역한다(서버 전역 상한 GLOBAL_CAP=3에 맞춤).
+//   예전엔 한 씬씩 순차라 서버 여유가 남는데도 대작(300~400씬)이 매우 느렸다.
+//   결과는 인덱스에 그대로 채워 넣어 씬 순서가 절대 뒤바뀌지 않게 한다.
+const CONCURRENCY = Number(process.env.SRC_CONCURRENCY || 3)
+const results = new Array(scenes.length)
+let doneCount = 0
+
+async function translateOne(i) {
+  if (prevKo && isFullyTranslated(prevKo[i])) { results[i] = prevKo[i]; return }   // 온전히 번역된 씬만 재사용
   const prevTail = i > 0 ? scenes[i - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
   // 씬 길이에 비례한 타임아웃: 정상 씬(수천자)은 기존과 비슷하게, 헤딩 없이 통째로 묶인
   // 초대형 씬(예: EEAAO 멀티버스 몽타주 4만자)은 응답이 오래 걸려도 일찍 abort돼 계속 실패하던 문제 방지.
   const sceneTimeout = Math.min(600000, 90000 + scenes[i].length * 15)
-  let ok = false
-  for (let attempt = 0; attempt < 3 && !ok; attempt++) {   // 레이트리밋 등 일시 오류 재시도(백오프)
+  for (let attempt = 0; attempt < 3; attempt++) {   // 레이트리밋 등 일시 오류 재시도(백오프)
     try {
       const r = await post('/api/translate', {
         formattedText: scenes[i], characterMemo: register, guidelines, profile,
         sceneIndex: i, totalScenes: scenes.length, prevTail, model: MODEL,
       }, sceneTimeout)
-      outScenes.push((r.translated || '').trim()); ok = true
+      results[i] = (r.translated || '').trim()
+      return
     } catch (e) {
-      if (attempt === 2) { console.warn(`  씬 ${i} 실패(3회): ${e.message} — 원문 유지`); outScenes.push(scenes[i]); failed++ }
+      if (attempt === 2) { console.warn(`  씬 ${i} 실패(3회): ${e.message} — 원문 유지`); results[i] = scenes[i]; failed++ }
       else await new Promise(r => setTimeout(r, 5000 * (attempt + 1)))
     }
   }
-  if ((i + 1) % 20 === 0) checkpoint(outScenes)   // 20씬마다 중간 저장
-  if ((i + 1) % 10 === 0 || i === scenes.length - 1) console.log(`  ${i + 1}/${scenes.length} (실패 ${failed})`)
 }
+
+// 워커 풀: 다음 인덱스를 집어가며 처리
+let cursor = 0
+async function worker() {
+  while (true) {
+    const i = cursor++
+    if (i >= scenes.length) return
+    await translateOne(i)
+    doneCount++
+    if (doneCount % 20 === 0) checkpoint(results.slice(0, results.findIndex(v => v === undefined) === -1 ? results.length : results.findIndex(v => v === undefined)))
+    if (doneCount % 10 === 0 || doneCount === scenes.length) console.log(`  ${doneCount}/${scenes.length} (실패 ${failed})`)
+  }
+}
+await Promise.all(Array.from({ length: Math.min(CONCURRENCY, scenes.length) }, worker))
+outScenes.push(...results.map((v, i) => v === undefined ? scenes[i] : v))
 writeFileSync(koPath, outScenes.join('\n\n') + '\n')   // 최종 저장
 console.log(`\n✓ ${koPath} (백업: .retbak · 실패 ${failed}/${scenes.length})`)
