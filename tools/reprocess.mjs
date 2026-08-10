@@ -71,6 +71,23 @@ if (!TRANSLATE_ONLY && pdf) {
 // 재추출본이 있으면(=구조 검증 통과) retranslate에 --src로 넘겨 content 대신 그걸 읽게 함
 const SRC_ARG = existsSync(TMP_FMT) ? ` --src ${TMP_FMT}` : ''
 
+// ★번역 전 원문 검증 — 돈이 드는 단계에 들어가기 전에 원문이 쓸 만한지 본다.
+//   스캔 PDF를 OCR하면 대사가 통째로 빠지거나 두 화자 말이 한 덩어리로 붙는데,
+//   번역기는 그걸 그대로 옮기고 결과물에는 틀렸다는 표시가 남지 않는다(the-master).
+//   심각 판정이면 여기서 멈춘다. 무시하고 진행하려면 --skip-verify.
+if (!process.argv.includes('--skip-verify')) {
+  const target = existsSync(TMP_FMT) ? TMP_FMT : join(dir, fmt || '')
+  if (target && existsSync(target)) {
+    try {
+      execSync(`node tools/verify-source.mjs ${q(target)}`, { cwd: ROOT, stdio: 'inherit' })
+    } catch (e) {
+      console.error('[reprocess] 원문 검증에서 심각 문제 — 번역을 시작하지 않는다.')
+      console.error('            원문을 고치거나, 알고도 진행하려면 --skip-verify 를 붙여라.')
+      process.exit(6)
+    }
+  }
+}
+
 if (DIAGNOSE_ONLY) {
   console.log('[3/3] 진단(번역 대기)')
   run(`node tools/retranslate.mjs ${q(work)} --diagnose-only${SRC_ARG}`)
