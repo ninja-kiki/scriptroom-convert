@@ -194,6 +194,9 @@ function build(lines, b) {
   //   카드(TWBB 크레셴도, moneyball의 Bill James 인용, casino "TITLE: LAS VEGAS, 1980")까지
   //   날아간다. 그래서 '잡음(제목·by라인·초고/판권/주소)'만 버리고 '실질 내용'은 살린다.
   const META_RE = /written by|screenplay by|story by|teleplay by|based on|draft|shooting script|revision|confidential|propriet|property of|no portion|all rights|reproduced|distribut|prior written|©|copyright|WGA|registered|sole property|\bsuite\b|\bblvd\b|CA\s*\d{5}/i
+  // 개정 색상표 — 'Blue - 2,5,6,8,12-15... Pink - 2,3,3A...' 처럼 개정된 씬 번호만 잔뜩 나열한 줄.
+  //   내용이 아니라 제작 정보이고, 번역기에 넘기면 숫자 나열을 그대로 옮기려 든다(메멘토).
+  const REVLIST_RE = /^(?:\s*(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*[-–—]\s*[\d,\sA-]{6,}){2,}$/i
   const CARD_RE = /^(TITLE:|SUPER:|IN\s*BLACK|OVER\s*BLACK|FADE\s*IN|BLACK\.|CHYRON|INTERTITLE)/i
   const keepPre = b => {
     const t = (b.text || '').trim()
@@ -202,6 +205,7 @@ function build(lines, b) {
     if (b.type !== 'action') return false               // pre 영역의 씬/인물/괄호는 대개 잡음 → 버림
     if (CARD_RE.test(t)) return true                    // TITLE:/SUPER:/IN BLACK 등 카드
     if (META_RE.test(t)) return false                   // 판권·크레딧·초고·주소 = 타이틀페이지 메타
+    if (REVLIST_RE.test(t)) return false                // 개정 색상표(Blue - 2,5,6... Pink - 3,3A...)
     return t.length >= 45                               // 긴 산문 = 오프닝 지문/에피그래프
   }
   const firstScene = out.findIndex(b => b.type === 'scene')
