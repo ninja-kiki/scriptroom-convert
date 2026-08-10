@@ -19,6 +19,11 @@ const PATS = [
   /(?:The\s+)?[A-Z][A-Za-z' ]{2,30}\s+Shooting\s+Script\s+\d+\.?/g,   // The Martian Shooting Script 5.
   /[가-힣]{2,12}\s*(?:촬영\s*)?(?:대본|각본|슈팅\s*스크립트)\s*\d+\.?/g,  // 마션 촬영 대본 13.
   /\b[A-Z]{3,10}\s*#\d+\s+[X\d]{2}\/[X\d]{2}\/\d{2}\s*\d*[A-Z]?\.?/g, // SALMON #2 XX/XX/07 6A.
+  // 제목 + 개정색 + 날짜 머리글: 'MEMENTO Blue Revisions – 8/27/99', 'MEMENTO - Green Revisions 10-4-99'
+  //   뒤에 'NN CONTINUED:' 가 붙어 나오는 일이 잦아 그것까지 함께 흡수한다.
+  /[A-Z][A-Za-z' ]{2,24}\s*[-–—]?\s*(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*Revisions?\s*[-–—]?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s*\d{1,4}\s*CONTINUED:?(?:\s*\(\d+\))?)?/gi,
+  // 그 머리글이 한국어로 번역돼 들어온 형태: '메멘토 블루 리비전 – 8/27/9'
+  /[가-힣]{2,12}\s*(?:화이트|블루|핑크|옐로우|그린|골든로드|버프|살몬|체리|탄)\s*(?:리비전|개정)\s*[-–—]?\s*\d{1,2}[/-]\d{1,2}[/-]\d{1,4}/g,
 ]
 
 function strip(path) {
