@@ -137,7 +137,7 @@ const isSlug = (s) => { if (!/\s[-–—]\s/.test(s) || s.length > 70) return fa
 function isRealCue(s) {
   let c = s.replace(/\s*\((?:V\.?O\.?|O\.?S\.?|O\.?C\.?|CONT'?D|CONT|MORE)\.?\)\s*$/i, '').trim()
   if (!c || c.length > 28 || /[.,!?;]$/.test(c) || c.split(/\s+/).length > 4) return false
-  if (/^(ON|IN|AT|TO|INSERT|CU|POV|ANGLE|CLOSE|WIDE|BACK|REVERSE|MONTAGE|INTERCUT|SERIES|MUSIC|CHYRON|SUPER|CREDIT|ACROSS|THROUGH)\b/i.test(c)) return false
+  if (/^(ON|IN|AT|TO|INSERT|CU|POV|ANGLE|CLOSE|WIDE|BACK|REVERSE|MONTAGE|INTERCUT|SERIES|MUSIC|CHYRON|SUPER|CREDIT|ACROSS|THROUGH|FULL|MED|MEDIUM|TWO|THREE|GROUP|TIGHT|LOW|HIGH|AERIAL|TRACKING|PAN|ZOOM|RESUME|FAVORING)\b/i.test(c)) return false
   // TV 각본의 막 구분(ACT ONE·END TEASER·COLD OPEN)은 구조 표시지 화자가 아니다.
   //   화자로 잡히면 '@ACT ONE' 같은 가짜 인물이 생기고 리더기 화자 목록까지 오염된다.
   if (/^(ACT|END OF ACT|END ACT|TEASER|END TEASER|COLD OPEN|END OF TEASER|TAG|END OF SHOW|MAIN TITLES?|END CREDITS)\b/i.test(c)) return false
