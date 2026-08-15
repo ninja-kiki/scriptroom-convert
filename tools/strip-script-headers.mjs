@@ -26,6 +26,8 @@ const PATS = [
   /[가-힣]{2,12}\s*(?:화이트|블루|핑크|옐로우|그린|골든로드|버프|살몬|체리|탄)\s*(?:리비전|개정)\s*[-–—]?\s*\d{1,2}[/-]\d{1,4}[/-]?\d{0,4}/g,
   // 날짜 자리를 채우지 않은 틀: 'Blue Rev. (mm/dd/yy) 66.'
   /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*Rev\.?\s*\((?:mm\/dd\/yy|\d{1,2}\/\d{1,2}\/\d{2,4})\)\s*\d{0,4}[A-Z]?\.?/gi,
+  // 제목 붙은 대본 확정판 머리글: '"BLUE MOON" CONFORMED SCRIPT 1.9.2025 Pg. 11'
+  /"[A-Z][A-Z0-9 '.-]{1,40}"\s*CONFORMED\s*SCRIPT\s*\d{1,2}\.\d{1,2}\.\d{2,4}\s*Pg\.?\s*\d+\.?/gi,
 ]
 
 function strip(path) {
