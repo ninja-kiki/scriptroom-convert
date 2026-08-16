@@ -53,6 +53,10 @@ const PATS = [
   //   'BETTER CALL SAUL #613 "Saul Gone" FINAL 1/19/22 9.'
   //   화수 표기는 '#613' 과 'EP. 108' 두 형태, 판본은 'FINAL' 과 'Double Buff Pages' 등 다양하다.
   /[A-Z][A-Z' ]{2,40}\s*(?:#\d+|EP\.?\s*\d+)[A-Za-z]?\s*"[^"]{1,60}"\s*(?:(?:Double|Triple|Single|Full)\s*)?(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan|FINAL|DRAFT)?\s*(?:Pages|Full\s*Draft|Draft)?\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[\d]{0,4}[A-Za-z]?\.?/gi,
+  // 개정색 + Revised + 날짜 + 페이지: 'Pink Revised 07/15/2016 39A.'
+  /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*Revised\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[\d]{0,4}[A-Za-z]?\.?/gi,
+  // 씬 이동·재번호 표시: 'SCENE MOVED AND RE-NUMBERED TO SCENE 162'
+  /SCENE\s+MOVED(?:\s+AND\s+RE-?NUMBERED)?\s+TO\s+SCENE\s*[\dA-Z]*/gi,
   // 삭제된 씬 표시: 'OMITTED85-89A 85-89A', 'OMITTED (NOW SC. 110A) 108', 'OMITTEDMOVED TO 65A'
   //   ★뒤에 붙는 건 '씬 번호'만 먹어야 한다. \w 로 열어두면 'OMITTED 라고 말했다'처럼
   //   본문 단어까지 삼킨다(실제로 그렇게 만들었다가 잡았다). 숫자·씬번호 꼴로만 한정한다.
