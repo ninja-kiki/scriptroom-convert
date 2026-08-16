@@ -1,20 +1,22 @@
-// 번역하면서 대사가 통째로 사라졌는지 씬 단위로 검사한다.
-//   왜 필요한가: 이중언어 각본에서 '같은 말의 두 벌'을 합치라는 처방이, 짝이 없는 외국어 대사까지
-//   버리게 만드는 일이 있다(카산드로: 스페인어만 있고 영어 짝이 없는 대사가 사라짐).
-//   처방을 아무리 다듬어도 새로운 이중언어 형태는 계속 나오므로, 처방 대신 '결과'를 본다.
+// 번역하면서 대사가 통째로 사라졌는지 검사한다.
+//
+//   ★씬 단위로 짝지어 비교하려는 시도를 두 번 했다가 두 번 다 실패했다.
+//     번역기가 씬을 더 만들거나 합치는 일이 흔해서, 한 번 밀리면 그 뒤 전부가
+//     '다른 씬끼리' 비교돼 손실로 둔갑한다(완벽했던 비포 선라이즈가 65줄 손실로 나왔다).
+//     씬을 내용으로 정렬해 보려 했지만 그 역시 더 큰 오탐을 만들었다.
+//     그래서 씬별 위치 추적을 포기하고 '총량'만 본다 — 어디서 사라졌는지는 못 알려주지만,
+//     사라졌는지 아닌지는 틀리지 않는다.
 //
 //   합쳐지는 게 정상인 만큼은 빼고 센다:
-//     - 같은 화자 큐가 연달아 나오는 쌍 = 두 벌 병기 → 하나로 합쳐지는 게 맞다
-//   그러고도 모자라면 진짜 손실이다.
+//     같은 화자 큐가 연달아 나오는 쌍 = 이중언어 병기 → 하나로 합쳐지는 게 맞다.
 //
-//   사용: node tools/check-loss.mjs <작품폴더> [--verbose]
+//   사용: node tools/check-loss.mjs <작품폴더>
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 
 const CONTENT = '/Users/hojun/Projects/scriptroom/content'
 const work = process.argv[2]
-const VERBOSE = process.argv.includes('--verbose')
-if (!work) { console.error('사용: node tools/check-loss.mjs <작품폴더> [--verbose]'); process.exit(1) }
+if (!work) { console.error('사용: node tools/check-loss.mjs <작품폴더>'); process.exit(1) }
 
 const dir = join(CONTENT, work)
 if (!existsSync(dir)) { console.error(`폴더 없음: ${work}`); process.exit(1) }
@@ -25,49 +27,38 @@ if (!fmtF || !trF) { console.error('formatted/translated 없음'); process.exit(
 
 const cueName = s => s.replace(/^@/, '').replace(/\s*\(.*$/, '').trim()
 
-// 씬별로 (대사 수, 합쳐질 쌍 수) 를 센다
-function scan(text) {
-  const scenes = text.split(/^(?=# )/m)
-  return scenes.map(sc => {
-    const lines = sc.split('\n').map(l => l.trim())
-    const dlg = lines.filter(l => l.startsWith('- ')).length
-    const cues = lines.map((l, i) => [i, l]).filter(([, l]) => l.startsWith('@'))
-    let pairs = 0
-    for (let k = 0; k + 1 < cues.length; k++) {
-      const [i, a] = cues[k], [j, b] = cues[k + 1]
-      if (cueName(a) === cueName(b) && j - i <= 6) pairs++
-    }
-    return { head: (lines.find(l => l.startsWith('# ')) || '').slice(0, 46), dlg, pairs }
-  })
+function stat(text) {
+  const lines = text.split('\n').map(l => l.trim())
+  const dlg = lines.filter(l => l.startsWith('- ')).length
+  const scenes = lines.filter(l => l.startsWith('# ')).length
+  const cues = lines.map((l, i) => [i, l]).filter(([, l]) => l.startsWith('@'))
+  let pairs = 0
+  for (let k = 0; k + 1 < cues.length; k++) {
+    const [i, a] = cues[k], [j, b] = cues[k + 1]
+    if (cueName(a) === cueName(b) && j - i <= 6) pairs++
+  }
+  // 숫자는 번역돼도 그대로 남는다 — 내용이 실제로 살아있는지 보는 보조 신호
+  const nums = new Set((text.match(/\b\d{2,}\b/g) || []))
+  return { dlg, scenes, pairs, nums }
 }
 
-const src = scan(readFileSync(join(dir, fmtF), 'utf8'))
-const dst = scan(readFileSync(join(dir, trF), 'utf8'))
+const S = stat(readFileSync(join(dir, fmtF), 'utf8'))
+const D = stat(readFileSync(join(dir, trF), 'utf8'))
 
-// 씬 수가 어긋나면 씬 단위 대조가 무의미하므로 전체 합계로만 본다
-if (Math.abs(src.length - dst.length) > Math.max(3, src.length * 0.05)) {
-  const S = src.reduce((a, s) => a + s.dlg, 0), D = dst.reduce((a, s) => a + s.dlg, 0)
-  const P = src.reduce((a, s) => a + s.pairs, 0)
-  console.log(`${work}: 씬 수 불일치(${src.length}→${dst.length}) — 합계로만 검사`)
-  console.log(`  대사 ${S} → ${D} · 합쳐질 쌍 ${P} · 손실 추정 ${Math.max(0, S - P - D)}`)
-  process.exit(S - P - D > Math.max(3, S * 0.02) ? 7 : 0)
-}
+const floor = S.dlg - S.pairs          // 이 아래로 내려가면 합치기로 설명이 안 된다
+const gap = floor - D.dlg
+// 원문에만 있고 번역엔 아예 없는 숫자 — 통째로 빠진 대목이 있는지 보는 보조 지표
+const lostNums = [...S.nums].filter(n => !D.nums.has(n))
 
-let lost = 0
-const bad = []
-const n = Math.min(src.length, dst.length)
-for (let i = 0; i < n; i++) {
-  const expected = src[i].dlg - src[i].pairs   // 두 벌 병기가 합쳐진 만큼은 줄어도 정상
-  const gap = expected - dst[i].dlg
-  if (gap > 0) { lost += gap; bad.push({ i, head: src[i].head, src: src[i].dlg, pairs: src[i].pairs, dst: dst[i].dlg, gap }) }
+console.log(`${work}: 씬 ${S.scenes}→${D.scenes} · 대사 ${S.dlg}→${D.dlg} (합쳐질 쌍 ${S.pairs})`)
+if (gap > 0) {
+  console.log(`  ✗ 대사 ${gap}줄이 설명되지 않는다 — 합치기로는 ${floor}줄까지만 줄어야 한다`)
+  if (lostNums.length) console.log(`     원문에만 있는 숫자 ${lostNums.length}개: ${lostNums.slice(0, 8).join(', ')}`)
+  process.exit(7)
 }
-
-const total = src.reduce((a, s) => a + s.dlg, 0)
-console.log(`${work}: 씬 ${src.length} · 원문 대사 ${total} · 번역 대사 ${dst.reduce((a, s) => a + s.dlg, 0)}`)
-if (!lost) { console.log('  ✓ 사라진 대사 없음'); process.exit(0) }
-console.log(`  ✗ 사라진 것으로 보이는 대사 ${lost}줄 (${bad.length}개 씬)`)
-for (const b of (VERBOSE ? bad : bad.slice(0, 6))) {
-  console.log(`      씬 ${b.i} ${b.head}`)
-  console.log(`         원문 ${b.src} (합쳐질 쌍 ${b.pairs}) → 번역 ${b.dst} · 부족 ${b.gap}`)
+if (lostNums.length > Math.max(8, S.nums.size * 0.25)) {
+  console.log(`  ⚠ 대사 수는 맞지만 원문에만 있는 숫자가 ${lostNums.length}/${S.nums.size}개 — 일부 대목이 빠졌을 수 있다`)
+  console.log(`     ${lostNums.slice(0, 10).join(', ')}`)
+  process.exit(0)
 }
-process.exit(lost > Math.max(3, total * 0.02) ? 7 : 0)
+console.log('  ✓ 사라진 대사 없음')
