@@ -185,6 +185,18 @@ function build(lines, b) {
   //   그래서 파서(sync-sources parseBlocks)가 '@인물 다음 줄=대사'라는 위치 추론에만 의존했고,
   //   그 추론이 어긋나면 대사·지문이 한 블록으로 붙는 사고가 났다. 대사 줄 앞에 '- '를 붙여
   //   위치와 무관하게 확정적으로 식별되게 한다(씬/인물 마커와 동급의 구조 마커).
+  // ★'<번호>. <장소>. <시간>. 지문…' 처럼 씬 제목과 지문이 한 줄에 붙는 각본이 있다
+  //   (룸 넥스트 도어: '1. A BOOKSTORE IN N.Y. DAY There is a long line…' — 105곳).
+  //   INT./EXT. 가 없거나 장소 뒤에 오므로 기존 씬 규칙에 안 걸리고, 각본 전체가 1~3씬으로 뭉갰다.
+  //   다만 이런 형태를 무조건 씬으로 보면 위험하므로, '이 문서에서 실제로 자주 쓰이는 관행인지'
+  //   (10회 이상) 세어보고 그럴 때만 적용한다. 각본마다 표준이 다르니 문서 스스로 증명하게 한다.
+  //   헤딩이 독립된 줄일 때('3. BY THE RIVER. DAY.')와 지문이 붙어 있을 때
+  //   ('1. A BOOKSTORE IN N.Y. DAY There is a long line…') 두 형태를 모두 잡는다.
+  const NUM_HEAD = /^(\d{1,3}[A-Za-z]?\.\s+)([A-Z][A-Z0-9 ,.'’\/&()-]{4,})$/          // 독립 줄
+  const NUM_SPLIT = /^(\d{1,3}[A-Za-z]?\.\s+)([A-Z][A-Z0-9 ,.'’\/&()-]{4,}?)(?=\s+[A-Z][a-z])/  // 지문 붙음
+  const numberedCount = lines.filter(l => { const x = l.text.trim(); return NUM_HEAD.test(x) || NUM_SPLIT.test(x) }).length
+  const useNumbered = numberedCount >= 10
+
   const flush = () => { if (cur) { out.push(cur.type === 'dialogue' ? { ...cur, text: '- ' + cur.text } : cur); cur = null } }
   let prev = null
   let afterCue = false   // 방금 @인물 큐를 냈고 아직 그 대사를 못 만난 상태
@@ -204,6 +216,19 @@ function build(lines, b) {
     // 대시로 감싼 페이지 번호(—2—, –14–)도 페이지 표시다 — 숫자만 있는 줄만 걸러선 안 잡힌다(TÁR 344곳)
     if (/^[—–-]\s*\d{1,4}\s*[—–-]$/.test(s)) continue
     if (/^\*?\s*[A-Z]{0,2}\d{1,4}[A-Z]?\.?\*?$/.test(s) || /^\(?(CONTINUED|CONT'D|MORE)\)?\s*:?\s*(\(\d+\))?\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i.test(s) || s.length < 1) continue
+    // 번호형 헤딩 각본: '3. BY THE RIVER. DAY. Ingrid walks…' 를 헤딩과 지문으로 가른다.
+    //   가르는 자리는 '대문자 덩어리가 끝나고 첫 일반 문장이 시작되는 곳'(Capitalized+소문자).
+    if (useNumbered) {
+      const nh = s.match(NUM_HEAD)
+      const ns2 = nh ? null : s.match(NUM_SPLIT)
+      if (nh || ns2) {
+        flush(); afterCue = false; lastDialogueX = null
+        const head = (nh ? nh[2] : ns2[2]).trim().replace(/[.,\s]+$/, '')
+        out.push({ type: 'scene', text: '# ' + head })
+        if (ns2) { const restText = s.slice(ns2[0].length).trim(); if (restText) cur = { type: 'action', text: restText } }
+        prev = line; continue
+      }
+    }
     if (type === 'scene') { flush(); afterCue = false; lastDialogueX = null; out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
     if (type === 'character') { flush(); afterCue = true; lastDialogueX = null; out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
     if (type === 'paren') { flush(); out.push({ type, text: s }); prev = line; continue }   // 괄호는 afterCue·lastDialogueX 유지(큐→(beat)→대사)
