@@ -76,6 +76,11 @@ for (let s = 0; s < cand.length; s += CHUNK) {
   process.stdout.write(`  ${Math.min(s + CHUNK, cand.length)}/${cand.length}\r`)
 }
 
+// 판정 결과를 남긴다 — 같은 판정을 다시 사기지 않도록, 그리고 무엇을 거절했는지 보이도록
+const VERDICT_PATH = `/tmp/scenes_${work}.json`
+writeFileSync(VERDICT_PATH, JSON.stringify(cand.map(c => ({ i: c.i, text: c.text, yes: !!verdict.get(c.i) })), null, 1))
+console.log(`  판정 기록 → ${VERDICT_PATH}`)
+
 const yes = cand.filter(c => verdict.get(c.i))
 console.log(`\n  새 장면으로 판정 ${yes.length}개 / 후보 ${cand.length}개`)
 for (const c of yes.slice(0, 15)) console.log(`     ${c.text.slice(0, 58)}`)
