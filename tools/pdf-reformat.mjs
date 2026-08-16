@@ -150,7 +150,7 @@ const OMITTED_RE = /^OMITTED\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i
 const UNIVERSE_RE = /^[A-Z][A-Z '.-]{1,30}VERSE:/
 // 전환 지시어 — 콜론이 없거나(CUT TO BLACK) 변형(TRANSITION TO·FLASH BACK TO·FADE UP)인 형태가 실제로 많다.
 //   좁게 잡으면 인물 큐로 오분류돼 '@CUT TO'·'@TRANSITION TO' 같은 가짜 화자가 생긴다(라이브러리 108건 발생).
-const TRANS_RE = /^(?:(?:SMASH|MATCH|JUMP|HARD|QUICK)(?:\s+CUT)?\s+)?(?:CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH(?:\s+BACK)?)?(?:\s*(?:TO|IN|OUT|UP|BACK|ON))*(?:\s+BLACK|\s+WHITE)?\s*:?\s*\d{0,4}[A-Z]?\s*$/i
+const TRANS_RE = /^(?:(?:SMASH|MATCH|JUMP|HARD|QUICK|TIME|SLAM|SNAP|ROTATE|LONG)(?:\s+CUT)?\s+)?(?:CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH(?:\s+BACK)?)?(?:\s*(?:TO|IN|OUT|UP|BACK|ON))*(?:\s+BLACK|\s+WHITE)?\s*:?\s*\d{0,4}[A-Z]?\s*$/i
 const TIME = /\b(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|AFTERNOON|LATER|EARLIER|CONTINUOUS|MOMENTS|SAME|SUNSET|SUNRISE)\b/
 const isSlug = (s) => { if (!/\s[-–—]\s/.test(s) || s.length > 70) return false; const L = s.replace(/[^A-Za-z]/g, ''), U = s.replace(/[^A-Z]/g, ''); return L.length >= 3 && U.length / L.length >= 0.85 && TIME.test(s.split(/\s[-–—]\s/).pop()) }
 function isRealCue(s) {
