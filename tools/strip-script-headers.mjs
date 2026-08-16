@@ -51,7 +51,8 @@ const PATS = [
   /[A-Z][A-Za-z ]{3,30}(?:Pictures|Films|Productions|Entertainment|Studios)\s+[\d-]+\s+[A-Za-z ]+(?:Street|Road|Avenue|Lane)\s+[A-Za-z ]+\s*[A-Z0-9 ]{3,10}/g,
   // TV 각본 머리글(제목 + #화수 + "부제" + 판본 + 날짜 + 페이지):
   //   'BETTER CALL SAUL #613 "Saul Gone" FINAL 1/19/22 9.'
-  /[A-Z][A-Z' ]{2,40}\s*#\d+[A-Za-z]?\s*"[^"]{1,60}"\s*[A-Z]+\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[\d]{0,4}[A-Za-z]?\.?/gi,
+  //   화수 표기는 '#613' 과 'EP. 108' 두 형태, 판본은 'FINAL' 과 'Double Buff Pages' 등 다양하다.
+  /[A-Z][A-Z' ]{2,40}\s*(?:#\d+|EP\.?\s*\d+)[A-Za-z]?\s*"[^"]{1,60}"\s*(?:(?:Double|Triple|Single|Full)\s*)?(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan|FINAL|DRAFT)?\s*(?:Pages|Full\s*Draft|Draft)?\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[\d]{0,4}[A-Za-z]?\.?/gi,
   // 삭제된 씬 표시: 'OMITTED85-89A 85-89A', 'OMITTED (NOW SC. 110A) 108', 'OMITTEDMOVED TO 65A'
   //   ★뒤에 붙는 건 '씬 번호'만 먹어야 한다. \w 로 열어두면 'OMITTED 라고 말했다'처럼
   //   본문 단어까지 삼킨다(실제로 그렇게 만들었다가 잡았다). 숫자·씬번호 꼴로만 한정한다.
