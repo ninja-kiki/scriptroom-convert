@@ -230,7 +230,14 @@ function build(lines, b) {
     return t.length >= 45                               // 긴 산문 = 오프닝 지문/에피그래프
   }
   const firstScene = out.findIndex(b => b.type === 'scene')
-  const body = firstScene > 0 ? [...out.slice(0, firstScene).filter(keepPre), ...out.slice(firstScene)] : out
+  // ★타이틀 페이지 정리는 '진짜 타이틀 페이지'에만 적용해야 한다.
+  //   씬 인식이 실패해 첫 헤딩이 한참 뒤에 잡히면, 그 앞 전체가 타이틀 페이지로 간주돼
+  //   대사·화자가 통째로 버려진다(새터데이 나이트: 첫 헤딩이 747번째 블록 → 각본 절반인
+  //   67,000자가 사라졌다). 타이틀 페이지는 길어야 앞부분 몇십 블록이므로 그 범위로 한정한다.
+  const PRE_LIMIT = Math.min(40, Math.floor(out.length * 0.05))
+  const body = (firstScene > 0 && firstScene <= PRE_LIMIT)
+    ? [...out.slice(0, firstScene).filter(keepPre), ...out.slice(firstScene)]
+    : out
 
   // 블록 사이 빈 줄 1개로 렌더 (scriptroom 규칙: 빈 줄=경계)
   return body.map(b => b.text).join('\n\n') + '\n'
