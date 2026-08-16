@@ -10,7 +10,9 @@ import { join } from 'path'
 
 const CONTENT = '/Users/hojun/Projects/scriptroom/content'
 const SKIP = new Set(['scripts', 'scripts-ocr', 'posters-bauhaus'])
-const norm = s => s.toLowerCase().replace(/-?(19|20)\d{2}$/, '').replace(/[^a-z0-9]/g, '')
+// ★연도를 먼저 떼고 나서 영숫자만 남긴다. 순서를 바꾸면 'Amour(2012)' 처럼 괄호가 섞인 이름에서
+//   연도 제거가 안 먹는다(괄호가 남아 $ 앵커에 안 걸림).
+const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/(19|20)\d{2}$/, '')
 
 const groups = new Map()
 for (const d of readdirSync(CONTENT)) {
