@@ -46,7 +46,7 @@ const PATS = [
   // 삭제된 씬 표시: 'OMITTED85-89A 85-89A', 'OMITTED (NOW SC. 110A) 108', 'OMITTEDMOVED TO 65A'
   //   ★뒤에 붙는 건 '씬 번호'만 먹어야 한다. \w 로 열어두면 'OMITTED 라고 말했다'처럼
   //   본문 단어까지 삼킨다(실제로 그렇게 만들었다가 잡았다). 숫자·씬번호 꼴로만 한정한다.
-  /OMIT(?:TED)?(?:\s*[-–]\s*MOVED\s+AFTER\s+\d+[A-Z]?)?(?:\s*\(NOW[^)]*\))?(?:\s*MOVED\s+TO)?(?:\s*\d+[A-Z]?(?:\s*[-–]\s*\d+[A-Z]?)?)*(?:\s+IN\s+[A-Z]+)?(?:\s*\d+[A-Z]?)*\.?/g,
+  /(?:OMIT(?:TED)?|DELETED)(?:\s*[-–]\s*MOVED\s+AFTER\s+\d+[A-Z]?)?(?:\s*\(NOW[^)]*\))?(?:\s*MOVED\s+TO)?(?:\s*\d+[A-Z]?(?:\s*[-–]\s*\d+[A-Z]?)?)*(?:\s+IN\s+[A-Z]+)?(?:\s*\d+[A-Z]?)*\.?/g,
 ]
 
 function strip(path) {
