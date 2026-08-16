@@ -43,6 +43,8 @@ const PATS = [
   /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*Rev\.?\s*\([A-Za-z]+\s*\d{1,2}\s*'?\d{2,4}\)\s*[-–]?\s*[\d]{0,4}\s*[\d]{0,4}[A-Za-z]{0,3}\.?/gi,
   // 씬 이동·병합 표시: 'MOVED TO SC 230A227A', 'MERGED INTO SC 281256'
   /(?:MOVED\s+TO|MERGED\s+INTO)\s+SC\.?\s*[\dA-Z]*/gi,
+  // 약칭 + Final Shooting Script + 날짜 + 페이지: 'KOTFM - Final Shooting Script - August 10, 2022 143.'
+  /[A-Z][A-Za-z0-9' ]{1,30}\s*[-–]\s*(?:Final\s*)?Shooting\s*Script\s*[-–]\s*[A-Za-z]+\s*\d{1,2},?\s*\d{4}\s*[\d]{0,4}[A-Za-z]?\.?/gi,
   // 삭제된 씬 표시: 'OMITTED85-89A 85-89A', 'OMITTED (NOW SC. 110A) 108', 'OMITTEDMOVED TO 65A'
   //   ★뒤에 붙는 건 '씬 번호'만 먹어야 한다. \w 로 열어두면 'OMITTED 라고 말했다'처럼
   //   본문 단어까지 삼킨다(실제로 그렇게 만들었다가 잡았다). 숫자·씬번호 꼴로만 한정한다.
