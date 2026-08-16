@@ -26,7 +26,7 @@ const PATS = [
   /[가-힣]{2,12}\s*(?:화이트|블루|핑크|옐로우|그린|골든로드|버프|살몬|체리|탄)\s*(?:리비전|개정)\s*[-–—]?\s*\d{1,2}[/-]\d{1,4}[/-]?\d{0,4}/g,
   // 날짜 자리를 채우지 않은 틀: 'Blue Rev. (mm/dd/yy) 66.'
   //   날짜 형식이 제각각이다: (mm/dd/yy) · (5/4/17) · (June 11, 17) · (May 04,17)
-  /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*Rev\.?\s*\((?:mm\/dd\/yy|\d{1,2}\/\d{1,2}\/\d{2,4}|[A-Za-z]+\s*\d{1,2}\s*,?\s*\d{2,4})\)\s*[\d]{0,4}[a-zA-Z]{0,2}\.?/gi,
+  /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*Rev\.?\s*\((?:m\s*m\s*\/\s*d\s*d\s*\/\s*y\s*y|\d{1,2}\/\d{1,2}\/\d{2,4}|[A-Za-z]+\s*\d{1,2}\s*,?\s*\d{2,4})\)\s*[\d]{0,4}[a-zA-Z]{0,2}\.?/gi,
   // 제목 붙은 대본 확정판 머리글: '"BLUE MOON" CONFORMED SCRIPT 1.9.2025 Pg. 11'
   /"[A-Z][A-Z0-9 '.-]{1,40}"\s*CONFORMED\s*SCRIPT\s*\d{1,2}\.\d{1,2}\.\d{2,4}\s*Pg\.?\s*\d+\.?/gi,
   // 개정색 + SHOOTING SCRIPT + 날짜 + 페이지: 'PINK SHOOTING SCRIPT (JUNE 17, 2024) 60DA.'
