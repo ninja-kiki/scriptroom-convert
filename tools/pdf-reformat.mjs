@@ -11,6 +11,14 @@ if (!pdfPath) { console.error('PDF 경로 필요'); process.exit(1) }
 
 // 볼드 효과를 텍스트 레이어에 다중으로 그린 PDF(스파이더맨 류) 대응 — 한 줄 안에서
 // 같은 문자열이 연달아 반복되면 1회로 접는다. "EXT. HOUSE - DAYEXT. HOUSE - DAY...1111" → "EXT. HOUSE - DAY1"
+// 콜론·따옴표처럼 보이지만 다른 글자인 것들을 표준 문자로 맞춘다.
+//   PDF에 U+A789(꞉) 같은 유사 글자가 섞이면 'TIME CUT TO꞉' 가 전환지시어 규칙에 안 걸려
+//   가짜 화자(@TIME CUT TO꞉)가 된다(past-lives 56곳).
+function normalizeLookalikes(s) {
+  return s.replace(/[꞉︓：]/g, ':').replace(/[‘’‚‛]/g, "'").replace(/[“”„‟]/g, '"')
+          .replace(/[‒–—―]/g, m => m)   // 대시는 종류가 의미를 가지므로 그대로 둔다
+}
+
 function collapseRepeats(orig) {
   let s = orig, prev
   do { prev = s; s = s.replace(/(.{6,}?)\1{2,}/g, '$1') } while (s !== prev)
@@ -38,7 +46,7 @@ async function extractLines(path) {
       return !(ix < bodyLeft - 10 || ix > bodyLeft + 430)   // 좌여백 또는 우여백의 번호 = 버림
     })
     let lastY = null, x = null, text = ''
-    const push = () => { if (text.trim()) lines.push({ text: collapseRepeats(text.replace(/\s+/g, ' ').trim()), x, y: lastY, page: p }) }
+    const push = () => { if (text.trim()) lines.push({ text: normalizeLookalikes(collapseRepeats(text.replace(/\s+/g, ' ').trim())), x, y: lastY, page: p }) }
     for (const it of items) {
       const ix = it.transform[4], iy = it.transform[5]
       if (lastY !== null && Math.abs(iy - lastY) > 3) { push(); text = ''; x = null }
