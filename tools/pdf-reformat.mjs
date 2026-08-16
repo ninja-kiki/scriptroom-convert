@@ -111,7 +111,18 @@ function detectBands(lines) {
     const character = xChar - 20                                       // 큐 클러스터 살짝 아래까지 큐로 인정
     const leftPeaks = xsByFreq.filter(([x]) => x < character - 30)     // 큐보다 확실히 왼쪽 = 지문/대사
     const xAction = leftPeaks.length ? Math.min(...leftPeaks.slice(0, 3).map(e => e[0])) : xChar - 220
-    return { xAction, dialogue: Math.round((xAction + character) / 2), character, transition: xChar + 300 }
+    // ★대사 경계는 '지문과 인물의 중점'이라는 기하학적 가정으로 정해선 안 된다.
+    //   인물 큐는 데이터(클러스터)로 찾으면서 대사만 중점으로 두다 보니, 대사 열이 그 중점보다
+    //   조금이라도 왼쪽인 각본에서 대사 전체가 지문으로 떨어졌다
+    //   (어 스타 이즈 본: 대사 실제 x=202.9인데 중점이 205 → 2.1pt 차이로 전멸).
+    //   대사도 자기 열(봉우리)을 만드므로 그걸 직접 찾고, 경계는 그 봉우리 살짝 아래로 잡는다.
+    const midPeaks = Object.entries(freq).map(([x, n]) => [+x, n])
+      .filter(([x, n]) => x >= xAction + 40 && x < character && n >= 20)   // 지문과 확실히 떨어진 중간 열만
+      .sort((a, b) => b[1] - a[1])
+    const dialogue = midPeaks.length
+      ? Math.min(midPeaks[0][0] - 8, Math.round((xAction + character) / 2))   // 봉우리 아래로. 중점보다 위로는 올리지 않는다
+      : Math.round((xAction + character) / 2)                                  // 대사 열을 못 찾으면 기존 방식
+    return { xAction, dialogue, character, transition: xChar + 300 }
   }
   // 폴백: 큐 클러스터를 못 찾으면 예전 방식(지문 최빈 + 고정 오프셋)
   const xAction = Math.min(...xsByFreq.slice(0, 3).map(e => e[0]))
@@ -123,7 +134,7 @@ function detectBands(lines) {
 //   다만 'INTO'·'EXTREMELY' 같은 일반 단어 오탐을 막으려 뒤에 단어경계(공백/점)를 요구한다.
 //   또 'EXT—CINEMA—NIGHT'처럼 em대시로 붙여 쓰는 각본도 있다(바스터즈). 이걸 놓치면 각본 전체가
 //   두 덩어리로 뭉쳐 1,597줄이 미번역으로 남는다 — 구분자에 —·– 도 허용한다.
-const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|(?:INT|EXT)(?:\.|\s|—|–)|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
+const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|(?:INT|EXT)(?:\.|:|\s|—|–)|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
 const OMITTED_RE = /^OMITTED\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i
 // 멀티버스/평행세계식 비표준 소제목("TAXES UNIVERSE: INT. X", "ALPHAVERSE: EXT. Y", "ROCK UNIVERSE:").
 //   정식 INT./EXT.가 뒤에 붙기도, 안 붙기도 함 — 둘 다 씬 경계로 인식해야 통짜 초대형 씬(예: EEAAO 4만자 몽타주)이
@@ -169,6 +180,13 @@ function build(lines, b) {
   const flush = () => { if (cur) { out.push(cur.type === 'dialogue' ? { ...cur, text: '- ' + cur.text } : cur); cur = null } }
   let prev = null
   let afterCue = false   // 방금 @인물 큐를 냈고 아직 그 대사를 못 만난 상태
+  // ★대사 x좌표가 자동 감지 밴드 경계에서 몇 포인트 어긋나는 작품이 실제로 있다(어 스타 이즈 본: x=202.9,
+  //   밴드는 205~280 — 2.1pt 차이로 지문 취급됨). 큐 직후 첫 줄은 afterCue 구제로 살아나지만, 대사 중간에
+  //   원본 PDF 줄간격이 벌어져 문단이 한 번 더 끊기면(bigGap) 그 다음 조각은 이미 afterCue가 꺼진 뒤라
+  //   구제받지 못하고 지문으로 떨어진다 — 라이브러리 91편에서 6,700건 발생.
+  //   같은 대사가 계속되는 동안의 x좌표를 기억해두고, 그 근방(±6pt)에서 또 나오는 action 판정 줄은
+  //   '이어지는 대사'로 구제한다. 새 씬/큐/전환이 나오면 리셋해 무관한 뒷부분 지문까지 삼키지 않는다.
+  let lastDialogueX = null
   for (const line of lines) {
     let type = classify(line, b)
     const s = line.text.trim()
@@ -176,11 +194,11 @@ function build(lines, b) {
     // 페이지번호/단독숫자/개정 샷번호(4A·6A·A19 등)/머리말 잡음 스킵.
     //   ★샷번호는 병합(soft-wrap) 전에 걷어내야 옆 문장에 "looks; 4A"처럼 들러붙지 않는다.
     if (/^\*?\s*[A-Z]{0,2}\d{1,4}[A-Z]?\.?\*?$/.test(s) || /^\(?(CONTINUED|CONT'D|MORE)\)?\s*:?\s*(\(\d+\))?\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i.test(s) || s.length < 1) continue
-    if (type === 'scene') { flush(); afterCue = false; out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
-    if (type === 'character') { flush(); afterCue = true; out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
-    if (type === 'paren') { flush(); out.push({ type, text: s }); prev = line; continue }   // 괄호는 afterCue 유지(큐→(beat)→대사)
+    if (type === 'scene') { flush(); afterCue = false; lastDialogueX = null; out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
+    if (type === 'character') { flush(); afterCue = true; lastDialogueX = null; out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
+    if (type === 'paren') { flush(); out.push({ type, text: s }); prev = line; continue }   // 괄호는 afterCue·lastDialogueX 유지(큐→(beat)→대사)
     // 전환지시어(CUT TO: 등)는 괄호로 감싸 독립된 한 줄로 — 리더가 괄호 지시문과 동일하게 흡수·렌더.
-    if (type === 'transition') { flush(); afterCue = false; out.push({ type, text: '(' + s.replace(/^\(+|\)+$/g, '').trim() + ')' }); prev = line; continue }
+    if (type === 'transition') { flush(); afterCue = false; lastDialogueX = null; out.push({ type, text: '(' + s.replace(/^\(+|\)+$/g, '').trim() + ')' }); prev = line; continue }
     // ★큐 직후 첫 본문은 각본 구조상 무조건 대사 — x좌표 밴드 감지가 어긋난 작품(batman 등)에서
     //   대사가 action으로 오분류되던 것을 바로잡는다(대사·지문 붙음의 진짜 뿌리). 대사를 시작하면 afterCue 해제.
     if (afterCue && type === 'action') type = 'dialogue'
@@ -188,7 +206,7 @@ function build(lines, b) {
     const bigGap = prev && line.page === prev.page && (prev.y - line.y) > lh * 1.7
     if (cur && cur.type === type && !bigGap) cur.text += ' ' + s
     else { flush(); cur = { type, text: s } }
-    if (type === 'dialogue') afterCue = false
+    if (type === 'dialogue') { afterCue = false; lastDialogueX = line.x }
     prev = line
   }
   flush()

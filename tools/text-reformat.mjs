@@ -45,6 +45,9 @@ console.log(`들여쓰기 밴드: 지문<${DLG_BAND} · 대사${DLG_BAND}-${CUE_
 const out = []
 let cur = null          // { type, text }
 let afterCue = false
+// pdf-reformat 과 같은 구제: 대사 들여쓰기가 밴드 경계에서 몇 칸 어긋나는 각본이 있다.
+// 이어지는 대사 조각이 지문으로 떨어지지 않도록, 직전 대사의 들여쓰기를 기억해 근방(±2칸)이면 대사로 본다.
+let lastDialogueInd = null
 const flush = () => { if (cur) { out.push(cur.type === 'dialogue' ? { ...cur, text: '- ' + cur.text } : cur); cur = null } }
 
 for (const line of raw) {
@@ -58,21 +61,22 @@ for (const line of raw) {
 
   // 씬 헤딩 — 앞의 씬번호(1, 24A)를 떼고 마커를 붙인다
   if (SCENE_RE.test(s) || isSlug(s)) {
-    flush(); afterCue = false
+    flush(); afterCue = false; lastDialogueInd = null
     out.push({ type: 'scene', text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() })
     continue
   }
-  if (TRANS_RE.test(s)) { flush(); afterCue = false; out.push({ type: 'transition', text: '(' + s.replace(/^\(+|\)+$/g, '').trim() + ')' }); continue }
+  if (TRANS_RE.test(s)) { flush(); afterCue = false; lastDialogueInd = null; out.push({ type: 'transition', text: '(' + s.replace(/^\(+|\)+$/g, '').trim() + ')' }); continue }
   if (/^\(.*\)$/.test(s)) { flush(); out.push({ type: 'paren', text: s }); continue }
-  if (ind >= CUE_BAND - 2 && isRealCue(s)) { flush(); afterCue = true; out.push({ type: 'character', text: '@' + s.replace(/[:：]\s*$/, '').trim() }); continue }
+  if (ind >= CUE_BAND - 2 && isRealCue(s)) { flush(); afterCue = true; lastDialogueInd = null; out.push({ type: 'character', text: '@' + s.replace(/[:：]\s*$/, '').trim() }); continue }
 
   // 큐 직후 첫 본문은 각본 구조상 무조건 대사 — 중앙 정렬로 밴드가 어긋나도 살린다
   let type = ind >= DLG_BAND ? 'dialogue' : 'action'
   if (afterCue) type = 'dialogue'
+  else if (type === 'action' && lastDialogueInd !== null && Math.abs(ind - lastDialogueInd) <= 2) type = 'dialogue'
 
   if (cur && cur.type === type) cur.text += ' ' + s
   else { flush(); cur = { type, text: s } }
-  if (type === 'dialogue') afterCue = false
+  if (type === 'dialogue') { afterCue = false; lastDialogueInd = ind }
 }
 flush()
 
