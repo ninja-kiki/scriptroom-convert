@@ -201,6 +201,8 @@ function build(lines, b) {
     if (!s) continue
     // 페이지번호/단독숫자/개정 샷번호(4A·6A·A19 등)/머리말 잡음 스킵.
     //   ★샷번호는 병합(soft-wrap) 전에 걷어내야 옆 문장에 "looks; 4A"처럼 들러붙지 않는다.
+    // 대시로 감싼 페이지 번호(—2—, –14–)도 페이지 표시다 — 숫자만 있는 줄만 걸러선 안 잡힌다(TÁR 344곳)
+    if (/^[—–-]\s*\d{1,4}\s*[—–-]$/.test(s)) continue
     if (/^\*?\s*[A-Z]{0,2}\d{1,4}[A-Z]?\.?\*?$/.test(s) || /^\(?(CONTINUED|CONT'D|MORE)\)?\s*:?\s*(\(\d+\))?\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i.test(s) || s.length < 1) continue
     if (type === 'scene') { flush(); afterCue = false; lastDialogueX = null; out.push({ type, text: '# ' + s.replace(/^#\s*/, '').replace(/^[A-Z]{0,2}\d+[A-Z]?\.?\s+/, '').replace(/\s*[A-Z]{0,2}\d+[A-Z]?\.?\*?$/, '').trim() }) ; prev = line; continue }
     if (type === 'character') { flush(); afterCue = true; lastDialogueX = null; out.push({ type, text: '@' + s.replace(/[:：]\s*$/, '').trim() }); prev = line; continue }
