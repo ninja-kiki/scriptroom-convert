@@ -31,6 +31,9 @@ const PATS = [
   /"[A-Z][A-Z0-9 '.-]{1,40}"\s*CONFORMED\s*SCRIPT\s*\d{1,2}\.\d{1,2}\.\d{2,4}\s*Pg\.?\s*\d+\.?/gi,
   // 개정색 + SHOOTING SCRIPT + 날짜 + 페이지: 'PINK SHOOTING SCRIPT (JUNE 17, 2024) 60DA.'
   /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*(?:SHOOTING\s*)?SCRIPT\s*\([A-Za-z]+\s*\d{1,2},?\s*\d{4}\)\s*[\d\w.-]*/gi,
+  // TV 각본 머리글: 'COLD HARBOR - Ep. 210 - Full Goldenrod - 02/03/24 10.'
+  //   에피소드 제목 + 화수 + 개정판 이름 + 날짜 + 페이지. 한 줄에 두 번 반복되기도 한다.
+  /[A-Z][A-Za-z' ]{2,30}\s*[-–]\s*Ep\.?\s*\d+[A-Za-z]?\s*[-–]\s*(?:Full|Double|Triple|Single)?\s*(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*(?:Pages)?\s*[-–]\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[\d]{0,4}[A-Za-z]?\.?/gi,
   // 삭제된 씬 표시: 'OMITTED85-89A 85-89A', 'OMITTED (NOW SC. 110A) 108', 'OMITTEDMOVED TO 65A'
   //   ★뒤에 붙는 건 '씬 번호'만 먹어야 한다. \w 로 열어두면 'OMITTED 라고 말했다'처럼
   //   본문 단어까지 삼킨다(실제로 그렇게 만들었다가 잡았다). 숫자·씬번호 꼴로만 한정한다.
