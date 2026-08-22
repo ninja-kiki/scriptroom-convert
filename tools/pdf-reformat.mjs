@@ -142,7 +142,7 @@ function detectBands(lines) {
 //   다만 'INTO'·'EXTREMELY' 같은 일반 단어 오탐을 막으려 뒤에 단어경계(공백/점)를 요구한다.
 //   또 'EXT—CINEMA—NIGHT'처럼 em대시로 붙여 쓰는 각본도 있다(바스터즈). 이걸 놓치면 각본 전체가
 //   두 덩어리로 뭉쳐 1,597줄이 미번역으로 남는다 — 구분자에 —·– 도 허용한다.
-const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|(?:INT|EXT)(?:\.|:|\s|—|–)|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
+const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.?\/EXT\.?|EXT\.?\/INT\.?|I\/E\.?|(?:INT|EXT)(?:\.|:|\s|—|–)|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
 const OMITTED_RE = /^OMITTED\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i
 // 멀티버스/평행세계식 비표준 소제목("TAXES UNIVERSE: INT. X", "ALPHAVERSE: EXT. Y", "ROCK UNIVERSE:").
 //   정식 INT./EXT.가 뒤에 붙기도, 안 붙기도 함 — 둘 다 씬 경계로 인식해야 통짜 초대형 씬(예: EEAAO 4만자 몽타주)이
@@ -150,7 +150,15 @@ const OMITTED_RE = /^OMITTED\s*\d{0,4}[A-Za-z]?\s*\d{0,4}[A-Za-z]?\.?$/i
 const UNIVERSE_RE = /^[A-Z][A-Z '.-]{1,30}VERSE:/
 // 전환 지시어 — 콜론이 없거나(CUT TO BLACK) 변형(TRANSITION TO·FLASH BACK TO·FADE UP)인 형태가 실제로 많다.
 //   좁게 잡으면 인물 큐로 오분류돼 '@CUT TO'·'@TRANSITION TO' 같은 가짜 화자가 생긴다(라이브러리 108건 발생).
-const TRANS_RE = /^(?:(?:SMASH|MATCH|JUMP|HARD|QUICK|TIME|SLAM|SNAP|ROTATE|LONG)(?:\s+CUT)?\s+)?(?:CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH(?:\s+BACK)?)?(?:\s*(?:TO|IN|OUT|UP|BACK|ON))*(?:\s+BLACK|\s+WHITE)?\s*:?\s*\d{0,4}[A-Z]?\s*\*?\s*$/i
+//   ★그런데 이 틀은 조각이 전부 '있어도 되고 없어도 되는' 것이라 사실상 아무거나 통과했다.
+//   'TOM' 이 'TO' + 남는 글자 하나([A-Z]?)로 맞아떨어져 전환 지시어가 됐고, 인물 큐 121개가
+//   통째로 괄호에 갇혔다(리플리 — 톰이 주인공이다). 같은 식으로 'ONE'(ON+E)·'BACKS'·'OUTS'도 걸린다.
+//   그래서 틀에 맞는지만 보지 않고, '전환을 뜻하는 낱말이 실제로 들어 있거나 콜론으로 끝나거나'를
+//   함께 요구한다 — 'BACK TO:' 처럼 낱말이 없는 형태는 콜론이 대신 증명한다.
+const TRANS_SHAPE = /^(?:(?:SMASH|MATCH|JUMP|HARD|QUICK|TIME|SLAM|SNAP|ROTATE|LONG)(?:\s+CUT)?\s+)?(?:CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH(?:\s+BACK)?)?(?:\s*(?:TO|IN|OUT|UP|BACK|ON))*(?:\s+BLACK|\s+WHITE)?\s*:?\s*\d{0,4}[A-Z]?\s*\*?\s*$/i
+const TRANS_WORD = /\b(CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH)\b/i
+const TRANS_COLON = /:\s*\d{0,4}[A-Z]?\s*\*?\s*$/
+const TRANS_RE = { test: (s) => TRANS_SHAPE.test(s) && (TRANS_WORD.test(s) || TRANS_COLON.test(s)) }
 const TIME = /\b(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|AFTERNOON|LATER|EARLIER|CONTINUOUS|MOMENTS|SAME|SUNSET|SUNRISE)\b/
 const isSlug = (s) => { if (!/\s[-–—]\s/.test(s) || s.length > 70) return false; const L = s.replace(/[^A-Za-z]/g, ''), U = s.replace(/[^A-Z]/g, ''); return L.length >= 3 && U.length / L.length >= 0.85 && TIME.test(s.split(/\s[-–—]\s/).pop()) }
 function isRealCue(s) {

@@ -55,6 +55,9 @@ const PATS = [
   /[A-Z][A-Z' ]{2,40}\s*(?:#\d+|EP\.?\s*\d+)[A-Za-z]?\s*"[^"]{1,60}"\s*(?:(?:Double|Triple|Single|Full)\s*)?(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan|FINAL|DRAFT)?\s*(?:Pages|Full\s*Draft|Draft)?\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[\d]{0,4}[A-Za-z]?\.?/gi,
   // 개정색 + Revised + 날짜 + 페이지: 'Pink Revised 07/15/2016 39A.'
   /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*Revised\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[\d]{0,4}[A-Za-z]?\.?/gi,
+  // 개정색 + REVISIONS + 제작 약칭·화수 + 페이지: 'BLUE WIP REVISIONS SZ EPISODE 1 19.'
+  //   색 이름 바로 뒤에 REVISIONS 가 와야만 걸리므로 본문을 삼킬 여지는 거의 없다.
+  /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*(?:WIP\s*)?REVISIONS?\s+[A-Z0-9 .#-]{0,30}?\d{1,4}[A-Za-z]?\.?/gi,
   // 씬 이동·재번호 표시: 'SCENE MOVED AND RE-NUMBERED TO SCENE 162'
   /SCENE\s+MOVED(?:\s+AND\s+RE-?NUMBERED)?\s+TO\s+SCENE\s*[\dA-Z]*/gi,
   // 삭제된 씬 표시: 'OMITTED85-89A 85-89A', 'OMITTED (NOW SC. 110A) 108', 'OMITTEDMOVED TO 65A'

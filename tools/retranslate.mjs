@@ -257,7 +257,15 @@ const reuseCount = prevKo ? prevKo.filter(s => isFullyTranslated(s)).length : 0
 console.log(`=== 번역 시작: ${scenes.length}씬${RESUME && prevKo ? ` (재사용 ${reuseCount} · 재번역 ${scenes.length - reuseCount})` : ''} ===`)
 if (!OUT && existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(koPath, koPath + '.retbak')   // content 모드일 때만 원본 백업 (OUT=/tmp면 백업 불필요)
 // 현재까지 번역분 + 나머지 영문으로 전체 구조 유지해 저장 (끊겨도 안 날아감 / --resume으로 이어감)
-const checkpoint = (out) => { try { writeFileSync(koPath, [...out, ...scenes.slice(out.length)].join('\n\n') + '\n') } catch {} }
+// ★씬 하나 끝날 때마다 통째로 다시 쓴다. 두 가지를 고쳤다:
+//   1) 예전엔 20씬마다 저장해서, 19씬 번역하고 서버가 죽으면 그 19씬이 전부 날아갔다.
+//      실제로 이것 때문에 같은 작품을 며칠간 --force 로 처음부터 반복해서 돌렸다.
+//   2) 예전엔 '첫 미완료 씬 앞까지만' 저장해서, 중간에 실패한 씬이 하나라도 있으면
+//      그 뒤에 성공한 씬들을 전부 버렸다. 이제 구멍이 있어도 성공분은 다 남긴다
+//      (미완료 자리에는 원문을 넣어 파일 구조와 씬 개수를 그대로 유지한다).
+const checkpoint = () => {
+  try { writeFileSync(koPath, results.map((v, i) => v === undefined ? scenes[i] : v).join('\n\n') + '\n') } catch {}
+}
 const outScenes = []
 let failed = 0
 // ★씬을 동시에 여러 개 번역한다(서버 전역 상한 GLOBAL_CAP=3에 맞춤).
@@ -356,7 +364,12 @@ async function translateOne(i) {
         // ★씬 하나가 너무 커서 한 번에 못 넘기는 경우가 실제로 있다
         //   (바스터즈 지하 술집 24분 시퀀스 29,500자 — 3회 모두 fetch failed).
         //   통째로 포기하면 각본 한복판이 영어로 남으므로, 조각으로 나눠 순차 번역한다.
-        if (scenes[i].length > 12000) {
+        // ★임계값이 12,000자였는데, 그 아래에서도 계속 타임아웃되는 씬이 있었다
+        //   (추락의 해부 = 프랑스어 → 한국어라 더 오래 걸린다: 씬34 10,951자·씬41 8,975자·
+        //   씬51 10,639자가 3회씩 전부 실패). 반면 23,485자짜리는 분할로 성공했다 —
+        //   즉 분할 자체는 잘 되는데 임계값이 높아서 발동을 안 한 것뿐이다.
+        //   6,000자로 낮춘다. 작은 씬을 괜히 쪼개는 비용보다, 한복판이 원문으로 남는 게 훨씬 나쁘다.
+        if (scenes[i].length > 4000) {
           const ok = await translateChunked(i)
           if (ok) return
         }
@@ -375,7 +388,7 @@ async function worker() {
     if (i >= scenes.length) return
     await translateOne(i)
     doneCount++
-    if (doneCount % 20 === 0) checkpoint(results.slice(0, results.findIndex(v => v === undefined) === -1 ? results.length : results.findIndex(v => v === undefined)))
+    checkpoint()   // 매 씬마다 — 언제 끊겨도 여기까지는 디스크에 남는다
     if (doneCount % 10 === 0 || doneCount === scenes.length) console.log(`  ${doneCount}/${scenes.length} (실패 ${failed})`)
   }
 }

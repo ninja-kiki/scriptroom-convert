@@ -10,7 +10,12 @@
 import { readFileSync, writeFileSync } from 'fs'
 
 const SCENE_RE = /^(#?\s*)([A-Z]{0,2}\d{1,3}[A-Z]?\.?\s+)?(INT\.\/EXT\.|EXT\.\/INT\.|I\/E\.|(?:INT|EXT)(?:\.|\s|—|–)|INSERT|INTERCUT|MONTAGE|SERIES OF SHOTS)/i
-const TRANS_RE = /^(?:(?:SMASH|MATCH|JUMP|HARD|QUICK)(?:\s+CUT)?\s+)?(?:CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH(?:\s+BACK)?)?(?:\s*(?:TO|IN|OUT|UP|BACK|ON))*(?:\s+BLACK|\s+WHITE)?\s*:?\s*$/i
+// ★조각이 전부 선택적이라 아무 이름이나 통과했다 — 'TOM'은 'TO'+'M'으로,
+//   'ONA'는 'ON'+'A'로 전환 지시어가 됐다(pdf-reformat 쪽 주석 참고).
+//   전환을 뜻하는 낱말이 들어 있거나 콜론으로 끝날 때만 전환으로 본다.
+const TRANS_SHAPE = /^(?:(?:SMASH|MATCH|JUMP|HARD|QUICK)(?:\s+CUT)?\s+)?(?:CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH(?:\s+BACK)?)?(?:\s*(?:TO|IN|OUT|UP|BACK|ON))*(?:\s+BLACK|\s+WHITE)?\s*:?\s*$/i
+const TRANS_WORD = /\b(CUT|DISSOLVE|FADE|WIPE|TRANSITION|FLASH)\b/i
+const TRANS_RE = { test: (s) => TRANS_SHAPE.test(s) && (TRANS_WORD.test(s) || /:\s*$/.test(s)) }
 const TIME = /\b(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|AFTERNOON|LATER|EARLIER|CONTINUOUS|MOMENTS|SAME|SUNSET|SUNRISE)\b/
 
 function isRealCue(s) {
