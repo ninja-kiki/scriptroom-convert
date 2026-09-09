@@ -1,3 +1,4 @@
+import { atomicWrite } from './_atomic-write.mjs'
 // 번역기가 '스스로 고쳐 쓴' 흔적을 정리한다.
 //
 //   무슨 일이 있었나: 씬 하나를 번역하다가 원문을 그대로 옮겨 적고는, 도중에 알아채고
@@ -51,5 +52,5 @@ const out = lines.filter((_, i) => !drop.has(i)).join('\n').replace(/\n{3,}/g, '
 console.log(`  ${found}곳 · 씬 ${lines.filter(l => l.startsWith('# ')).length} → ${out.split('\n').filter(l => l.startsWith('# ')).length}`)
 if (!WRITE) { console.log('  (--write 없음 — 저장 안 함)'); process.exit(0) }
 if (!existsSync(path + '.scbak')) copyFileSync(path, path + '.scbak')
-writeFileSync(path, out)
+atomicWrite(path, out)
 console.log('  ✓ 저장')

@@ -1,3 +1,4 @@
+import { atomicWrite } from './_atomic-write.mjs'
 // 반쪽만 번역된 씬 헤딩을 마저 옮긴다.
 //
 //   왜 이런 게 남았나: 검사기는 '한글이 한 글자라도 있으면 통과'시킨다. 그래서
@@ -104,5 +105,5 @@ if (statSync(path).mtimeMs !== mtimeAtRead) {
   process.exit(0)
 }
 if (!existsSync(path + '.hdbak')) copyFileSync(path, path + '.hdbak')
-writeFileSync(path, outLines.join('\n'))
+atomicWrite(path, outLines.join('\n'))
 console.log('  ✓ 저장')

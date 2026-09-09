@@ -1,3 +1,4 @@
+import { atomicWrite } from './_atomic-write.mjs'
 // 번역본에 '원문(영어) + 번역(한국어)'이 나란히 남은 중복을 제거한다.
 //   왜 필요한가: 재번역을 반복해도 LLM이 원문을 지우지 않고 번역을 덧붙이는 경우가 있다(127hours 등 36편).
 //   리더에서 같은 내용이 영어·한글로 두 번 보이는 원인.
@@ -67,7 +68,7 @@ console.log(`${work}: 원문 잔재 ${removed.length}건`)
 removed.slice(0, 3).forEach(s => console.log(`   삭제: ${s.slice(0, 70)}`))
 if (WRITE && removed.length) {
   if (!existsSync(path + '.dedupbak')) copyFileSync(path, path + '.dedupbak')
-  writeFileSync(path, out.join('\n'))
+  atomicWrite(path, out.join('\n'))
   console.log(`  ✓ 저장 (백업: .dedupbak)`)
 } else if (!WRITE) {
   console.log('  (--write 없음 — 저장 안 함)')

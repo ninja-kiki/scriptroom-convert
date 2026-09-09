@@ -30,11 +30,20 @@ const LEAD_JUNK = /^[\s]*(\(?[a-zA-Z]?[\^~|\\/*;:•·"]+\*?[\s]+)+/
 
 // @큐: 뒤쪽의 대문자 인물명만 남김. 잡기호 사이에 낀 단일문자(C, r 등)도 제거.
 function cleanCue(line) {
+  // ★이미 정상인 큐는 손대지 않는다.
+  //   이 함수는 이름을 '줄 끝에서부터' 찾는데(정규식 $ 앵커), 이름 허용 문자에 '&'가 없어서
+  //   '@TOMMY & BILLY'(둘이 같이 말하는 정상 큐)에서 뒤쪽 'BILLY'만 매치돼
+  //   '@BILLY'로 잘라버렸다 — 화자 하나가 통째로 사라지는 사고다.
+  //   '@' 다음이 이미 대문자·한글이면 잡기호가 없다는 뜻이므로 그대로 둔다.
+  if (/^@[A-Z가-힣]/.test(line.trim())) return line
   const m = line.match(/([A-Z][A-Z][A-Z .'\-]*?|[A-Z]{2,})(\s*\((?:Cont\.?|CONT'?D)\.?\))?\s*$/)
   if (!m) return line
   const name = m[1].trim().replace(/\s+/g, ' ')
   const paren = m[2] ? ' ' + m[2].trim() : ''
   if (SCENE_WORDS.has(name.split(' ')[0])) return line   // "@- DAY" 류는 인물 아님 → 손대지 않음(플래그)
+  // ★시각 표기는 인물이 아니다. '@3:00 AM' 에서 이름을 줄 끝에서 찾다 보니 'AM'만 남겨
+  //   '@AM' 이라는 가짜 화자를 만들었다(언더 더 실버 레이크). 시각 꼴이면 손대지 않는다.
+  if (/^\d{1,2}:\d{2}\s*(AM|PM)?$/i.test(line.replace(/^@/, '').trim())) return line
   if (!hasVowel(name)) return line                        // "SPSN" 류 자음덩어리 → 깨진 큐, 손대지 않음
   const cleaned = `@${name}${paren}`
   return cleaned === line.trim() ? line : cleaned

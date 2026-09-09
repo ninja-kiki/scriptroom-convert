@@ -1,3 +1,4 @@
+import { atomicWrite } from './_atomic-write.mjs'
 // 남은 영어 씬 헤딩만 골라 번역해 교체한다.
 //   왜 따로 두나: 씬 전체를 재번역해도 LLM이 헤딩 한 줄을 영어로 남기는 일이 반복된다(Leon·mid90s 등).
 //   씬 전체를 또 돌리는 건 비싸고 효과도 없어서, 헤딩 줄만 모아 작품당 1회 호출로 처리한다.
@@ -87,7 +88,7 @@ targets.slice(0, 3).forEach((t, k) => console.log(`   ${t.text}  →  ${lines[t.
 
 if (WRITE && applied) {
   if (!existsSync(path + '.headbak')) copyFileSync(path, path + '.headbak')
-  writeFileSync(path, lines.join('\n'))
+  atomicWrite(path, lines.join('\n'))
   console.log(`  ✓ 저장 (백업: .headbak)`)
 } else if (!WRITE) {
   console.log('  (--write 없음 — 저장 안 함)')

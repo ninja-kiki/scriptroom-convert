@@ -2,7 +2,7 @@
 //   node tools/retranslate.mjs <작품폴더명> --guide       # 가이드만 생성·출력 (확인용)
 //   node tools/retranslate.mjs <작품폴더명> --write        # 가이드 생성 후 전 씬 번역 → _translated.txt 덮어쓰기(.retbak)
 // 서버(3001) 필요. 자막(KR srt/smi)이 있으면 말투·관계 가이드 근거로 씀. 번역엔 자막을 직접 안 넣음.
-import { readFileSync, writeFileSync, readdirSync, copyFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, readdirSync, copyFileSync, existsSync, renameSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { reflowBody } from '../src/lib/format-rules.js'   // 끊긴 문장 합치기(변환과 동일)
 
@@ -47,7 +47,25 @@ function isFullyTranslated(scene) {
   const ls = scene.split('\n')
   for (let idx = 0; idx < ls.length; idx++) {
     const s = ls[idx].trim()
-    if (s.length < 12 || /[가-힣]/.test(s)) continue
+    if (/[가-힣]/.test(s)) continue
+    // ★인물 큐는 짧아도 반드시 검사한다. 예전엔 다른 줄과 똑같이 '12자 미만이면 건너뛴다'는
+    //   문턱을 그대로 썼는데, '@HAL'·'@MAX'(둘 다 4자)처럼 짧은 이름이 전부 여기 걸려 검사가
+    //   안 됐다. 완성도의 실제 기준인 src-check-clean.py 는 인물 큐를 길이와 무관하게
+    //   무조건 본다 — 두 검사기 기준이 어긋난 것이 진짜 원인이었다. isFullyTranslated 가
+    //   느슨해서 --resume 은 '이미 완료'로 오판했고, 짧은 영어 이름이 낀 씬은 --resume 을
+    //   몇 번 돌려도 재번역 대상에 안 잡혀 영원히 안 고쳐졌다(델마와 루이스: HAL·MAX·
+    //   THELMA 가 여러 씬에서 계속 영어로 남았다). 판정 예외(이니셜·약어)는
+    //   src-check-clean.py 와 맞춘다.
+    if (/^@/.test(s)) {
+      const name = s.replace(/^@/, '').replace(/\s*\((?:V\.?O\.?|O\.?S\.?|O\.?C\.?|CONT'?D|CONT|MORE)\.?\)?\s*$/i, '').trim()
+      const letters = name.replace(/[^A-Za-z]/g, '')
+      if (letters.length < 2) continue
+      if (/^([A-Z]\.){1,3}$/.test(name)) continue                          // H.W. 같은 이니셜
+      if (/^[A-Z][A-Z./'-]*[./][A-Z./'-]*$/.test(name)) continue            // L.A.P.D, AC/DC 류 약어
+      if (['GPS','DP','TV','PA','DJ','VO','OS','FBI','CIA','NASA','SWAT','EMT','ER','ID','AI','UN'].includes(name.toUpperCase())) continue
+      return false
+    }
+    if (s.length < 12) continue
     if (ls.slice(Math.max(0, idx - 2), idx).some(p => LANG_CUE.test(p.trim()))) continue
     // 전환 지시어 = 영어 유지가 정상. 접두어가 다양해(ROTATE/SLAM/SNAP/TIME/LONG/JUMP/MATCH MOVE …)
     //   목록으로 나열하면 새 변형마다 오탐이 나므로, 괄호 안 대문자 전환어 형태면 통과시킨다.
@@ -264,7 +282,16 @@ if (!OUT && existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(
 //      그 뒤에 성공한 씬들을 전부 버렸다. 이제 구멍이 있어도 성공분은 다 남긴다
 //      (미완료 자리에는 원문을 넣어 파일 구조와 씬 개수를 그대로 유지한다).
 const checkpoint = () => {
-  try { writeFileSync(koPath, results.map((v, i) => v === undefined ? scenes[i] : v).join('\n\n') + '\n') } catch {}
+  // ★파일을 직접 덮어쓰면 안 된다. writeFileSync 한복판에 프로세스가 죽으면 파일이 그 지점에서
+  //   잘린 채 남는다 — 양들의 침묵이 143씬에서 18씬으로(285KB→46KB), 캐치 미 이프 유 캔이
+  //   230씬에서 206씬으로 잘렸다. 번역을 다 해놓고 저장하다 죽어서 원본을 잃는 셈이다.
+  //   임시 파일에 다 쓴 뒤 이름만 바꾼다. rename 은 원자적이라 중간 상태가 존재하지 않는다 —
+  //   죽어도 파일은 '바뀌기 전' 아니면 '완전히 바뀐 후' 둘 중 하나다.
+  const tmp = koPath + '.tmp'
+  try {
+    writeFileSync(tmp, results.map((v, i) => v === undefined ? scenes[i] : v).join('\n\n') + '\n')
+    renameSync(tmp, koPath)
+  } catch { try { unlinkSync(tmp) } catch {} }
 }
 const outScenes = []
 let failed = 0
@@ -346,6 +373,16 @@ async function translateChunked(i) {
 }
 
 async function translateOne(i) {
+  // ★재번역이 실패했을 때 무엇으로 남길지가 중요하다. 예전엔 무조건 원문(영어)으로 덮어썼는데,
+  //   --resume 은 '완전히 번역됨'이 아닌 씬을 통째로 재번역 대상으로 삼는다. 그런데 그 기준이
+  //   꽤 엄격해서(인물 큐 하나가 영문 그대로면 씬 전체가 '미완료') 이미 95% 잘 번역된 씬도
+  //   재번역 대상이 되고, 그 재번역 시도가 실패하면 원문으로 떨어져 '거의 다 된 한국어'가
+  //   '완전히 영어'로 뒤바뀐다 — 델마와 루이스: 인물 이름 하나(HAL) 때문에 씬이 재번역
+  //   대상이 됐고, 실패하자 그 씬의 정상 대사(LOUISE·JIMMY 포함)까지 전부 영어로 돌아가
+  //   잔재가 12줄에서 31줄로 늘었다. 실패하면 새로 만들 게 없으니 예전 걸 지키는 게 맞다 —
+  //   기존 한국어 번역이 있으면 그쪽으로, 없을 때만 원문으로 떨어진다.
+  const fallback = (prevKo && prevKo[i] && /[가-힣]/.test(prevKo[i])) ? prevKo[i] : scenes[i]
+
   if (prevKo && isFullyTranslated(prevKo[i])) { results[i] = prevKo[i]; return }   // 온전히 번역된 씬만 재사용
   const prevTail = i > 0 ? scenes[i - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
   // 씬 길이에 비례한 타임아웃: 정상 씬(수천자)은 기존과 비슷하게, 헤딩 없이 통째로 묶인
@@ -357,7 +394,22 @@ async function translateOne(i) {
         formattedText: scenes[i], characterMemo: register, guidelines, profile,
         sceneIndex: i, totalScenes: scenes.length, prevTail, model: MODEL,
       }, sceneTimeout)
-      results[i] = (r.translated || '').trim()
+      const got = (r.translated || '').trim()
+      // ★씬 하나를 번역하면 씬 헤딩('# ') 개수는 그대로여야 한다 — 이건 규칙이 아니라 계약이다.
+      //   라이트하우스에서 모델이 헤딩을 4개 더 만들어냈다: 내용이 빈 씬('# '만 있는 씬)을 받자
+      //   번역 대신 메타 응답을 냈다 — '# 생략' · '입력이 `# ` 뿐이므로 그대로 출력합니다'.
+      //   그 결과 씬 수가 115→119로 어긋나 --resume 정렬이 깨졌고, 실패분을 채우려던 재시도
+      //   3회가 전부 안전장치에 걸려 아무것도 못 한 채 끝났다(잔재 72줄이 그대로 남음).
+      //   추출기 쪽에서 빈 헤딩을 안 만들도록 고쳤지만, 여기서도 막는다 — 원인이 하나뿐일 리 없다.
+      const headsIn = (scenes[i].match(/^#\s/gm) || []).length
+      const headsOut = (got.match(/^#\s/gm) || []).length
+      if (got && headsOut !== headsIn) {
+        if (attempt === 2) { console.warn(`  씬 ${i} 구조 불일치(헤딩 ${headsIn}→${headsOut}) — ${fallback === scenes[i] ? '원문' : '기존 번역'} 유지`); results[i] = fallback; failed++; return }
+        console.warn(`  씬 ${i} 구조 불일치(헤딩 ${headsIn}→${headsOut}) — 재시도`)
+        await new Promise(r => setTimeout(r, 2000))
+        continue
+      }
+      results[i] = got
       return
     } catch (e) {
       if (attempt === 2) {
@@ -369,11 +421,14 @@ async function translateOne(i) {
         //   씬51 10,639자가 3회씩 전부 실패). 반면 23,485자짜리는 분할로 성공했다 —
         //   즉 분할 자체는 잘 되는데 임계값이 높아서 발동을 안 한 것뿐이다.
         //   6,000자로 낮춘다. 작은 씬을 괜히 쪼개는 비용보다, 한복판이 원문으로 남는 게 훨씬 나쁘다.
-        if (scenes[i].length > 4000) {
-          const ok = await translateChunked(i)
-          if (ok) return
-        }
-        console.warn(`  씬 ${i} 실패(3회): ${e.message} — 원문 유지`); results[i] = scenes[i]; failed++
+        // ★크기로 분할 여부를 정하면 안 된다. 문턱(4,000자) 바로 아래 씬이 3회 다 실패하면
+        //   그대로 원문으로 남는다 — 좋은 친구들의 'INT. STACKS APARTMENT'(3,884자)가 그랬고,
+        //   재시도를 몇 번 돌려도 같은 씬에서 똑같이 실패해 잔재 83줄이 고정됐다.
+        //   실패했다는 사실 자체가 '한 번에 못 넘긴다'는 뜻이므로, 크기와 무관하게 쪼개본다.
+        //   조각이 하나뿐인 짧은 씬은 translateChunked 가 알아서 그대로 한 번 더 시도한다.
+        const ok = await translateChunked(i)
+        if (ok) return
+        console.warn(`  씬 ${i} 실패(3회): ${e.message} — ${fallback === scenes[i] ? '원문' : '기존 번역'} 유지`); results[i] = fallback; failed++
       }
       else await new Promise(r => setTimeout(r, 5000 * (attempt + 1)))
     }
@@ -394,5 +449,9 @@ async function worker() {
 }
 await Promise.all(Array.from({ length: Math.min(CONCURRENCY, scenes.length) }, worker))
 outScenes.push(...results.map((v, i) => v === undefined ? scenes[i] : v))
-writeFileSync(koPath, outScenes.join('\n\n') + '\n')   // 최종 저장
+{ // 최종 저장 — 체크포인트와 같은 이유로 원자적으로 쓴다
+  const tmp = koPath + '.tmp'
+  writeFileSync(tmp, outScenes.join('\n\n') + '\n')
+  renameSync(tmp, koPath)
+}
 console.log(`\n✓ ${koPath} (백업: .retbak · 실패 ${failed}/${scenes.length})`)

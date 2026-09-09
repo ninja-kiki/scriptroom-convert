@@ -1,3 +1,4 @@
+import { atomicWrite } from './_atomic-write.mjs'
 // 대사 줄에 섞여 들어간 화자 큐를 떼어낸다.
 //   PDF 추출에서 화자 이름이 대사와 같은 x좌표로 잡히면 큐(@NAME)가 아니라 대사(- NAME)가 된다.
 //   그러면 리더기에서 '누가 말하는지'가 사라지고, 다음 대사가 앞 화자에게 붙는다.
@@ -53,7 +54,7 @@ function fixFile(path) {
   }
   if (WRITE && changed) {
     if (!existsSync(path + '.mcbak')) copyFileSync(path, path + '.mcbak')
-    writeFileSync(path, out.join('\n'))
+    atomicWrite(path, out.join('\n'))
   }
   return { changed }
 }

@@ -1,3 +1,4 @@
+import { atomicWrite } from './_atomic-write.mjs'
 // 씬 헤딩 앞머리의 INT./EXT. 를 내부./외부. 로 옮긴다.
 //   fix-headings.mjs 는 '한글이 하나도 없는' 헤딩만 다시 번역하기 때문에
 //   `# INT. 아론의 집. 밤.` 처럼 앞머리만 영어로 남은 헤딩(라이브러리 2,400여 건)을 놓쳤다.
@@ -42,7 +43,7 @@ function fix(path) {
   })
   if (WRITE && changed) {
     if (!existsSync(path + '.hpbak')) copyFileSync(path, path + '.hpbak')
-    writeFileSync(path, out.join('\n'))
+    atomicWrite(path, out.join('\n'))
   }
   return changed
 }

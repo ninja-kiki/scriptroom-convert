@@ -1,3 +1,4 @@
+import { atomicWrite } from './_atomic-write.mjs'
 // 본문에 섞여 들어간 '대본 러닝헤더'를 지운다.
 //   PDF 페이지마다 찍힌 머리글(The Martian Shooting Script 5. / SALMON #2 XX/XX/07 3.)이
 //   추출 때 대사·지문 한복판에 들어가고, 번역기가 그걸 한국어로 옮기기까지 했다
@@ -16,6 +17,10 @@ const only = args.find(a => !a.startsWith('--'))
 if (!ALL && !only) { console.error('사용: node tools/strip-script-headers.mjs <작품폴더|--all> [--write]'); process.exit(1) }
 
 const PATS = [
+  // 날짜가 먼저 오고 그 뒤에 이니셜+revs.+색상이 붙는 리비전 머리글: '10/6/03 MM revs. (pink) 1A.'
+  //   (콜래트럴). 기존 패턴은 전부 '색상이 먼저'인 순서만 다뤘다 — 색상 표시가 색상으로
+  //   시작하지 않는 판형도 있다는 걸 놓쳤다.
+  /\d{1,2}\/\d{1,2}\/\d{2,4}\s+[A-Z]{1,4}\s+revs?\.?\s*\((?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\)\s*\d{0,4}[A-Za-z]{0,2}\.?/gi,
   /(?:The\s+)?[A-Z][A-Za-z' ]{2,30}\s+Shooting\s+Script\s+\d+\.?/g,   // The Martian Shooting Script 5.
   /[가-힣]{2,12}\s*(?:촬영\s*)?(?:대본|각본|슈팅\s*스크립트)\s*\d+\.?/g,  // 마션 촬영 대본 13.
   /\b[A-Z]{3,10}\s*#\d+\s+[X\d]{2}\/[X\d]{2}\/\d{2}\s*\d*[A-Z]?\.?/g, // SALMON #2 XX/XX/07 6A.
@@ -77,8 +82,12 @@ function strip(path) {
     if (!hit) { out.push(line); continue }
     for (const p of PATS) s = s.replace(p, ' ')
     s = s.replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.!?…])/g, '$1').trimEnd()
-    // 머리글만 있던 줄이면 통째로 버린다('- ' 나 빈 껍데기만 남는 경우 포함)
-    if (!s.replace(/^[-\s]+/, '').trim()) { removed++; continue }
+    // 머리글만 있던 줄이면 통째로 버린다(마커만 남은 껍데기 포함).
+    // ★예전엔 대사 마커('- ')만 껍데기로 쳤다. 씬 마커('# ')와 화자 마커('@')는 안 봐서
+    //   '# OMITTED'(촬영대본의 삭제된 씬 표시)에서 OMITTED만 지우고 '# ' 껍데기를 남겼다.
+    //   그 빈 헤딩이 번역기로 흘러가면 모델이 번역 대신 메타 응답을 낸다('# 생략').
+    //   strip-watermark 는 이미 마커 세 개를 다 껍데기로 친다 — 여기만 빠져 있었다.
+    if (!s.replace(/^[-#@\s]+/, '').trim()) { removed++; continue }
     cleaned++
     out.push(s)
   }
@@ -90,7 +99,7 @@ function strip(path) {
   }
   if (WRITE && (removed || cleaned)) {
     if (!existsSync(path + '.shbak')) copyFileSync(path, path + '.shbak')
-    writeFileSync(path, tidy.join('\n'))
+    atomicWrite(path, tidy.join('\n'))
   }
   return { removed, cleaned }
 }

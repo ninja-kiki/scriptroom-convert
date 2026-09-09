@@ -1,3 +1,4 @@
+import { atomicWrite } from './_atomic-write.mjs'
 // 페이지마다 찍힌 워터마크(내려받은 사이트 URL 등)를 본문에서 떼어낸다.
 //
 //   왜 필요한가: 스크립트 배포 사이트가 페이지 하단에 URL 도장을 찍어 배포한다.
@@ -77,7 +78,7 @@ for (const kind of ['_formatted.txt', '_translated.txt']) {
     if (stampRemoved) {
       const cleaned = text.replace(/[ \t]{2,}/g, ' ').split('\n').filter(l => !/^(#|@|-)\s*$/.test(l.trim())).join('\n').replace(/\n{3,}/g, '\n\n')
       console.log(`  ${kind}: ${stampRemoved}개 제거`)
-      if (WRITE) { if (!existsSync(path + '.wmbak')) copyFileSync(path, path + '.wmbak'); writeFileSync(path, cleaned); changedAny = true }
+      if (WRITE) { if (!existsSync(path + '.wmbak')) copyFileSync(path, path + '.wmbak'); atomicWrite(path, cleaned); changedAny = true }
     }
     continue
   }
@@ -126,7 +127,7 @@ for (const kind of ['_formatted.txt', '_translated.txt']) {
   console.log(`  ${kind}: ${removed}개 제거`)
   if (WRITE && removed) {
     if (!existsSync(path + '.wmbak')) copyFileSync(path, path + '.wmbak')
-    writeFileSync(path, out)
+    atomicWrite(path, out)
     changedAny = true
   }
 }
