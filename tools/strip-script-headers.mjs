@@ -65,6 +65,9 @@ const PATS = [
   /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*(?:WIP\s*)?REVISIONS?\s+[A-Z0-9 .#-]{0,30}?\d{1,4}[A-Za-z]?\.?/gi,
   // 씬 이동·재번호 표시: 'SCENE MOVED AND RE-NUMBERED TO SCENE 162'
   /SCENE\s+MOVED(?:\s+AND\s+RE-?NUMBERED)?\s+TO\s+SCENE\s*[\dA-Z]*/gi,
+  // 씬번호(점 표기) + 개정판 + 점날짜: 'Sc.66D Full Pink 11.16.2023', 'Sc. Full Pink 11.16.2023'
+  //   씬번호가 비어 있는 경우도 있다(양쪽 페이지에 걸쳐 반씩 찍힌 판형).
+  /Sc\.\s*\d*[A-Za-z]?\s*(?:Full\s*)?(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*\d{1,2}\.\d{1,2}\.\d{2,4}/gi,
   // 삭제된 씬 표시: 'OMITTED85-89A 85-89A', 'OMITTED (NOW SC. 110A) 108', 'OMITTEDMOVED TO 65A'
   //   ★뒤에 붙는 건 '씬 번호'만 먹어야 한다. \w 로 열어두면 'OMITTED 라고 말했다'처럼
   //   본문 단어까지 삼킨다(실제로 그렇게 만들었다가 잡았다). 숫자·씬번호 꼴로만 한정한다.
