@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, readdirSync, copyFileSync, existsSync, ren
 import { join } from 'path'
 import { reflowBody } from '../src/lib/format-rules.js'   // 끊긴 문장 합치기(변환과 동일)
 import { metaLeak } from '../src/lib/meta-leak.js'
+import { decodeSubtitle } from '../src/lib/smi.js'
 
 const CONTENT = '/Users/hojun/Projects/scriptroom/content'
 const SERVER = 'http://localhost:3001'
@@ -225,7 +226,11 @@ if (WRITE && !process.argv.includes('--resume') && !process.argv.includes('--for
 let guidelines = (await post('/api/load-prompts', {})).translate || ''
 if (INSTRUCTION) guidelines += `\n\n[사용자 수정 지시 — 최우선 반영]\n${INSTRUCTION}`
 const dialogueSample = buildDialogueSample(enText)
-const subSample = subFile ? subtitleSample(readFileSync(join(dir, subFile), 'utf8')) : ''
+// 한국 자막(.smi)은 대부분 EUC-KR(CP949)이다 — UTF-8로 읽으면 글자가 깨진 채 진단에 들어가서
+//   공식 자막의 존댓말·호칭을 근거로 못 썼다(2026-09-28: smi 38개 중 34개가 UTF-8 아님, 진단이
+//   '자막이 모지바케라 채집 불가'라고 보고).
+//   변환 화면이 쓰는 판별기(src/lib/smi.js: UTF-16·UTF-8·EUC-KR)를 그대로 쓴다.
+const subSample = subFile ? subtitleSample(await decodeSubtitle({ arrayBuffer: async () => readFileSync(join(dir, subFile)) })) : ''
 console.log(`작품: ${work} · 자막: ${subFile || '없음'} · 대사샘플 ${dialogueSample.length}자 · 자막샘플 ${subSample.length}자`)
 
 // === 작품 진단(1회) → profile + 인물 말투 가이드(toneGuide). 처방은 번역 호출에 주입 ===
@@ -234,7 +239,7 @@ const headSample = enText.replace(/\r/g, '').split('\n').filter(l => l.trim()).s
 let profile = null
 if (PROFILE_JSON) {   // 게이트 2단계: 1단계에서 만든 프로파일 재사용 (진단 호출 생략)
   try { profile = JSON.parse(readFileSync(PROFILE_JSON, 'utf8')); console.log('[진단] 저장된 프로파일 재사용') } catch (e) { console.warn('프로파일 로드 실패:', e.message) }
-} else {
+} else if (!process.argv.includes('--plan')) {   // 계획만 볼 땐 진단(모델 호출) 생략
   try {
     console.log('\n=== 작품 진단 중... ===')
     const dg = await post('/api/diagnose', { headSample, dialogueSample, subtitleSample: subSample, metrics, model: MODEL })
@@ -318,7 +323,13 @@ if (!prevKo && existsSync(koPath) && !process.argv.includes('--force')) {
 }
 // 표시용 재사용 수도 실제 재사용 기준(isFullyTranslated)과 같아야 한다.
 //   예전엔 '한글 있음'으로 세서 "재사용 99·재번역 0"으로 찍히는데 실제론 재번역이 돌아 로그가 사실과 달랐음.
-if (FIX_STRUCT && prevKo) setCueDict(scenes.map((s, i) => [s, prevKo[i] || '']).filter(([, k]) => k))
+if (prevKo) {
+  setCueDict(scenes.map((s, i) => [s, prevKo[i] || '']).filter(([, k]) => k))
+  // 부분 재번역한 씬만 인물명이 달라지지 않게 — 기존 번역이 이미 쓰는 이름을 인명 사전에 우선 적용한다.
+  //   (12 Years a Slave: 재번역한 씬만 '일라이저', 나머지는 '일라이자'로 갈렸다. 진단은 매번 새로 음역한다.)
+  const known = Object.fromEntries([...(CUE_DICT || [])].filter(([, ko]) => /[가-힣]/.test(ko)))
+  if (Object.keys(known).length) { profile = profile || {}; profile.nameMap = { ...(profile.nameMap || {}), ...known } }
+}
 const reuseCount = prevKo ? prevKo.filter((s, i) => s && reusable(scenes[i], s)).length : 0
 console.log(`=== 번역 ${PLAN ? '계획' : '시작'}: ${scenes.length}씬${RESUME && prevKo ? ` (재사용 ${reuseCount} · 재번역 ${scenes.length - reuseCount})` : ''} ===`)
 if (PLAN) process.exit(0)
