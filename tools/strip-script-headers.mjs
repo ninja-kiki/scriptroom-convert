@@ -68,6 +68,18 @@ const PATS = [
   // 씬번호(점 표기) + 개정판 + 점날짜: 'Sc.66D Full Pink 11.16.2023', 'Sc. Full Pink 11.16.2023'
   //   씬번호가 비어 있는 경우도 있다(양쪽 페이지에 걸쳐 반씩 찍힌 판형).
   /Sc\.\s*\d*[A-Za-z]?\s*(?:Full\s*)?(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s*\d{1,2}\.\d{1,2}\.\d{2,4}/gi,
+  // 개정판 머리글 변형들(2026-09-28, 게이트 잔재에서 발견) — 모두 '개정색 + 날짜 + 페이지'가 한 덩어리라 본문과 겹칠 일이 없다.
+  //   'BUFF REVISED, MAY 11, 2015 88-89A.'(빅 쇼트) · 'Goldenrod Pages - 8.29.2016 47-47A.'(유 워 네버)
+  //   'GOLDENROD REVISIONS (11/17/21) 68-69.'(아마겟돈 타임) · 'GG - Pink Revised 9/.15/13 96A.'(나를 찾아줘)
+  /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s+REVISED,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+[\dA-Z]+(?:-[\dA-Z]+)?\.?/gi,
+  /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s+Pages\s*-\s*\d{1,2}\.\d{1,2}\.\d{4}\s+[\dA-Z]+(?:-[\dA-Z]+)?\.?/gi,
+  /(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s+REVISIONS\s*\(\d{1,2}\/\d{1,2}\/\d{2,4}\)\s*[\dA-Z]+(?:-[\dA-Z]+)?\.?/gi,
+  /\b[A-Z]{1,4}\s*-\s*(?:White|Blue|Pink|Yellow|Green|Goldenrod|Buff|Salmon|Cherry|Tan)\s+Revised\s+[\d/.]{5,10}\s*[\dA-Z]+\.?/g,
+  //   'Hidden Figures - 5/9/2016 - Shooting Draft - 68 .' · '1/24/13 FINAL SHOOTING SCRIPT 121.'
+  /[A-Z][A-Za-z' ]{2,40}\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}\s*-\s*Shooting\s+Draft\s*-\s*\d+[A-Z]?\s*\.?/g,
+  /\d{1,2}\/\d{1,2}\/\d{2,4}\s+FINAL\s+SHOOTING\s+SCRIPT\s+\d+[A-Z]?\.?/g,
+  //   시상식 배포본 꼬리표: 'FOXSEARCHLIGHT.COM/AWARDS Released by Twentieth Century Fox © 2013 Twentieth Century Fox'
+  /FOXSEARCHLIGHT\.COM\/AWARDS(?:\s+Released\s+by\s+[A-Za-z ]+?©\s*\d{4}\s+Twentieth\s+Century\s+Fox)?/g,
   // 삭제된 씬 표시: 'OMITTED85-89A 85-89A', 'OMITTED (NOW SC. 110A) 108', 'OMITTEDMOVED TO 65A'
   //   ★뒤에 붙는 건 '씬 번호'만 먹어야 한다. \w 로 열어두면 'OMITTED 라고 말했다'처럼
   //   본문 단어까지 삼킨다(실제로 그렇게 만들었다가 잡았다). 숫자·씬번호 꼴로만 한정한다.

@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { ruleFormat, reflowBody } from './src/lib/format-rules.js'
 import { splitGluedAction, detect } from './src/lib/lint.js'
+import { findMetaLeaks, stripEchoLabel, hasNothingToTranslate } from './src/lib/meta-leak.js'
 import { splitScenes,
   estTokens, cleanOutput, looksLikeRefusal, buildDialogueSample, buildSubtitleSample, buildBatches, splitByHeading,
 } from './src/lib/pipeline.js'
@@ -491,9 +492,26 @@ ${guidelines}${rxSection}${nameSection}${memoSection}${prevSection}
 [번역할 원문]
 ${formattedText}`
 
-  let translated = await runClaude(systemPrompt, userPrompt, model)
-  // 빈 씬에서 LLM이 번역 대신 "각본을 붙여넣어 주세요" 류 대화체로 답하면 → 저장하지 말고 원문 유지
-  if (looksLikeRefusal(translated)) translated = formattedText
+  // OMITTED 표시·빈 헤딩뿐인 씬은 모델에 보내지 않는다 — 보내면 '입력이 `# OMITTED` 뿐이므로 그대로
+  //   출력합니다'라고 설명을 해서 그 문장이 각본에 박혔다(위플래쉬·아이언맨 등 2026-09-28 정리).
+  if (hasNothingToTranslate(formattedText)) return { translated: formattedText, tokens: null }
+
+  const nonEmpty = t => String(t).split('\n').filter(l => l.trim()).length
+  const want = nonEmpty(formattedText)
+  let translated = '', leaks = [], lineOff = false
+  for (let attempt = 0; attempt < 3; attempt++) {
+    translated = stripEchoLabel(await runClaude(systemPrompt, userPrompt, model))
+    // 빈 씬에서 LLM이 번역 대신 "각본을 붙여넣어 주세요" 류 대화체로 답하면 → 저장하지 말고 원문 유지
+    if (looksLikeRefusal(translated)) return { translated: formattedText, tokens: null }
+    leaks = findMetaLeaks(translated)
+    // 줄 수가 원문과 다르면 리더에서 영문과 짝이 어긋나 대사가 엉뚱한 인물 밑에 붙는다 — 한 번은 다시 시킨다.
+    lineOff = nonEmpty(translated) !== want
+    if (!leaks.length && (!lineOff || attempt >= 1)) break
+    console.error(`번역 재시도(${attempt + 1}/3): ${leaks.length ? `메타 ${leaks.length}줄 "${leaks[0].slice(0, 40)}"` : ''}${lineOff ? ` 줄수 ${nonEmpty(translated)}/${want}` : ''}`)
+  }
+  // 재시도해도 번역기 잡담이 남으면 조용히 통과시키지 않는다 — 실패로 돌려 재번역 대상이 되게.
+  if (leaks.length) { const e = new Error(`META_LEAK: ${leaks[0].slice(0, 60)}`); e.code = 'META_LEAK'; throw e }
+  if (lineOff) console.error(`줄수 불일치 유지(${nonEmpty(translated)}/${want}) — 씬 ${sceneIndex != null ? sceneIndex + 1 : '?'}`)
   return { translated, tokens: null }
 }
 
