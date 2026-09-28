@@ -89,6 +89,46 @@ function isFullyTranslated(scene) {
   return true
 }
 
+// --fix-structure: 번역 씬의 블록 종류 순서(헤딩·인물큐·대사·괄호·지문)가 영어 원문과 다르면 재사용하지 않는다.
+//   리더는 영문·한글 블록을 순서로 짝짓기 때문에, 줄 하나만 합쳐지거나 쪼개져도 그 뒤가 전부 밀려
+//   대사가 엉뚱한 인물 밑에 붙는다(2026-09-28 검수노트 '구조 변경' 대부분이 이것).
+const FIX_STRUCT = process.argv.includes('--fix-structure')
+function structSig(scene) {
+  return scene.split('\n').map(l => l.trim()).filter(Boolean).map(l =>
+    l.startsWith('#') ? 'S' : l.startsWith('@') ? 'C' : l.startsWith('- ') ? 'D' : (l.startsWith('(') && l.endsWith(')')) ? 'P' : 'A').join('')
+}
+// 화자 검사: 같은 씬 안에서 인물큐가 '그 씬의 다른 등장인물 이름'으로 번역돼 있으면 재사용하지 않는다.
+//   인셉션 'COBB' → '사이토'(바로 위 지문의 사이토를 따라감) 같은 화자 오류와, 큐가 한 칸씩 밀린 경우를 잡는다.
+//   표기 흔들림(애그니스/아그네스)은 한 씬에 두 인물로 같이 나오지 않으므로 여기 안 걸린다.
+//   작품 전체의 '영문 이름 → 주 번역명'은 번역 시작 전에 setCueDict()로 채운다.
+const cueName = l => l.replace(/^@/, '').replace(/\([^)]*\)/g, '').replace(/\*/g, '').trim()
+const cuesOf = s => s.split('\n').map(l => l.trim()).filter(l => l.startsWith('@')).map(cueName)
+let CUE_DICT = null
+function setCueDict(pairs) {
+  const count = new Map()
+  for (const [en, ko] of pairs) {
+    const a = cuesOf(en), b = cuesOf(ko)
+    if (a.length !== b.length) continue
+    a.forEach((e, k) => { const m = count.get(e) || new Map(); m.set(b[k], (m.get(b[k]) || 0) + 1); count.set(e, m) })
+  }
+  CUE_DICT = new Map([...count].map(([e, m]) => [e, [...m].sort((x, y) => y[1] - x[1])[0][0]]))
+}
+function speakerOk(en, ko) {
+  if (!CUE_DICT) return true
+  const a = cuesOf(en), b = cuesOf(ko)
+  if (a.length !== b.length) return false
+  const sceneNames = new Set(a.map(e => CUE_DICT.get(e)).filter(Boolean))
+  return a.every((e, k) => {
+    const want = CUE_DICT.get(e)
+    if (!want || b[k] === want) return true
+    return !(sceneNames.has(b[k]))          // 다른 등장인물 이름이면 오류
+  })
+}
+function reusable(en, ko) {
+  if (!isFullyTranslated(ko)) return false
+  return !FIX_STRUCT || (structSig(en) === structSig(ko) && speakerOk(en, ko))
+}
+
 function splitScenes(text) {
   const lines = text.split('\n')
   const scenes = []; let cur = []
@@ -218,7 +258,8 @@ if (DIAGNOSE_ONLY) {
 }
 
 if (GUIDE_ONLY) { console.log('(--guide 모드 — 번역 안 함)'); process.exit(0) }
-if (!WRITE) { console.log('(--write 없음 — 번역 안 함)'); process.exit(0) }
+const PLAN = process.argv.includes('--plan')
+if (!WRITE && !PLAN) { console.log('(--write 없음 — 번역 안 함)'); process.exit(0) }
 
 const RESUME = process.argv.includes('--resume')
 const koPath = OUT || join(dir, trFile || fmtFile.replace('_formatted', '_translated'))   // OUT 있으면 /tmp(다운로드용), 없으면 content
@@ -277,8 +318,10 @@ if (!prevKo && existsSync(koPath) && !process.argv.includes('--force')) {
 }
 // 표시용 재사용 수도 실제 재사용 기준(isFullyTranslated)과 같아야 한다.
 //   예전엔 '한글 있음'으로 세서 "재사용 99·재번역 0"으로 찍히는데 실제론 재번역이 돌아 로그가 사실과 달랐음.
-const reuseCount = prevKo ? prevKo.filter(s => isFullyTranslated(s)).length : 0
-console.log(`=== 번역 시작: ${scenes.length}씬${RESUME && prevKo ? ` (재사용 ${reuseCount} · 재번역 ${scenes.length - reuseCount})` : ''} ===`)
+if (FIX_STRUCT && prevKo) setCueDict(scenes.map((s, i) => [s, prevKo[i] || '']).filter(([, k]) => k))
+const reuseCount = prevKo ? prevKo.filter((s, i) => s && reusable(scenes[i], s)).length : 0
+console.log(`=== 번역 ${PLAN ? '계획' : '시작'}: ${scenes.length}씬${RESUME && prevKo ? ` (재사용 ${reuseCount} · 재번역 ${scenes.length - reuseCount})` : ''} ===`)
+if (PLAN) process.exit(0)
 if (!OUT && existsSync(koPath) && !existsSync(koPath + '.retbak')) copyFileSync(koPath, koPath + '.retbak')   // content 모드일 때만 원본 백업 (OUT=/tmp면 백업 불필요)
 // 현재까지 번역분 + 나머지 영문으로 전체 구조 유지해 저장 (끊겨도 안 날아감 / --resume으로 이어감)
 // ★씬 하나 끝날 때마다 통째로 다시 쓴다. 두 가지를 고쳤다:
@@ -389,7 +432,7 @@ async function translateOne(i) {
   //   기존 한국어 번역이 있으면 그쪽으로, 없을 때만 원문으로 떨어진다.
   const fallback = (prevKo && prevKo[i] && /[가-힣]/.test(prevKo[i])) ? prevKo[i] : scenes[i]
 
-  if (prevKo && isFullyTranslated(prevKo[i])) { results[i] = prevKo[i]; return }   // 온전히 번역된 씬만 재사용
+  if (prevKo && prevKo[i] && reusable(scenes[i], prevKo[i])) { results[i] = prevKo[i]; return }   // 온전히 번역된(--fix-structure면 구조도 같은) 씬만 재사용
   const prevTail = i > 0 ? scenes[i - 1].split('\n').filter(Boolean).slice(-3).join(' ').slice(0, 220) : null
   // 씬 길이에 비례한 타임아웃: 정상 씬(수천자)은 기존과 비슷하게, 헤딩 없이 통째로 묶인
   // 초대형 씬(예: EEAAO 멀티버스 몽타주 4만자)은 응답이 오래 걸려도 일찍 abort돼 계속 실패하던 문제 방지.

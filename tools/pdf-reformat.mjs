@@ -158,8 +158,13 @@ function detectBands(lines) {
     //     그래서 기준이 전부 탈락한 뒤 폴백(상위 3개)이 노이즈 x=16 을 지문으로 삼아
     //     밴드가 '지문<38'이 됐다 — 씬 13개·큐 154개로 각본이 통째로 뭉개졌다.
     //     열은 정확한 좌표가 아니라 구간이다. 붙어 있는 좌표를 한 열로 묶어서 센다.
+    // ★몇 줄뿐인 부스러기 좌표는 묶는 데 쓰지 않는다. 마션은 지문(110)과 대사(180) 사이에 한두 줄씩
+    //   흩어진 좌표(115·120…175)가 징검다리가 되어 두 열이 한 덩어리로 묶였고, 그 대표값이 180이라
+    //   '지문<205'가 됐다 — 대사 수백 줄이 지문으로, 인물명이 대사로 분류됐다(2026-09-28).
+    //   흩어진 진짜 열(파고: 155~162)은 칸마다 수십 줄이라 이 문턱을 넘는다.
+    const NOISE = Math.max(3, lines.length * 0.003)
     const clump = (entries, gap = 14) => {
-      const asc = entries.slice().sort((a, b) => a[0] - b[0])
+      const asc = entries.filter(([, n]) => n >= NOISE).sort((a, b) => a[0] - b[0])
       const out = []
       for (const [x, n] of asc) {
         const last = out[out.length - 1]
