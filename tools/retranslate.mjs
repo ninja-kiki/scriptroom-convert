@@ -40,6 +40,20 @@ enText = reflowBody(enText.split('\n')).join('\n')   // PDF 단 너비로 끊긴
 //   영어 헤딩·큐·지문이 그대로 남은 채 '완료'로 기록되는 사고가 났다(36/38편 오염).
 //   이제는 '영어 잔재가 없어야' 재사용한다. 남아 있으면 그 씬만 다시 번역된다.
 //   단, 전환지시어((CUT TO:) 등)와 외국어 대사는 계약상 영어 유지이므로 잔재로 치지 않는다.
+// 번역기가 '자기 작업'을 말한 문장(메타 응답). src-check-clean.py 의 META_ANY/META_NON_DIALOGUE 와
+//   반드시 같이 고친다 — 기준이 어긋나면 게이트는 잡는데 --resume 은 그 씬을 재사용해 리크가 영원히 남는다.
+//   (2026-09-28: '입력이 `# OMITTED` 뿐이므로 그대로 출력합니다' 류가 한글이라는 이유로 '완료' 판정돼
+//    팅커 테일러·듄은 재번역을 거치고도 리크가 살아남았다.)
+const META_ANY = /(입력|원문|텍스트|번역할\s*(원문|내용|텍스트))[^\n]{0,40}(이므로|뿐이므로|없으므로)[^\n]{0,25}(출력|옮기|옮깁|유지|번역)|번역할\s*(내용|것|텍스트|원문)이\s*(없|아무)|^\[?\s*(번역|번역할\s*원문|씬\s*헤딩을\s*번역)\s*:?\s*\]?\s*$|^(의|을|를)\s*번역|번역\s*대상이|규칙에\s*따라\s*처리|^\*?\(?\s*참고[:：]?\s*(위|이|아래)\s*(장면|대사|씬|원문)에는|^```|노이즈 제거 — 원문 취소선 표시|저작권이?\s*있는[^\n]{0,60}(옮겨|번역해|재생산해)\s*(드릴|드리)\s*수|원하시면[^\n]{0,40}번역|<\/?(system|user|assistant|human)>|^<br\s*\/?>$/
+// 지문·헤딩은 '~한다'체 — 대사(- )·인물큐(@)가 아닌 줄이 '번역합니다/옮기겠습니다'체면 번역기의 말이다.
+const META_NON_DIALOGUE = /(번역|출력)(하겠습니다|했습니다|합니다|해\s*드리|드리겠)|옮기겠습니다|옮깁니다|옮겼습니다|옮겨\s*드리|(이것|부분)\s*번역\.?\s*$|번역\s*시작\.?\s*$/
+function metaLeak(s) {
+  s = String(s || '').trim()
+  if (!s) return false
+  if (META_ANY.test(s)) return true
+  return !/^(- |@)/.test(s) && META_NON_DIALOGUE.test(s)
+}
+
 function isFullyTranslated(scene) {
   if (!scene || !/[가-힣]/.test(scene)) return false
   // '(이탈리아어로)' 같은 언어 지시 괄호 뒤의 대사는 원어 유지가 정상 — 잔재로 치지 않는다.
@@ -47,6 +61,7 @@ function isFullyTranslated(scene) {
   const ls = scene.split('\n')
   for (let idx = 0; idx < ls.length; idx++) {
     const s = ls[idx].trim()
+    if (metaLeak(s)) return false
     if (/[가-힣]/.test(s)) continue
     // ★인물 큐는 짧아도 반드시 검사한다. 예전엔 다른 줄과 똑같이 '12자 미만이면 건너뛴다'는
     //   문턱을 그대로 썼는데, '@HAL'·'@MAX'(둘 다 4자)처럼 짧은 이름이 전부 여기 걸려 검사가
