@@ -1,8 +1,10 @@
 #!/bin/bash
 # 여러 작품의 영문·한글 구조 어긋남을 한 편씩 바로잡는 배치 — 오래 돌려도 안전하게.
 #   · 작품마다 시작 전에 번역이 실제로 되는지 확인하고, 사용량 한도·로그인 풀림이면 10분마다 재확인하며 기다린다.
-#   · 끝난 뒤 영어 잔재가 늘거나, 메타 응답이 생기거나, 구조 일치가 떨어지면 그 작품은 git 으로 되돌린다
-#     (한도에 걸리면 실패한 씬이 영어로 채워져 오히려 나빠질 수 있다 — 2026-09-29 마션·바빌론).
+#   · 끝난 뒤 메타 응답이 생기거나, 구조 일치가 떨어지거나, 영어 잔재가 4줄 이상 늘면
+#     그 작품은 git 으로 되돌린다 (한도에 걸리면 실패한 씬이 영어로 채워져 오히려 나빠질 수 있다 — 2026-09-29 마션·바빌론).
+#     (번역 실패 씬은 기존 한글이 그대로 남으므로 실패 수만 기록한다 — 영어로 채워졌다면 잔재로 잡힌다.)
+#     잔재가 1~3줄 느는 건 대개 원문 그대로 둬야 하는 줄(TITLE CARD: "IN" 등)이라 유지하고, 그 줄을 로그에 남겨 사람이 본다.
 #   · 로그에 이미 끝난 작품은 건너뛰므로, 끊겨도 같은 명령으로 다시 돌리면 이어서 간다.
 #   사용: tools/fix-structure-batch.sh <로그파일> <작품목록파일(한 줄에 하나)>
 cd "$(dirname "$0")/.."
@@ -24,17 +26,19 @@ while IFS= read -r w; do
   tr=$(ls "$C/$w"/*_translated.txt | head -1)
   wait_ok
   b=$(python3 "$CHECK" "$tr"); read bs _ <<< "$(node tools/struct-match.mjs "$w")"
-  node tools/retranslate.mjs "$w" --write --resume --fix-structure >> "$LOG.detail" 2>&1
+  rt=$(node tools/retranslate.mjs "$w" --write --resume --fix-structure 2>&1); echo "$rt" >> "$LOG.detail"
+  fail=$(echo "$rt" | grep -oE '실패 [0-9]+/' | tail -1 | grep -oE '[0-9]+')
   node tools/fix-speakers.mjs "$w" --write >> "$LOG.detail" 2>&1
   for t in fix-heading-prefix fix-merged-cues strip-watermark strip-running-header fix-headings fix-cues fix-cue-parens fix-self-correction translate-headings; do
     node tools/$t.mjs "$w" --write >> "$LOG.detail" 2>&1
   done
   a=$(python3 "$CHECK" "$tr"); read as lk <<< "$(node tools/struct-match.mjs "$w")"
-  if [ "$a" -gt "$b" ] || [ "$lk" != "0" ] || [ "$as" -lt "$bs" ]; then
+  if [ "$lk" != "0" ] || [ "$as" -lt "$bs" ] || [ "$a" -gt $((b + 3)) ]; then
     (cd /Users/hojun/Projects/scriptroom && git checkout -- "content/$w/")
-    echo "## $w 되돌림 — 구조 $bs→$as% · 잔재 $b→$a · 메타 $lk $(date '+%m/%d %H:%M')" >> "$LOG"
+    echo "## $w 되돌림 — 구조 $bs→$as% · 잔재 $b→$a · 메타 $lk · 실패 ${fail:-?} $(date '+%m/%d %H:%M')" >> "$LOG"
   else
-    echo "## $w 완료 — 구조 $bs→$as% · 잔재 $b→$a $(date '+%m/%d %H:%M')" >> "$LOG"
+    echo "## $w 완료 — 구조 $bs→$as% · 잔재 $b→$a · 실패 ${fail:-0} $(date '+%m/%d %H:%M')" >> "$LOG"
+    [ "$a" -gt "$b" ] && python3 "$CHECK" -v "$tr" | sed 's/^/     잔재 /' >> "$LOG"
   fi
   node tools/clean-backups.mjs "$w" --write >/dev/null 2>&1
 done < "$LIST"
